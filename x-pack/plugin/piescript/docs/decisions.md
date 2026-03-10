@@ -1,0 +1,352 @@
+# Architectural Decisions
+
+> **Living doc** — add a new entry whenever a non-trivial design choice is made. Entries are
+> append-only; if a decision is revisited, add a new entry that references the original.
+
+## Format
+
+Each decision follows this lightweight ADR (Architecture Decision Record) structure:
+
+- **Context**: What problem or question prompted the decision.
+- **Decision**: What was chosen.
+- **Rationale**: Why this option was picked over alternatives.
+- **Status**: `accepted`, `superseded by D-NNN`, or `under review`.
+
+---
+
+## D-001: Plugin Architecture — ActionRequest, not LegacyActionRequest
+
+**Phase**: 0 | **Status**: accepted
+
+**Context**: Elasticsearch has two request base classes: the modern `ActionRequest` and the older
+`LegacyActionRequest`. New plugins need to pick one.
+
+**Decision**: Use `ActionRequest` (the modern path).
+
+**Rationale**: `LegacyActionRequest` exists for backwards compatibility with older code.
+New plugins should use the current API surface. `ActionRequest` integrates cleanly with
+`HandledTransportAction` and the modern action registration mechanism.
+
+---
+
+## D-002: Response Type — Raw EsqlQueryResponse, no wrapper
+
+**Phase**: 0 | **Status**: accepted (will be revisited in Phase 1c)
+
+**Context**: The transport action needs a response type. Options: (a) return `EsqlQueryResponse`
+directly, (b) create a `PiescriptResponse` wrapper.
+
+**Decision**: Return `EsqlQueryResponse` directly.
+
+**Rationale**: Phase 0 is a pure passthrough — there's nothing to add to the response. A wrapper
+would be empty ceremony. When Phase 1c introduces non-query expressions that produce values (not
+tabular results), a custom response type will be introduced.
+
+---
+
+## D-003: Security Model — CompositeIndicesRequest + RBAC delegation
+
+**Phase**: 0 | **Status**: accepted
+
+**Context**: Piescript programs touch indices determined at runtime (the ESQL query inside may
+reference any index). The security subsystem needs to know how to authorize the action.
+
+**Decision**:
+- `PiescriptRequest` implements `CompositeIndicesRequest`, signaling that index resolution is
+  deferred.
+- The action name `indices:data/read/piescript` is registered in
+  `RBACEngine.shouldAuthorizeIndexActionNameOnly()`.
+- Index-level authorization is handled by the ESQL engine when it executes the inner query.
+
+**Rationale**: This is the same pattern ESQL itself uses. It avoids duplicating authorization logic
+and ensures piescript inherits ESQL's security guarantees automatically. The alternative — parsing
+the program to extract index names for upfront authorization — would require a full parser, which
+doesn't exist yet in Phase 0.
+
+---
+
+## D-004: Executor — DIRECT_EXECUTOR_SERVICE
+
+**Phase**: 0 | **Status**: accepted (will be revisited in Phase 1c)
+
+**Context**: `HandledTransportAction` requires an executor. Options: (a) `DIRECT_EXECUTOR_SERVICE`
+(run on the calling thread), (b) a named thread pool.
+
+**Decision**: `DIRECT_EXECUTOR_SERVICE`.
+
+**Rationale**: Phase 0 does no computation — it extracts a string and delegates to ESQL, which
+manages its own threading. Adding a thread-pool hop would add latency for no benefit. When Phase 1c
+adds type checking and evaluation (CPU-bound work), a dedicated thread pool should be introduced.
+
+---
+
+## D-005: Type System — Bidirectional Hindley-Milner with zonker-based elaboration
+
+**Phase**: 1 | **Status**: accepted
+
+**Context**: The expression language needs type inference. Options considered:
+(a) simple structural typing, (b) classic Algorithm W, (c) bidirectional HM,
+(d) full System F with explicit type applications.
+
+**Decision**: Bidirectional Hindley-Milner inference with zonker-based elaboration.
+
+**Rationale**:
+- *Bidirectional* checking gives better error messages than pure inference (Algorithm W) because
+  checking mode propagates expected types inward.
+- *HM* provides full type inference without annotations, which keeps the surface syntax clean.
+- *Zonker-based elaboration* avoids substituting into the term tree entirely. The zonker is a
+  `Map<Integer, Object>` (metavar ID → solution). Unification writes solutions to the zonker.
+  Metavars in types are resolved by chain-following lookup when encountered — during elaboration,
+  evaluation, or lowering. There is **no zonking pass** that rewrites the AST. The zonker is
+  carried as a lookup table throughout the pipeline. This avoids the cost of repeated substitution
+  and keeps the Core IR immutable. See Phase 1 plan, D1.7.
+- *System F* was rejected because it requires explicit type applications, which conflicts with the
+  "types are inferred, not annotated" philosophy.
+
+**Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
+
+---
+
+## D-006: Variable Binding — De Bruijn Indices
+
+**Phase**: 1 | **Status**: accepted
+
+**Context**: The Core IR needs a variable representation. Options: (a) named variables with
+alpha-renaming, (b) de Bruijn indices, (c) de Bruijn levels, (d) locally nameless.
+
+**Decision**: De Bruijn indices in the Core IR. The surface AST uses named variables; elaboration
+converts to de Bruijn indices.
+
+**Rationale**:
+- De Bruijn indices eliminate alpha-equivalence issues entirely — structurally equal terms are
+  equal.
+- They simplify substitution (no capture-avoidance needed).
+- The trade-off is readability of the IR, but the IR is not user-facing.
+- De Bruijn *levels* were considered but indices are more standard for evaluation (they count
+  inward from the binding site, matching the natural stack discipline of an evaluator).
+
+**Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
+
+---
+
+## D-007: Null Semantics (v0) — Null unifies with Any
+
+**Phase**: 1 | **Status**: accepted (known to be unsound; will be refined)
+
+**Context**: ESQL has null values. The type system needs to handle them somehow. Options:
+(a) proper Option/Maybe type from day one, (b) Null as a special type that unifies with everything,
+(c) ignore nulls entirely.
+
+**Decision**: v0: `Null` behaves like `Any` — it unifies with every type.
+
+**Rationale**: A proper Option type requires algebraic data types and pattern matching (Phase 1d).
+Adding it in Phase 1b would create a circular dependency. Treating Null as Any is unsound (a `Null`
+value can appear where an `Integer` is expected) but pragmatic for v0. It lets the type checker
+proceed without blocking on ADT infrastructure. The plan is to revisit with a proper Option type
+when ADTs land (post-Phase 2).
+
+**Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
+
+---
+
+## D-008: Node Infrastructure — Only Core IR extends Node
+
+**Phase**: 1 | **Status**: accepted
+
+**Context**: Elasticsearch has a `Node` base class used by ESQL's AST infrastructure (with tree
+traversal, rewriting, etc.). Which piescript structures should extend it?
+
+**Decision**: Only `CoreExpr` (the Core IR expression type) extends `Node`. Types (`MonoType`,
+`PolyType`), values, and other structures use plain records and sealed interfaces.
+
+**Rationale**: The `Node` infrastructure adds overhead (visitor patterns, attribute maps, immutable
+tree rewriting). This is valuable for the IR, which needs traversal and transformation. But types
+and values are small, short-lived structures where records are simpler and more performant. Keeping
+the Node dependency narrow also reduces coupling to ESQL internals.
+
+**Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
+
+---
+
+## D-009: Literal Types — Aligned with ESQL DataType
+
+**Phase**: 1 | **Status**: accepted
+
+**Context**: Piescript needs literal types (Integer, String, etc.). Should they be independent or
+aligned with ESQL's `DataType` enum?
+
+**Decision**: Aligned with ESQL `DataType`. Piescript literals map to: `INTEGER`, `LONG`, `DOUBLE`,
+`KEYWORD` (for strings), `BOOLEAN`, `NULL`.
+
+**Rationale**: Since piescript delegates query execution to ESQL, type compatibility at the boundary
+is critical. Using the same type universe avoids lossy conversions and ensures that piescript values
+can flow into ESQL expressions (and vice versa) without surprises.
+
+**Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
+
+---
+
+## D-010: Control Flow — Pattern matching first, if/then/else as sugar
+
+**Phase**: 1d | **Status**: accepted
+
+**Context**: The language needs conditional execution. Options: (a) `if/then/else` as a primitive,
+(b) pattern matching as the primitive with `if` as sugar.
+
+**Decision**: `match` is the primitive control-flow mechanism. `if cond then a else b` desugars to
+`match cond with | true -> a | false -> b`. `if` is cut from Phase 1a-c; it arrives with pattern
+matching in Phase 1d.
+
+**Rationale**: Making `match` the primitive avoids having two redundant constructs. It also
+encourages exhaustive handling from the start. The desugar is trivial and the surface syntax
+for `if` can still feel natural.
+
+**Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
+
+---
+
+## D-011: ESQL Plugin Dependency — extendedPlugins, not runtime classpath
+
+**Phase**: 0 | **Status**: accepted
+
+**Context**: Piescript needs access to ESQL classes (`EsqlQueryAction`, `EsqlQueryRequest`,
+`EsqlQueryResponse`). Options: (a) `extendedPlugins` declaration, (b) runtime classpath dependency,
+(c) copy ESQL interfaces into piescript.
+
+**Decision**: `extendedPlugins = ['x-pack-esql']` in `build.gradle`, with `compileOnly` dependency
+on `xpackModule('esql')` and `xpackModule('esql-core')`.
+
+**Rationale**: `extendedPlugins` is the ES-native mechanism for plugin-to-plugin dependencies. It
+ensures ESQL is loaded before piescript at runtime and makes the dependency explicit in the build
+graph. `compileOnly` means piescript doesn't bundle ESQL classes — they're provided by the ES
+distribution. Copying interfaces would create a maintenance burden and divergence risk.
+
+---
+
+## D-012: Execution Model — Plan Graph, Not Direct Interpretation
+
+**Phase**: 3–4 | **Status**: accepted
+
+**Context**: The interpreter walks Core IR. When it encounters process nodes (queries, stream
+combinators, `par` blocks), should it execute them directly (fire queries, iterate over pages,
+manage async coordination) or build a plan that is executed separately?
+
+**Decision**: The evaluator builds a **plan graph** for process nodes. Pure functional nodes are
+evaluated directly by the tree-walking interpreter. Process nodes produce plan graph fragments that
+are wired together as the evaluator walks the IR. The completed plan graph is then optimized and
+dispatched by a separate executor.
+
+**Rationale**:
+- **Separation of concerns**: the evaluator handles the "what" (program semantics), the executor
+  handles the "where" and "how" (placement, scheduling, data flow). This enables swapping
+  executors without changing the language semantics.
+- **Optimization**: a plan graph can be inspected and transformed before execution. Push-down of
+  simple transforms into ESQL queries, dead-code elimination of unused `par` branches, and fusion
+  of adjacent combinators are all plan-level optimizations that require seeing the full computation
+  structure before executing it.
+- **Distributed execution path**: the plan graph is the abstraction that enables distributing
+  computation to data nodes. A direct-interpretation model would require re-architecting when
+  distribution is needed. The plan graph makes the transition incremental — swap the local executor
+  for a distributed one.
+- **Free monad interpretation**: the plan graph is a free monad over π-calculus effects (Query,
+  Par, MapStream, Send, Recv, etc.). The executor is the interpreter of this free monad. This is a
+  well-understood pattern with known optimization techniques (handler fusion).
+
+The v0 executor runs everything locally on the coordinator node. Future executors dispatch plan
+fragments to data nodes.
+
+**Ref**: [architecture.md § The Plan Graph](architecture.md), [references.md § Free Monads](references.md)
+
+---
+
+## D-013: Two-Layer IR — Functional Expressions and Process Descriptions
+
+**Phase**: 1–3 | **Status**: accepted
+
+**Context**: The Core IR needs to represent both pure computation (let-bindings, lambdas, records)
+and effectful operations (queries, parallel composition, stream transforms). Should these be a
+single hierarchy or separate?
+
+**Decision**: The Core IR is partitioned into two sealed hierarchies: `CoreExpr` (functional) and
+`CoreProcess` (process descriptions). Process nodes may contain functional subexpressions (e.g.,
+the lambda argument to `MapStream`), but functional nodes never contain process nodes.
+
+**Rationale**:
+- **Clean effect boundary**: mirrors the π-calculus distinction between expressions (which compute
+  values) and processes (which perform communication). Effects do not leak inward.
+- **Separate handling**: the evaluator dispatches on the node type — `CoreExpr` nodes are evaluated
+  to values, `CoreProcess` nodes are planned (produce plan graph fragments). Mixing them in a
+  single hierarchy would require runtime discrimination at every evaluation step.
+- **Analogous to Haskell's pure/IO boundary**: `CoreExpr` is the pure layer, `CoreProcess` is the
+  effectful layer. Referential transparency of the pure layer is what makes distributed execution
+  safe — pure subexpressions can be evaluated anywhere, and closures can be shipped to remote
+  nodes without changing semantics.
+- **Phase 1 designs only `CoreExpr`**. `CoreProcess` is introduced in Phase 3. The separation
+  ensures that Phase 1's evaluator does not need modification when process nodes arrive — they
+  go to a different handler.
+
+**Ref**: [architecture.md § The Two-Layer IR](architecture.md)
+
+---
+
+## D-014: Code Mobility — Closures as Traveling Code
+
+**Phase**: 3–4 | **Status**: accepted
+
+**Context**: When a user writes `query FROM logs-* |> map inc`, the `inc` function needs to
+execute on the nodes that hold the `logs-*` shards. How is user-defined code shipped to remote
+execution contexts?
+
+**Decision**: Lambdas and closures attached to plan nodes are "traveling code." Closed lambdas
+(no free variables) are serialized as `CoreExpr` subtrees. Closures are serialized as
+`(CoreExpr, Map<Name, Value>)` pairs — the code plus a snapshot of captured bindings.
+
+**Rationale**:
+- **Purity makes this safe**: the language is pure and referentially transparent. Captured values
+  are immutable. Cloning the captured environment to send it to a remote node produces identical
+  results to evaluating locally. No aliasing or mutation hazards.
+- **Analogous to delimited continuations**: process primitives are the delimiters. The plan graph
+  is the reified continuation tree. Each π-primitive captures "what happens next" as a
+  continuation that can be dispatched to a remote node.
+- **Mobility check**: not all closures can travel. If a closure captures a non-serializable value
+  (a stream handle, a channel reference), it must stay on the coordinator. The optimizer flags
+  these. For v0, all values are simple (integers, strings, booleans, records) and trivially
+  serializable. Future phases with resource types will need linear/affine typing to prevent
+  non-serializable captures.
+- **Theoretical basis**: Sangiorgi's agent-passing paper shows that code mobility (higher-order
+  π-calculus) reduces to name passing in the standard π-calculus. No fundamentally new mechanism
+  is required.
+
+**Ref**: [references.md § Sangiorgi (agent-passing)](references.md),
+[architecture.md § Traveling Code](architecture.md)
+
+---
+
+## D-015: Join Calculus Influence on Primitive Selection
+
+**Phase**: 4+ | **Status**: accepted (informing future design)
+
+**Context**: The standard π-calculus includes constructs (like input-guarded choice:
+`c₁?x.P + c₂?y.Q`) that are notoriously difficult to implement in distributed systems. Which
+π-calculus variant should inform piescript's process primitive design?
+
+**Decision**: The join calculus (Fournet & Gonthier) informs which process primitives piescript
+exposes. Specifically: avoid synchronous rendezvous and input-guarded choice in favor of
+local synchronization patterns (messages travel to a destination and interact only after arrival).
+
+**Rationale**:
+- The join calculus was specifically designed to restrict the π-calculus to primitives that have
+  efficient distributed implementations, while preserving full expressiveness (encodings exist in
+  both directions).
+- **Local synchronization** means a process fires only when all required messages have arrived at
+  a single location. This avoids the distributed consensus problem inherent in guarded choice.
+- **Join patterns** (a process fires when messages from multiple channels all arrive) naturally
+  express multi-way synchronization (e.g., "proceed when both query A and query B have results").
+- **Practical validation**: JoCaml demonstrates that join calculus primitives embed naturally in
+  an ML-family language with minimal surface syntax disruption.
+- For v0, `par` blocks with independent bindings are the only process primitive. This is a
+  restricted form of join pattern where all branches are independent. Richer join patterns and
+  explicit channels are future work, guided by the join calculus model.
+
+**Ref**: [references.md § The Join Calculus](references.md),
+[references.md § JoCaml](references.md)

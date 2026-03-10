@@ -2,6 +2,21 @@
 
 Typed functional scripting language for Elasticsearch. Phase 0 is a minimal plugin scaffold that passes ESQL queries through to the ESQL engine via a new REST endpoint.
 
+## Documentation
+
+Detailed project documentation lives in the [`docs/`](docs/) folder:
+
+| Doc | Purpose |
+|-----|---------|
+| [`docs/AGENTS.md`](docs/AGENTS.md) | Agent entry point — start here for full project context |
+| [`docs/vision.md`](docs/vision.md) | Long-term goals and design philosophy |
+| [`docs/roadmap.md`](docs/roadmap.md) | Phased development plan with status markers |
+| [`docs/current-state.md`](docs/current-state.md) | What's implemented now, limitations, next steps |
+| [`docs/architecture.md`](docs/architecture.md) | System design, components, data flow |
+| [`docs/project-structure.md`](docs/project-structure.md) | File layout and module responsibilities |
+| [`docs/decisions.md`](docs/decisions.md) | Architectural decisions and rationale |
+| [`docs/references.md`](docs/references.md) | π-calculus papers, textbooks, and theory |
+
 ## Quick Reference
 
 ### Run Automated Tests
@@ -113,4 +128,4 @@ Then omit `-u elastic-admin:elastic-password` from curl commands.
 - Response is ESQL's native format (no piescript-specific response wrapper)
 - No feature flag or license gating
 
-See `../.cursor/plans/phase0_plugin_scaffold.plan.md` for the full design document.
+See [docs/current-state.md](docs/current-state.md) for the full list of limitations and known shortcuts.
