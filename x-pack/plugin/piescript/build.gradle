@@ -1,0 +1,24 @@
+apply plugin: 'elasticsearch.internal-es-plugin'
+apply plugin: 'elasticsearch.internal-java-rest-test'
+
+esplugin {
+    name = 'x-pack-piescript'
+    description = 'Typed functional scripting language for Elasticsearch'
+    classname = 'org.elasticsearch.xpack.piescript.PiescriptPlugin'
+    extendedPlugins = ['x-pack-esql']
+}
+
+base {
+    archivesName = 'x-pack-piescript'
+}
+
+dependencies {
+    compileOnly project(path: xpackModule('core'))
+    compileOnly project(path: xpackModule('esql'))
+    compileOnly project(xpackModule('esql-core'))
+    javaRestTestImplementation(testArtifact(project(xpackModule('core'))))
+}
+
+tasks.named('javaRestTest') {
+    usesDefaultDistribution("piescript requires default distribution with x-pack")
+}
