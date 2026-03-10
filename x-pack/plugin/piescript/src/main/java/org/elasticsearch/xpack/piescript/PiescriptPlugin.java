@@ -44,6 +44,6 @@ public class PiescriptPlugin extends Plugin implements ActionPlugin {
         Supplier<DiscoveryNodes> nodesInCluster,
         Predicate<NodeFeature> clusterSupportsFeature
     ) {
-        return List.of(new RestPiescriptAction());
+        return List.of(new RestPiescriptAction(), new RestPiescriptDevAction());
     }
 }
