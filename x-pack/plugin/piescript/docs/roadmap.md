@@ -33,40 +33,38 @@ Establishes the plugin skeleton, build configuration, security integration, and 
 
 ---
 
-## Phase 1 — Expression Language :memo:
+## Phase 1 — Expression Language :construction:
 
 Core functional expression language with type inference. Subdivided into sub-phases:
 
-### Phase 1a — Parser :memo:
+### Phase 1a — Parser :white_check_mark:
 
-Lexer and parser that produce an AST from piescript source text.
+Lexer and parser that produce a CST from piescript source text.
 
 | Task | Status |
 |------|--------|
-| ANTLR grammar (lexer + parser) | :memo: |
-| AST node types (surface syntax) | :memo: |
-| Literal support (Integer, Long, Double, Keyword/String, Boolean, Null) | :memo: |
-| Let-bindings (`let x = expr in body`) | :memo: |
-| Lambda expressions (`\x -> body`) | :memo: |
-| Function application | :memo: |
-| Binary/unary operators | :memo: |
-| Comment support (`//` and `/* */`) | :memo: |
-| Error reporting with source locations | :memo: |
+| ANTLR grammar (lexer + parser) | :white_check_mark: |
+| Full surface syntax per D1.17 (literals, let, lambda, application, operators, records, projections, updates, if/then/else, blocks, pipes, types, comments) | :white_check_mark: |
+| Parser entry point (`PiescriptParser.java`) | :white_check_mark: |
+| Parser unit tests (`PiescriptParserTests.java` — every syntax form + error cases) | :white_check_mark: |
+| Dev endpoint `POST /_piescript/dev` (CST inspection) | :white_check_mark: |
+| Error reporting with source locations | :white_check_mark: |
 
-### Phase 1b — Type Checker :memo:
+### Phase 1b — Type Checker :construction:
 
 Bidirectional Hindley-Milner type inference with zonker-based elaboration.
 
 | Task | Status |
 |------|--------|
-| MonoType / PolyType representation | :memo: |
-| Unification | :memo: |
-| Bidirectional checking (infer / check modes) | :memo: |
-| Let-generalization | :memo: |
+| Type data structures (`Kind`, `MonoType`, `RowType`, `TypeScheme`, `LitVal`, `Op`) | :white_check_mark: |
+| Core IR node types (`CoreExpr` sealed hierarchy extending `Node`) | :white_check_mark: |
+| Elaboration state (context, metavar supply, binding level, zonker) | :memo: |
+| Unification (Robinson, occurs check, null-as-bottom) | :memo: |
+| Bidirectional elaborator (infer / check modes, desugaring) | :memo: |
+| Let-generalization (binding-level-based) | :memo: |
 | De Bruijn index representation | :memo: |
-| Zonker (carried lookup table — no substitution pass) | :memo: |
 | Null semantics (v0: Null unifies with Any) | :memo: |
-| Type error reporting | :memo: |
+| Elaborator tests | :memo: |
 
 ### Phase 1c — Core IR and Evaluator :memo:
 

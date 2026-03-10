@@ -26,17 +26,41 @@ x-pack/plugin/piescript/
     │       ├── PiescriptAction.java        # ActionType definition
     │       ├── PiescriptPlugin.java        # Plugin entry point
     │       ├── PiescriptRequest.java       # Request object (program carrier)
-    │       ├── RestPiescriptAction.java    # REST handler
-    │       ├── TransportPiescriptAction.java   # Transport handler (ESQL bridge)
-    │       └── parser/                     # Phase 1a: lexer/parser
-    │           ├── PiescriptParser.java         # Parser entry point (CST → parse tree)
-    │           ├── PiescriptParsingException.java  # Parse error wrapper
-    │           ├── PiescriptLexer.java          # (generated from PiescriptLexer.g4)
-    │           ├── PiescriptAntlrParser.java    # (generated from PiescriptAntlrParser.g4)
-    │           └── ...Visitor/Listener classes  # (generated ANTLR infrastructure)
+│       ├── RestPiescriptAction.java    # REST handler (eval)
+│       ├── RestPiescriptDevAction.java # REST handler (dev — CST inspection)
+│       ├── TransportPiescriptAction.java   # Transport handler (ESQL bridge)
+    │       ├── parser/                     # Phase 1a: lexer/parser
+    │       │   ├── PiescriptParser.java         # Parser entry point (CST → parse tree)
+    │       │   ├── PiescriptParsingException.java  # Parse error wrapper
+    │       │   ├── PiescriptLexer.java          # (generated from PiescriptLexer.g4)
+    │       │   ├── PiescriptAntlrParser.java    # (generated from PiescriptAntlrParser.g4)
+    │       │   └── ...Visitor/Listener classes  # (generated ANTLR infrastructure)
+    │       ├── types/                     # Phase 1b: type system data structures
+    │       │   ├── Kind.java                    # Meta kind enum (TYPE, ROW)
+    │       │   ├── MonoType.java                # Monomorphic types (sealed interface)
+    │       │   ├── RowType.java                 # Row type (fields + optional row variable)
+    │       │   ├── TypeScheme.java              # Polymorphic type scheme (∀-quantified)
+    │       │   ├── LitVal.java                  # Literal values for Core IR
+    │       │   └── Op.java                      # Primitive operator enum
+    │       └── core/                      # Phase 1b: Core IR (typed, elaborated)
+    │           ├── CoreExpr.java                # Abstract sealed base (extends Node)
+    │           ├── CoreField.java               # Helper record (label + value pair)
+    │           ├── CoreVar.java                 # Variable (de Bruijn index)
+    │           ├── CoreLit.java                 # Literal value
+    │           ├── CoreLam.java                 # Lambda abstraction
+    │           ├── CoreApp.java                 # Function application
+    │           ├── CoreLet.java                 # Let-binding
+    │           ├── CoreRecord.java              # Record literal
+    │           ├── CoreProject.java             # Field projection
+    │           ├── CoreUpdate.java              # Record update
+    │           └── CorePrimOp.java              # Primitive operation
     ├── test/java/org/elasticsearch/xpack/piescript/
-    │   └── parser/
-    │       └── PiescriptParserTests.java   # Unit tests for parser
+    │   ├── parser/
+    │   │   └── PiescriptParserTests.java   # Unit tests for parser
+    │   ├── types/
+    │   │   └── TypeDataStructureTests.java # Unit tests for type data structures
+    │   └── core/
+    │       └── CoreExprTests.java          # Unit tests for Core IR
     └── javaRestTest/java/org/elasticsearch/xpack/piescript/
         └── PiescriptIT.java           # Integration tests (6 test methods)
 ```
@@ -57,6 +81,7 @@ x-pack/plugin/piescript/
 | `PiescriptPlugin.java` | Plugin registration. Implements `ActionPlugin` to register the action handler (`PiescriptAction → TransportPiescriptAction`) and the REST handler (`RestPiescriptAction`). |
 | `PiescriptRequest.java` | Immutable request object carrying the `program` string. Implements `CompositeIndicesRequest` for security delegation. Validates that `program` is non-blank. Serializable for transport. |
 | `RestPiescriptAction.java` | HTTP entry point. Registers `POST /_piescript/eval`, parses the JSON body to extract `program`, and dispatches a `PiescriptRequest` to the transport layer. |
+| `RestPiescriptDevAction.java` | Development endpoint. Registers `POST /_piescript/dev`, parses a program and returns the LISP-style CST produced by ANTLR for parser inspection. |
 | `TransportPiescriptAction.java` | Core logic. Validates the `query ... ;` wrapper, extracts the ESQL query string, and delegates to `EsqlQueryAction` via the node client. Runs on `DIRECT_EXECUTOR_SERVICE`. |
 
 ### Source (`src/main`) — Parser (Phase 1a)
@@ -71,11 +96,40 @@ x-pack/plugin/piescript/
 | `parser/PiescriptAntlrParser.java` | Generated from `PiescriptAntlrParser.g4` by ANTLR. |
 | `parser/*Visitor*.java`, `*Listener*.java` | Generated ANTLR infrastructure (visitor/listener base classes). |
 
+### Source (`src/main`) — Types (Phase 1b)
+
+| File | Purpose |
+|------|---------|
+| `types/Kind.java` | Enum distinguishing type-level (`TYPE`) from row-level (`ROW`) metavariables. |
+| `types/MonoType.java` | Sealed interface for monomorphic types: `TCon` (type constructor), `Arrow` (function), `RecordType`, `AppType` (type application), `Meta` (unsolved metavariable). |
+| `types/RowType.java` | Record representing row structure: labeled fields (`Map<String, MonoType>`) plus optional row variable tail for row polymorphism. |
+| `types/TypeScheme.java` | Polymorphic type scheme `∀{α₁..αₙ}.body`. Quantified set contains meta IDs. Monomorphic types use empty quantified set. |
+| `types/LitVal.java` | Sealed interface for literal values carried by Core IR `Lit` nodes. Variants aligned with ES DataType: `IntegerLit`, `LongLit`, `DoubleLit`, `KeywordLit` (BytesRef), `BooleanLit`, `NullLit`. |
+| `types/Op.java` | Enum for primitive operators used in Core IR `PrimOp` nodes: arithmetic, comparison, boolean, and unary operators. |
+
+### Source (`src/main`) — Core IR (Phase 1b)
+
+| File | Purpose |
+|------|---------|
+| `core/CoreExpr.java` | Abstract sealed base class extending `Node<CoreExpr>`. Provides default `writeTo`/`getWriteableName` (throws — Core IR is not serialized). All 9 concrete node types are permitted subclasses. |
+| `core/CoreField.java` | Helper record pairing a label with a value expression. Convenience for constructing and inspecting `CoreRecord` and `CoreUpdate` nodes. |
+| `core/CoreVar.java` | Variable reference by de Bruijn index. Leaf node (no children). |
+| `core/CoreLit.java` | Literal value (`LitVal`). Leaf node (no children). |
+| `core/CoreLam.java` | Lambda abstraction. One child (body). Carries optional debug name and elaborated parameter type. |
+| `core/CoreApp.java` | Function application. Two children (fn, arg). |
+| `core/CoreLet.java` | Let-binding. Two children (rhs, body). Carries optional debug name and elaborated bind type. |
+| `core/CoreRecord.java` | Record literal. N children (field values), parallel to a `List<String>` of labels. |
+| `core/CoreProject.java` | Field projection (`expr.label`). One child (expr). |
+| `core/CoreUpdate.java` | Record update (`{ expr \| field = val }`). 1+N children (base expr + update values). |
+| `core/CorePrimOp.java` | Primitive operation. N children (operands). Carries `Op` enum. |
+
 ### Tests (`src/test`) — Unit Tests
 
 | File | Purpose |
 |------|---------|
 | `parser/PiescriptParserTests.java` | Unit tests for the parser. Tests each syntax form and error reporting. |
+| `types/TypeDataStructureTests.java` | Unit tests for type data structures. Tests construction, equality, sealed hierarchy exhaustiveness, and factory methods. |
+| `core/CoreExprTests.java` | Unit tests for Core IR nodes. Tests construction, accessors, equality, replaceChildren, tree traversal, and NamedWriteable guard. |
 
 ### Tests (`src/javaRestTest`) — Integration Tests
 
@@ -91,8 +145,8 @@ The root package is `org.elasticsearch.xpack.piescript`. Sub-packages are introd
 |---------|-------|--------|---------|
 | `piescript` | 0 | Exists | Plugin core: action, request, REST handler, transport action |
 | `piescript.parser` | 1a | Exists | Lexer, parser, ANTLR-generated classes, parse errors |
-| `piescript.types` | 1b | Planned | Type system (MonoType, PolyType, TypeScheme, Kind) |
-| `piescript.core` | 1b | Planned | Core IR (elaborated, typed representation) |
+| `piescript.types` | 1b | Exists | Type system (Kind, MonoType, RowType, TypeScheme, LitVal, Op) |
+| `piescript.core` | 1b | Exists | Core IR (CoreExpr sealed hierarchy extending Node, CoreField helper) |
 | `piescript.eval` | 1c | Planned | Tree-walking evaluator, runtime values, closures |
 
 ## External Touchpoints
