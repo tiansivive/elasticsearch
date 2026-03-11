@@ -131,6 +131,9 @@ These are directional, not committed:
 - **Distributed plan execution** — plan graph fragments dispatched to data nodes, transforms
   co-located with the data they operate on, leveraging ESQL's exchange mechanism for cross-node
   data flow.
+- **Linearity for channels** — QTT-style multiplicities (0, 1, ω) on bindings. Channel endpoints
+  are linear (multiplicity 1), enabling session types with deadlock-freedom guarantees. Most values
+  remain unrestricted (ω). See [references.md § Linear Haskell](references.md).
 - **Session types for channels** — type-checked communication protocols on channels, providing
   deadlock-freedom guarantees from the type system (see Wadler's "Propositions as Sessions").
 - **Explicit channels** — user-visible `new`, `send`, `recv` primitives for advanced orchestration
@@ -141,6 +144,50 @@ These are directional, not committed:
   scripts, but typed and composable).
 - **Plan optimization** — push-down of compatible piescript transforms into ESQL queries (map
   becomes EVAL, filter becomes WHERE), dead-code elimination of unused `par` branches, fusion of
-  adjacent stream combinators.
+  adjacent stream combinators. Linear closures/continuations (multiplicity 1) can be moved without
+  cloning, avoiding allocation in the executor.
 - **IDE support** — language server protocol for autocompletion, type-on-hover, and error
   highlighting.
+
+## Speculative: Potential Future Directions
+
+> **Caveat:** The ideas below are exploratory. They represent potential directions that the type
+> system foundations (QTT multiplicities, session types) could unlock, but they are not planned,
+> not committed, and may turn out to be impractical or unnecessary. They are recorded here to
+> inform long-term design choices — not as promises.
+
+### Mutable Shared State via Ownership
+
+If QTT multiplicities are introduced for channels, the same machinery could in principle support
+**safe mutable references** — owned, linear values that can be exclusively mutated by one process
+at a time. This would enable:
+
+- **Persistent in-memory resources** — shared counters, lookup tables, caches that live beyond a
+  single query pipeline.
+- **Incremental computation** — update an aggregation incrementally as new data arrives, rather
+  than recomputing from scratch.
+- **Cross-stream communication** — one stream populates a resource, another reads from it, with
+  type-level guarantees of safe access.
+- **Safe write-back** — linearly-owned write buffers for eventual index writes.
+
+This approaches Rust-like ownership semantics, but from a functional starting point. The type
+system would enforce exclusivity (no data races) at compile time. The open questions are
+substantial: borrow checking vs. QTT alone, distributed ownership protocols, resource
+reclamation across nodes, and user ergonomics for a non-PL-specialist audience. These would need
+significant research and prototyping before any commitment.
+
+### Continuous / Long-Lived Computations
+
+With mutable references, piescript could support long-running computations that persist across
+query invocations — materialized views, running aggregations, event-driven processing. This would
+move piescript from "run a query, get results" toward "run persistent distributed computations
+with safe shared state." The supervision and fault tolerance patterns from Erlang/OTP would
+inform this design (see [references.md § BEAM / Erlang](references.md)).
+
+### Linear Optimization Opportunities
+
+Linearity enables executor optimizations: if a closure or continuation is linear (used exactly
+once), the executor can **move** it rather than clone it — zero-copy transfer between plan nodes,
+no allocation overhead. For large captured environments traveling to remote nodes, this is a
+significant performance win. Similarly, linear stream edges in the plan graph guarantee
+single-consumer data flow, simplifying buffer management and page lifecycle.

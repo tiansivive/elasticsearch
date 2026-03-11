@@ -128,7 +128,9 @@ Key design choices for the pipeline:
   Metavars in types are resolved by chain-following lookup when encountered. See D1.7 in the
   Phase 1 plan.
 - **Core IR only extends `Node`** (ES AST infrastructure). Types, values, and other structures use
-  plain records/sealed interfaces.
+  plain records/sealed interfaces. `Node<T>` provides `Source` for error locations and
+  `transformDown`/`transformUp` for the optimizer (Phase 2+). The elaborator and evaluator are
+  hand-written recursive descent — they do not use `Node<T>` traversal methods.
 - **Null semantics (v0)**: `Null` unifies with any type (behaves like `Any`). Will be refined in
   later phases with proper option types.
 

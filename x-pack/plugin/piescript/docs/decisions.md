@@ -350,3 +350,123 @@ local synchronization patterns (messages travel to a destination and interact on
 
 **Ref**: [references.md § The Join Calculus](references.md),
 [references.md § JoCaml](references.md)
+
+---
+
+## D-016: Stream Combinators as Prelude Built-ins, Not Core IR Nodes
+
+**Phase**: 3 | **Status**: accepted
+
+**Context**: `map`, `filter`, `fold` need special runtime behavior (they construct plan graph
+nodes when applied to streams). Should they be dedicated `CoreProcess` IR nodes (`MapStream`,
+`FilterStream`, `FoldStream`) or normal functions in a prelude whose implementations produce plan
+graph effects?
+
+**Decision**: `map`, `filter`, `fold` are **prelude built-in functions**, not dedicated Core IR
+nodes. They are typed as normal polymorphic functions. The compiler may still recognize and
+optimize them, but they live in the standard prelude, not in the IR grammar.
+
+**Rationale**:
+- **Typeclass compatibility**: when typeclasses are added, `map` becomes `Functor.fmap` specialized
+  to `Stream`. If `map` is a `CoreProcess` IR node, this migration requires replacing one IR
+  representation with another. If `map` is a prelude function, the migration is purely additive —
+  the function's implementation becomes a typeclass instance method.
+- **Free monad consistency**: in the plan graph model, stream combinators are effect constructors.
+  Effect constructors are functions that produce data (plan nodes), not special syntax. Making
+  them normal functions aligns with the free monad interpretation.
+- **Uniform Core IR**: the Core IR remains pure function applications. The "special" behavior of
+  `map` is in its **runtime implementation** (construct a `MapPlanNode`), not in a dedicated IR
+  node type. This keeps the IR simpler and the evaluator uniform.
+- **Extensibility**: adding new combinators (`take`, `zip`, `partition`, etc.) means adding
+  prelude functions, not extending the Core IR grammar. The IR is stable; the prelude grows.
+
+**What is special syntax**: `query` and `par` remain `CoreProcess` IR nodes because they have
+dedicated surface syntax (`query ... ;` and `par { ... } in ...`). Stream combinators are
+ordinary functions applied via pipes (`|>`), not special syntax.
+
+**Implementation**: the evaluator has a built-in function table. When `map` is applied to a
+lambda and a `StreamVal`, the built-in implementation constructs a `MapPlanNode`:
+
+```java
+case "map" -> (Value lambda, Value stream) -> {
+    var streamVal = (StreamVal) stream;
+    return new StreamVal(new MapPlanNode(lambda, streamVal.planNode()));
+};
+```
+
+**Ref**: Master plan § 6.1, § 6.2
+
+---
+
+## D-017: Stream Fan-Out — Plan Graph DAG, Not Linear Consumption
+
+**Phase**: 3 | **Status**: accepted
+
+**Context**: What happens when a stream is used multiple times?
+
+```
+let s = query FROM logs-*;
+let a = s |> map f;
+let b = s |> filter g;
+```
+
+Options: (a) type error (stream consumed twice), (b) implicit query re-execution, (c) plan graph
+DAG with fan-out.
+
+**Decision**: The plan graph is a **DAG, not a tree**. A `StreamVal` wraps a plan node (a
+description, not a running computation). Using it twice creates fan-out — two downstream plan
+nodes referencing the same source node. The executor handles fan-out using standard query engine
+techniques (exchange operators, reference-counted pages, buffering).
+
+**Rationale**:
+- **`StreamVal` is data, not a resource.** Under the plan graph model (D-012), a `StreamVal`
+  wraps a `PlanNode` — a description of computation, not a running iterator. Sharing a description
+  is free. No data is consumed at plan construction time.
+- **Fan-out is a solved problem.** ESQL's compute engine handles one-to-many data flow via
+  Exchange operators and reference-counted `Block`s. The plan executor leverages this.
+- **Ergonomics.** Requiring explicit `tee` for every multi-use stream would be hostile to the
+  target audience (security analysts, data engineers). The double-use pattern is natural and
+  common.
+- **No linearity tax on streams.** Streams do not need to be linear. When linearity is introduced
+  (for channel endpoints, Phase 6+), streams remain unrestricted (multiplicity ω). The plan graph
+  handles fan-out transparently.
+
+**What does need linearity (future):** channel endpoints (session types require single-use per
+protocol step). This is a different concern — channels are communication protocol endpoints,
+not data descriptions. Linearity for channels arrives with session types in Phase 6.
+
+---
+
+## D-018: Linearity Roadmap — QTT for Channels, Not Streams
+
+**Phase**: 6+ | **Status**: accepted (directional)
+
+**Context**: Where and when should linear types be introduced?
+
+**Decision**: Linearity (via QTT-style multiplicities) is introduced in Phase 6 alongside
+explicit channels and session types. Channel endpoints are linear (multiplicity 1). Streams,
+closures, and all other values remain unrestricted (multiplicity ω). The type system uses
+multiplicities from the semiring {0, 1, ω} on bindings, without dependent types.
+
+**Rationale**:
+- **Streams don't need linearity.** Stream fan-out is handled by the plan graph DAG (D-017).
+  Making streams linear would add friction (explicit `tee`) for no safety benefit.
+- **Channels do need linearity.** Session types require that each channel endpoint is used exactly
+  once per protocol step. Without linearity, a channel endpoint can be aliased, breaking protocol
+  safety and deadlock-freedom guarantees.
+- **QTT without dependent types** is the right theoretical framework. Multiplicities are static
+  annotations tracked by the type checker. No term-level multiplicity computation. This is
+  essentially the Linear Haskell approach (Bernardy et al. 2018).
+- **Phased introduction**: Phases 1–4 have no linear types. Phase 6 introduces multiplicities
+  alongside channels. The multiplicity annotation on function types (`A →_π B`) is a backward-
+  compatible extension — existing code uses the default multiplicity (ω) and is unaffected.
+
+**Design consideration for Phase 1**: ensure the function type representation can be extended with
+multiplicities later (`TFun(domain, codomain)` → `TFun(mult, domain, codomain)`). No need to
+implement now, just leave room in the data types.
+
+**Future potential (speculative)**: the same QTT machinery could enable safe mutable references,
+distributed ownership, and incremental computation. These are exploratory directions, not
+committed. See [vision.md § Speculative](vision.md).
+
+**Ref**: [references.md § Linear Haskell, QTT](references.md)
