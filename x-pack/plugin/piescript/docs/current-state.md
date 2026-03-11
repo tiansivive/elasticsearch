@@ -3,24 +3,27 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-10
+> **Last updated**: 2026-03-11 (session 2)
 
 ## Summary
 
-**Phase 0 is complete. Phase 1a (Parser) is complete. Phase 1b (Type System + Elaborator) is in
-progress.** The piescript plugin has a working ESQL passthrough from Phase 0. Phase 1a is done: the
+**Phase 0 is complete. Phase 1a (Parser) is complete. Phase 1b (Type System + Elaborator) is
+complete.** The piescript plugin has a working ESQL passthrough from Phase 0. Phase 1a is done: the
 ANTLR lexer and parser grammars implement the full D1.17 surface syntax, the `PiescriptParser`
 entry point produces parse trees, comprehensive parser unit tests cover every syntax form, and a
-dev endpoint (`POST /_piescript/dev`) exposes the CST for inspection. Phase 1b is progressing: type
-data structures (T1b.1), Core IR node types (T1b.2), elaboration state (T1b.3), and unification
-(T1b.4) are implemented. The elaborator itself does not exist yet.
+dev endpoint (`POST /_piescript/dev`) exposes the CST for inspection. Phase 1b is complete:
+type data structures (T1b.1), Core IR node types (T1b.2), elaboration state (T1b.3),
+unification (T1b.4), the elaborator (T1b.5), elaborator tests (T1b.6), and the dev endpoint
+wired to the elaborator (T1b.7) are all implemented. The dev endpoint now returns the CST,
+elaborated Core IR, and resolved type for any program.
+Phase 1c (Interpreter + Wiring) is next.
 
 ## What Works
 
 | Capability | Details |
 |-----------|---------|
 | REST endpoint | `POST /_piescript/eval` accepts `{"program": "..."}` |
-| Dev endpoint | `POST /_piescript/dev` returns LISP-style CST for parser inspection |
+| Dev endpoint | `POST /_piescript/dev` returns CST (`tree`), elaborated Core IR (`core`), and resolved type (`type`). Parse errors return `parse_error`; type errors return `tree` + `type_error`. |
 | ESQL passthrough | `query FROM idx \| WHERE x > 1 \| LIMIT 10;` executes as ESQL |
 | Request validation | Empty/blank programs rejected with 400 |
 | Program structure validation | Missing `query` prefix or `;` suffix rejected with 400 |
@@ -29,6 +32,7 @@ data structures (T1b.1), Core IR node types (T1b.2), elaboration state (T1b.3), 
 | Build | Compiles, passes `check`, `spotlessJavaCheck`, `javaRestTest` |
 | ANTLR grammar | Lexer (`PiescriptLexer.g4`) and parser (`PiescriptAntlrParser.g4`) implementing full D1.17 surface syntax |
 | Parser entry point | `PiescriptParser.java` — invokes ANTLR, produces parse tree; `parseToTreeString()` for CST inspection |
+| Core IR printer | `CorePrinter` in `piescript.core`: pretty-prints Core IR expressions and types for dev/debug output |
 | Parser unit tests | `PiescriptParserTests.java` — comprehensive coverage of every syntax form plus error cases |
 | Type data structures (Phase 1b) | `Kind`, `MonoType`, `RowType`, `TypeScheme`, `LitVal`, `Op` in `piescript.types` package |
 | Core IR (Phase 1b) | `CoreExpr` sealed hierarchy in `piescript.core`: `CoreVar`, `CoreLit`, `CoreLam`, `CoreApp`, `CoreLet`, `CoreRecord`, `CoreProject`, `CoreUpdate`, `CorePrimOp` — extends `Node<CoreExpr>` with `MonoType` on every node |
@@ -40,12 +44,15 @@ data structures (T1b.1), Core IR node types (T1b.2), elaboration state (T1b.3), 
 | Unification (Phase 1b) | `Unifier` in `piescript.elab`: Robinson unification with occurs check, null-as-bottom (D1.11), closed-row field matching. Returns `Optional<TypeError>`. |
 | Type errors (Phase 1b) | `TypeError` sealed interface: `Mismatch`, `InfiniteType`, `FieldMismatch`, `MissingFields` |
 | Unification unit tests (Phase 1b) | `UnifierTests.java` — meta solving, transitive chains, occurs check, null-as-bottom, arrow/record/app structural matching, cross-form mismatch |
+| Elaborator (Phase 1b) | `Elaborator` in `piescript.elab`: pattern-matching recursive descent over ANTLR CST → Core IR. Bidirectional HM type inference, binding-level generalization, instantiation, primops as typed functions (concrete Integer-only signatures, D-020), desugaring (multi-param lambda, pipe, accessor, update sugar, blocks, top-level bindings). |
+| Type walker (Phase 1b) | `TypeWalker` in `piescript.elab`: static type-level traversal utilities — generalization, instantiation, deep resolution, meta collection. Extracted from `Elaborator` for clarity. Public (`resolveDeep` used by `CorePrinter`). |
+| Elaboration exception (Phase 1b) | `ElaborationException`: unchecked, fail-fast, wraps source location + optional `TypeError`. |
+| Elaborator tests (Phase 1b) | `ElaboratorTests.java` — 68 tests covering: literals (int, long, decimal, string, boolean, null), let-bindings (basic, annotated, nested, shadowing, top-level), lambdas (identity, typed, multi-param), application (direct, inference), let-polymorphism, arithmetic/comparison/boolean operators, unary ops, records (empty, literal, projection, update, field addition), pipe operator, accessor sugar, update sugar, blocks, parentheses, ascription, de Bruijn indexing, and error cases (unbound variable, type mismatch, non-function application, duplicate field, projection on non-record, missing field, unknown type, if/then/else unsupported). |
 
 ## What Does Not Exist Yet
 
 | Capability | Target Phase | Notes |
 |-----------|-------------|-------|
-| Elaborator | 1b | No CST → Core IR pass, no type inference, no desugaring |
 | Evaluator | 1c | No tree-walking interpreter |
 | Transport pipeline wiring | 1c | Parser not yet wired into transport action; still uses Phase 0 string-stripping |
 | Piescript-specific response format | 1c+ | Returns raw `EsqlQueryResponse` |
@@ -78,9 +85,15 @@ These are intentional simplifications from Phase 0 that will need attention:
 
 ## Immediate Next Steps
 
-Phase 1b is in progress. T1b.1 (type data structures), T1b.2 (Core IR), T1b.3 (elaboration state),
-and T1b.4 (unification) are complete. The next task is **T1b.5: Implement the elaborator** —
-bidirectional type checker with desugaring (recursive descent over ANTLR CST). Review:
+Phase 1b is complete (T1b.1–T1b.7 all done). The next phase is **Phase 1c: Interpreter + Wiring** —
+runtime value types, tree-walking evaluator, transport action integration, and the vertical slice
+working end-to-end via REST.
+
+**Deferred elaborator tests** (tracked in T1c.5): occurs check (`fn x -> x x`), cross-type
+arithmetic rejection (`"hello" + 1`, `3.14 + 1`), lambda applied to wrong type, update sugar
+applied to record.
+
+Review:
 
 - [roadmap.md](roadmap.md) for the full Phase 1 task breakdown
 - [decisions.md](decisions.md) for type system and grammar decisions already made

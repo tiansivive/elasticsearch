@@ -142,9 +142,15 @@ The Core IR is partitioned into two sealed hierarchies:
   `Project`, `Update`, `Match`. These evaluate to values. The tree-walking evaluator handles them
   directly.
 
-- **`CoreProcess`** — process descriptions: `Query`, `Par`, `MapStream`, `FilterStream`,
-  `FoldStream`, and (future) `Send`, `Recv`, `New`. These describe distributed effects. When the
-  evaluator encounters them, it builds plan graph nodes instead of executing directly.
+- **`CoreProcess`** — process descriptions: `Query`, `Par`, and (future) `Send`, `Recv`, `New`.
+  These describe distributed effects with dedicated surface syntax. When the evaluator encounters
+  them, it builds plan graph nodes instead of executing directly.
+
+Note: `map`, `filter`, `fold` are **not** `CoreProcess` nodes. They are prelude built-in
+functions whose runtime implementations construct plan graph nodes when applied to `StreamVal`s.
+The Core IR for `stream |> map f` is `CoreApp(CoreApp(CoreVar("map"), f), stream)` — standard
+function application. This keeps the IR uniform and enables a clean path to typeclasses
+(`map` → `Functor.fmap`). See D-016 in [decisions.md](decisions.md).
 
 This separation mirrors the fundamental distinction in the π-calculus between expressions (which
 compute values) and processes (which perform communication). It is also analogous to the pure/IO
@@ -152,7 +158,7 @@ boundary in Haskell — `CoreExpr` is the pure layer, `CoreProcess` is the effec
 [vision.md](vision.md) for the conceptual model.
 
 The boundary between the two layers is the most important seam in the architecture. Process nodes
-may contain functional subexpressions (e.g., the lambda in `MapStream`), but functional nodes
+may contain functional subexpressions (e.g., the ESQL string in `Query`), but functional nodes
 never contain process nodes. Effects do not leak inward.
 
 ### The Plan Graph
@@ -162,14 +168,18 @@ operations. The plan graph is a free monad over π-calculus effects:
 
 ```
 data PiF next
-  = Query String (Stream -> next)
-  | Par [(Name, PiF next)] next
-  | MapStream (a -> b) (Stream a) (Stream b -> next)
-  | FilterStream (a -> Bool) (Stream a) (Stream a -> next)
-  | FoldStream (b -> a -> b) b (Stream a) (b -> next)
-  | Send Channel Value next
-  | Recv Channel (Value -> next)
+  = Query String (Stream -> next)           -- CoreProcess node
+  | Par [(Name, PiF next)] next             -- CoreProcess node
+  | MapPlan (a -> b) (Stream a) next        -- from built-in `map`
+  | FilterPlan (a -> Bool) (Stream a) next  -- from built-in `filter`
+  | FoldPlan (b -> a -> b) b (Stream a) next -- from built-in `fold`
+  | Send Channel Value next                 -- future CoreProcess node
+  | Recv Channel (Value -> next)            -- future CoreProcess node
 ```
+
+Plan nodes come from two sources: `CoreProcess` IR nodes (Query, Par) produce plan nodes directly
+during evaluation. Built-in prelude functions (map, filter, fold) produce plan nodes when applied
+to `StreamVal` values at runtime. Both paths produce the same plan graph IR. See D-016.
 
 Each plan node carries:
 - **Typed edges** (channels) — data flows between nodes along these edges.
@@ -178,22 +188,29 @@ Each plan node carries:
 - **Captured environment** — for closures, the `(code, env)` pair where `env` is a snapshot of
   captured bindings. Since the language is pure, captured values are immutable and safe to clone.
 
+The plan graph is a **DAG, not a tree**. A `StreamVal` wraps a plan node description; using a
+stream twice creates fan-out — two downstream nodes referencing the same source. No query is
+re-executed. The executor handles fan-out via Exchange operators and reference-counted pages.
+See D-017 in [decisions.md](decisions.md).
+
 The plan graph is built by the evaluator (not a separate compilation pass). The evaluator walks
 the Core IR, evaluates functional nodes eagerly, and suspends at process nodes — constructing plan
-fragments and wiring them together. This is analogous to how delimited continuations reify the
-"rest of the computation" at each effect boundary.
+fragments and wiring them together. Built-in functions participate in the same process: when `map`
+is applied to a `StreamVal`, it constructs a new plan node referencing the source. This is
+analogous to how delimited continuations reify the "rest of the computation" at each effect
+boundary.
 
 ### The Optimizer
 
 The optimizer transforms the plan graph before execution:
 
-- **Push-down**: a `MapStream` with a simple lambda (field projection, arithmetic) can be fused
-  into the upstream `Query` node as an ESQL `EVAL` clause. A `FilterStream` with a simple
+- **Push-down**: a `MapPlanNode` with a simple lambda (field projection, arithmetic) can be fused
+  into the upstream `QueryPlanNode` as an ESQL `EVAL` clause. A `FilterPlanNode` with a simple
   predicate becomes a `WHERE` clause. The "simplicity check" is really a **mobility check**: can
   this code be expressed in the target execution context (ESQL evaluators, compute operators)?
 - **Dead-code elimination**: `Par` branches whose bindings are never referenced in the
-  continuation are removed.
-- **Fusion**: adjacent `MapStream` nodes are fused into a single node with a composed lambda.
+  continuation are removed. Fan-out edges with unreachable consumers are pruned.
+- **Fusion**: adjacent `MapPlanNode`s are fused into a single node with a composed lambda.
 
 ### The Executor
 
