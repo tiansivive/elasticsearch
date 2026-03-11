@@ -58,8 +58,8 @@ Bidirectional Hindley-Milner type inference with zonker-based elaboration.
 |------|--------|
 | Type data structures (`Kind`, `MonoType`, `RowType`, `TypeScheme`, `LitVal`, `Op`) | :white_check_mark: |
 | Core IR node types (`CoreExpr` sealed hierarchy extending `Node`) | :white_check_mark: |
-| Elaboration state (context, metavar supply, binding level, zonker) | :memo: |
-| Unification (Robinson, occurs check, null-as-bottom) | :memo: |
+| Elaboration state (context, metavar supply, binding level, zonker) | :white_check_mark: |
+| Unification (Robinson, occurs check, null-as-bottom) | :white_check_mark: |
 | Bidirectional elaborator (infer / check modes, desugaring) | :memo: |
 | Let-generalization (binding-level-based) | :memo: |
 | De Bruijn index representation | :memo: |
@@ -116,25 +116,28 @@ the field-access site. Row polymorphism enables functions over partial document 
 
 Introduces the plan graph architecture — the centerpiece that enables future distributed execution.
 The evaluator builds plan graph nodes for process-level operations; the v0 executor runs them
-locally. Stream combinators (`map`, `filter`, `fold`) operate over real ES data.
+locally. Stream combinators (`map`, `filter`, `fold`) are prelude built-in functions that construct
+plan graph nodes when applied to streams.
 
 | Task | Status |
 |------|--------|
-| `CoreProcess` IR layer (process descriptions) | :memo: |
+| `CoreProcess` IR layer (`Query` only — combinators are built-ins) | :memo: |
 | Plan graph IR (free monad over π effects) | :memo: |
 | Evaluator/planner split (functional → evaluate, process → plan) | :memo: |
+| Prelude built-in functions: `map`, `filter`, `fold` (D-016) | :memo: |
 | Mobility check (can this lambda travel?) | :memo: |
 | Core IR to ExpressionEvaluator compiler (fast path) | :memo: |
 | v0 local executor (runs plan on coordinator) | :memo: |
-| Stream combinators: `map`, `filter`, `fold` | :memo: |
 | Query delegation to ESQL | :memo: |
 | Result serialization for streams | :memo: |
-| Integration tests | :memo: |
+| Integration tests (incl. stream fan-out) | :memo: |
 
 **Key architectural decisions:**
 - Plan graph, not direct interpretation (D-012)
 - Two-layer IR: `CoreExpr` / `CoreProcess` (D-013)
 - Closures as traveling code (D-014)
+- Stream combinators as prelude built-ins, not Core IR nodes (D-016)
+- Stream fan-out via DAG, streams are unrestricted (D-017)
 - Mobility check = "can this code be compiled to ExpressionEvaluator?" (v0), "can it be serialized
   and shipped?" (future)
 
@@ -176,15 +179,23 @@ distributed computation language.
 
 ---
 
-## Phase 6 — Explicit Channels & Session Types :thought_balloon:
+## Phase 6 — QTT Multiplicities, Explicit Channels & Session Types :thought_balloon:
 
-User-visible channel primitives: `new`, `send`, `recv`. Session types for typing channel
-protocols. Deadlock-freedom from the type system (Wadler's Propositions as Sessions).
+Introduces QTT-style multiplicities {0, 1, ω} on bindings (D-018). Channel endpoints are linear
+(multiplicity 1), enabling session types with deadlock-freedom. Streams and all other values
+remain unrestricted (ω). User-visible channel primitives: `new`, `send`, `recv`.
 
-- `new`/`send`/`recv` as `CoreProcess` nodes
-- Session types in the type system
+- QTT multiplicity annotations on function types (`A →_π B`)
+- Usage tracking in the type checker (count how many times each binding is used)
+- `new`/`send`/`recv` as `CoreProcess` nodes with session-typed channels
+- Session types: type-checked communication protocols on channels
+- Deadlock-freedom from the type system (Wadler's Propositions as Sessions)
 - Join patterns (Fournet & Gonthier) for multi-way synchronization
 - Producer-consumer patterns via explicit channels
+- Linear closures as an optimization: move instead of clone (zero-copy)
+
+**Key references:** Linear Haskell (Bernardy et al. 2018), Idris 2 / QTT (Brady 2021).
+See [references.md](references.md).
 
 ---
 
@@ -205,3 +216,25 @@ Developer experience beyond the REST API.
 - Language Server Protocol implementation
 - Syntax highlighting definitions
 - REPL / interactive evaluation mode
+
+---
+
+## Speculative: Ownership, Mutable References & Beyond :thought_balloon:
+
+> **Caveat:** These are exploratory ideas. They represent potential directions that QTT
+> multiplicities could unlock if Phase 6 succeeds, but they are NOT planned, NOT committed, and
+> may turn out to be impractical. Recorded here to inform long-term design thinking.
+
+If QTT multiplicities prove successful for channels, the same machinery could potentially support:
+
+- **Mutable shared references** — owned (linear) values that can be exclusively mutated by one
+  process at a time, approaching Rust-like ownership semantics
+- **Persistent in-memory resources** — shared counters, lookup tables, caches that live beyond a
+  single query pipeline
+- **Incremental computation** — update aggregations incrementally rather than recomputing
+- **Safe write-back** — linearly-owned write buffers for eventual index writes
+- **Long-lived processes** — with OTP-style supervision patterns (inspired by Erlang/BEAM)
+
+The open questions are substantial: borrow checking vs. QTT alone, distributed ownership
+protocols, resource reclamation across nodes, and ergonomics for non-PL-specialist users. See
+[vision.md § Speculative](vision.md) for discussion.

@@ -63,6 +63,68 @@ the language is pure and referentially transparent.
   distributed execution. See D-012.
 - **Purity enables distribution**: The language is pure and referentially transparent. Closures can
   be shipped to remote nodes because captured values are immutable. See D-014.
+- **Combinators are prelude built-ins**: `map`, `filter`, `fold` are normal polymorphic functions,
+  not Core IR nodes. Their runtime implementations construct plan graph nodes. This prepares for
+  typeclasses (`map` → `Functor.fmap`). See D-016.
+- **Streams are unrestricted**: Using a stream twice creates fan-out in the plan graph DAG. No
+  linearity needed for streams. Linearity is for channel endpoints (Phase 6+). See D-017, D-018.
+
+## Coding Guidelines
+
+These apply to all piescript-specific code (under `x-pack/plugin/piescript/`), on top of the
+repo-wide conventions in the root `AGENTS.md`.
+
+### Optional and Result over null for "find" operations
+
+When a method tries to **find**, **look up**, or **resolve** something and there is a legitimate
+chance the value is not there, the return type should communicate that branch:
+- `Optional<T>` when absence is a normal outcome the caller must handle (e.g., `lookup(name)`
+  returning empty for an unbound variable).
+- A `Result`/`Either`-style sealed type when absence is expected but represents an error that
+  carries context (e.g., a type error with a source location).
+
+This is **not** a blanket "no nulls" rule. Nullable fields (e.g., `@Nullable String debugName` on
+Core IR nodes) are perfectly fine — they represent genuinely optional metadata, not a "find"
+operation that might fail. Use `@Nullable` with documentation for such fields.
+
+**Elasticsearch framework conventions** that use `null` (e.g., `ActionRequestValidationException`
+returning `null` for "no error", REST handler parsing loops) remain as-is. ANTLR-generated code
+is also exempt.
+
+### Prefer immutability
+
+Design data structures as immutable by default. Mutable state should be:
+1. Explicitly isolated (e.g., a dedicated class whose name signals mutability).
+2. Minimal — only what genuinely requires shared mutation (e.g., the unification zonker, metavar
+   supply counter).
+3. Never mixed with immutable context. If a recursive descent carries both immutable context and
+   mutable state, they should be separate parameters.
+
+### Declarative, composable style
+
+Prefer `Optional` pipelines (`map`, `flatMap`, `filter`, `orElse`) and `switch` expressions over
+imperative if-chains and null checks. This applies to any branching over sealed hierarchies or
+optional values. For example:
+
+```java
+// Preferred: pipeline + switch expression
+return Optional.ofNullable(zonker.get(metaId)).flatMap(solution -> switch (solution) {
+    case MonoType.Meta next when isSolved(next.id()) -> resolve(next.id());
+    default -> Optional.of(solution);
+});
+
+// Avoid: imperative null check + instanceof chain
+Object solution = zonker.get(metaId);
+if (solution == null) return Optional.empty();
+if (solution instanceof MonoType.Meta next && ...) return resolve(next.id());
+return Optional.of(solution);
+```
+
+### Type safety over `Object`
+
+Prefer sealed interfaces and pattern matching over `Object` casts and `instanceof` chains. When a
+container must hold heterogeneous types (e.g., the zonker maps meta IDs to either `MonoType` or
+`RowType`), document the invariant and consider a sealed wrapper.
 
 ## Chat History Reference
 
@@ -76,4 +138,6 @@ Prior design discussions are preserved in agent transcripts:
 - **Distributed computation & π-calculus** — plan graph architecture (free monad over π effects),
   two-layer IR (CoreExpr/CoreProcess), evaluator/planner split, traveling closures, mobility check,
   join calculus influence, code-as-data model, the IO monad / delimited continuations analogy.
-  Resulted in D-012 through D-015 and reframing of Phases 3–4.
+  Also: stream combinators as prelude built-ins (D-016), stream fan-out via DAG (D-017),
+  linearity roadmap with QTT for channels (D-018), BEAM/Erlang comparison, speculative ownership
+  model. Resulted in D-012 through D-018 and reframing of Phases 3–6.

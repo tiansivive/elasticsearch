@@ -139,6 +139,100 @@ from effect interpretation.
 
 - [PDF](https://homepages.inf.ed.ac.uk/gdp/publications/handling-algebraic-effects.pdf)
 
+## BEAM / Erlang / Elixir — Lessons and Differentiation
+
+Erlang/BEAM is the most successful production system for distributed computation with message
+passing. Piescript and BEAM solve related problems from opposite starting points:
+
+- **Erlang is process-centric** (you design process topology, messages find their way).
+  **Piescript is data-centric** (you write transforms, the runtime places computation).
+- **Erlang processes are stateful, long-lived actors.** Piescript processes are stateless,
+  ephemeral plan graph fragments.
+- **Erlang is first-order π-calculus** (pids travel, processes stay put). **Piescript is
+  higher-order π-calculus** (closures/code travel to data nodes).
+- **Erlang effects are immediately executed** (spawn, send). **Piescript effects are described
+  as data** (the plan graph / free monad), inspectable and optimizable before execution.
+
+### What piescript can learn from BEAM
+
+- **Distribution transparency**: `Pid ! Message` works identically for local and remote pids.
+  Piescript's plan graph should provide similar transparency — the user writes transforms without
+  caring whether they run locally or remotely.
+- **Hot code loading**: BEAM upgrades running code without stopping processes. Relevant for a
+  future module system — updating stored piescript definitions while queries are in flight.
+- **OTP patterns**: supervisor trees, gen_server, gen_statem encode decades of reliability
+  engineering. If piescript gets long-running processes (continuous queries, materialized views),
+  OTP-style supervision informs the design.
+- **Preemptive scheduling via reductions**: BEAM counts reductions (function calls, operations)
+  to preempt processes fairly. If piescript's executor runs multiple plan fragments concurrently
+  on a node, a similar fairness mechanism may be needed.
+- **Per-process GC**: BEAM garbage-collects each process independently, avoiding global pauses.
+  Relevant if piescript plan fragments have independent memory lifecycles.
+
+### Where piescript is fundamentally different
+
+- **The plan graph is optimizable.** Erlang's runtime executes code as-is. Piescript's plan graph
+  is a data structure that the optimizer transforms before execution (dead-branch elimination,
+  push-down into queries, combinator fusion). This is the free monad advantage.
+- **Static types.** Erlang is dynamically typed (Dialyzer is opt-in, incomplete). Piescript has
+  HM inference with row polymorphism. Future: session types for channel protocols, linear types
+  for safe code mobility. Well-typed programs cannot send the wrong type on a channel.
+- **Columnar vectorized execution.** BEAM is a bytecode register machine optimized for latency.
+  Piescript's hot path runs ExpressionEvaluators on columnar Blocks — optimized for throughput
+  on analytical workloads.
+
+### Key references
+
+- [The BEAM Book](https://happi.github.io/theBeamBook/) — deep dive into the Erlang runtime
+- [BEAM (Wikipedia)](https://en.wikipedia.org/wiki/BEAM_(Erlang_virtual_machine)) — architecture
+  overview
+- Joe Armstrong's PhD thesis, *Making Reliable Distributed Systems in the Presence of Software
+  Errors* (2003) — the design philosophy behind Erlang's fault tolerance model
+
+## Linear Types, QTT, and Substructural Type Systems
+
+For the future: safe resource management, ownership, and (speculatively) mutable shared state.
+
+### Bernardy, Boespflug, Newton, Peyton Jones, Spiwack — *Linear Haskell: Practical Linearity in a Higher-Order Polymorphic Language* (POPL, 2018)
+
+The most directly relevant paper for piescript's linearity story. Attaches linearity to function
+arrows rather than bifurcating types into linear and non-linear. Backward-compatible: existing
+code typechecks without modification. Implemented in GHC. Demonstrates safe mutable arrays with
+pure interfaces and protocol enforcement in I/O.
+
+Key insight for piescript: linearity on arrows (not types) means `Stream` is not inherently
+linear — a function that consumes a stream linearly uses `Stream a -o b`, while a function that
+shares a stream uses `Stream a -> b`. Most code is unaffected.
+
+- [PDF](https://hal.science/hal-01673536/file/Linear%20Haskell%20practical%20linearity%20in%20a%20higher-order%20polymorphic%20language.pdf)
+- [Microsoft Research](https://www.microsoft.com/en-us/research/publication/linear-haskell-practical-linearity-higher-order-polymorphic-language/)
+
+### Brady — *Idris 2: Quantitative Type Theory in Practice* (ECOOP, 2021)
+
+Full-scale implementation of QTT in a practical programming language. Multiplicities {0, 1, ω}
+on every binding. 0 = erased (compile-time only), 1 = linear (exactly once), ω = unrestricted.
+Demonstrates how QTT enables both erasure and linearity in the same framework.
+
+The theoretical foundation piescript would build on if QTT is adopted — but without dependent
+types (piescript's types are not intricate enough to need terms in types).
+
+- [PDF](https://www.type-driven.org.uk/edwinb/papers/idris-qtt.pdf)
+- [Dagstuhl](https://drops.dagstuhl.de/entities/document/10.4230/LIPIcs.ECOOP.2021.9)
+
+### Orchard et al. — *Quantitative Program Reasoning with Graded Modal Types* (ICFP, 2019)
+
+Granule: a linear functional language with graded modal types. Generalizes linear types by
+quantifying non-linear use through indexed modalities. Addresses resource usage bounds, security
+levels, effect tracking, and cost properties — all through the same framework.
+
+More expressive than QTT's {0, 1, ω} semiring — supports arbitrary graded modalities. Relevant
+if piescript ever needs finer-grained usage tracking (e.g., "used at most N times" or
+"used with security level L").
+
+- [PDF](https://www.cs.kent.ac.uk/people/staff/dao7/publ/granule-icfp19.pdf)
+- [Granule Project](https://granule-project.github.io/)
+- [GitHub](https://github.com/dorchard/granule)
+
 ## Relevance to Piescript
 
 | Reference | Piescript concept it informs |
@@ -151,3 +245,7 @@ from effect interpretation.
 | Wadler (propositions as sessions) | Future: deadlock-freedom from the type system |
 | Stark & Fiore (free-algebra models) | Plan graph as free monad over Π effects |
 | Wu & Schrijvers (fusion for free) | Plan graph optimization via handler fusion |
+| BEAM / Erlang | Distribution transparency, OTP supervision, scheduling fairness |
+| Bernardy et al. (Linear Haskell) | Linearity on arrows, backward-compatible, practical (D-018) |
+| Brady (Idris 2 / QTT) | Multiplicity framework {0, 1, ω} for channels and erasure |
+| Orchard et al. (Granule) | Graded modal types for fine-grained resource tracking |

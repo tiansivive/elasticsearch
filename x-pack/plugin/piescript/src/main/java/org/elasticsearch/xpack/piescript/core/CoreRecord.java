@@ -11,9 +11,9 @@ import org.elasticsearch.xpack.esql.core.tree.NodeInfo;
 import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.IntStream;
 
 /**
  * Record literal: {@code { name: "alice", age: 30 }}. Labels are stored as
@@ -37,13 +37,7 @@ public final class CoreRecord extends CoreExpr {
 
     /** Convenience factory from a list of {@link CoreField} pairs. */
     public static CoreRecord create(Source source, List<CoreField> fields, MonoType type) {
-        List<String> labels = new ArrayList<>(fields.size());
-        List<CoreExpr> values = new ArrayList<>(fields.size());
-        for (CoreField f : fields) {
-            labels.add(f.label());
-            values.add(f.value());
-        }
-        return new CoreRecord(source, labels, values, type);
+        return new CoreRecord(source, fields.stream().map(CoreField::label).toList(), fields.stream().map(CoreField::value).toList(), type);
     }
 
     public List<String> labels() {
@@ -52,12 +46,8 @@ public final class CoreRecord extends CoreExpr {
 
     /** Reconstruct the field list by zipping labels with children. */
     public List<CoreField> fields() {
-        List<CoreExpr> values = children();
-        List<CoreField> result = new ArrayList<>(labels.size());
-        for (int i = 0; i < labels.size(); i++) {
-            result.add(new CoreField(labels.get(i), values.get(i)));
-        }
-        return result;
+        var values = children();
+        return IntStream.range(0, labels.size()).mapToObj(i -> new CoreField(labels.get(i), values.get(i))).toList();
     }
 
     @Override

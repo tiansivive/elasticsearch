@@ -11,9 +11,10 @@ import org.elasticsearch.xpack.esql.core.tree.NodeInfo;
 import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * Record update: {@code { expr | name = "bob", age = 31 }}. The base expression
@@ -37,14 +38,12 @@ public final class CoreUpdate extends CoreExpr {
 
     /** Convenience factory from a base expression and field list. */
     public static CoreUpdate create(Source source, CoreExpr expr, List<CoreField> updates, MonoType type) {
-        List<String> labels = new ArrayList<>(updates.size());
-        List<CoreExpr> children = new ArrayList<>(1 + updates.size());
-        children.add(expr);
-        for (CoreField f : updates) {
-            labels.add(f.label());
-            children.add(f.value());
-        }
-        return new CoreUpdate(source, labels, children, type);
+        return new CoreUpdate(
+            source,
+            updates.stream().map(CoreField::label).toList(),
+            Stream.concat(Stream.of(expr), updates.stream().map(CoreField::value)).toList(),
+            type
+        );
     }
 
     public CoreExpr expr() {
@@ -57,12 +56,8 @@ public final class CoreUpdate extends CoreExpr {
 
     /** Reconstruct the update field list by zipping labels with children[1..n]. */
     public List<CoreField> updates() {
-        List<CoreExpr> values = children();
-        List<CoreField> result = new ArrayList<>(labels.size());
-        for (int i = 0; i < labels.size(); i++) {
-            result.add(new CoreField(labels.get(i), values.get(i + 1)));
-        }
-        return result;
+        var values = children();
+        return IntStream.range(0, labels.size()).mapToObj(i -> new CoreField(labels.get(i), values.get(i + 1))).toList();
     }
 
     @Override
