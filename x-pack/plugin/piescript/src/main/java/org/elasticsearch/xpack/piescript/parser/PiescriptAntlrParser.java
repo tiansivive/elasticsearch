@@ -9,8 +9,8 @@ import org.antlr.v4.runtime.tree.*;
 
 import java.util.List;
 
-@SuppressWarnings({ "all", "warnings", "unchecked", "unused", "cast", "CheckReturnValue" })
-class PiescriptAntlrParser extends Parser {
+@SuppressWarnings({ "all", "this-escape", "cast", "warnings", "unchecked", "unused", "CheckReturnValue" })
+public class PiescriptAntlrParser extends Parser {
     static {
         RuntimeMetaData.checkVersion("4.13.1", RuntimeMetaData.VERSION);
     }

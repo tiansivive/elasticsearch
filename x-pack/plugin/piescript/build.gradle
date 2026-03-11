@@ -72,14 +72,22 @@ tasks.register('regenParser', JavaExec) {
 tasks.register('regen') {
     dependsOn 'regenParser'
     doLast {
-        // Strip 'public' from generated classes only (make package-private)
+        // Strip 'public' from the lexer (only used by the parser internally).
+        // The parser and its context classes stay public so the elab package can access them.
         ant.replaceregexp(
             match: 'public ((interface|class) \\QPiescript\\E)',
             replace: '\\1',
             encoding: 'UTF-8'
         ) {
-            fileset(dir: outputPath, includes: 'PiescriptAntlrParser*.java')
             fileset(dir: outputPath, includes: 'PiescriptLexer.java')
+        }
+        // Replace ANTLR's generated @SuppressWarnings with one that also covers this-escape
+        ant.replaceregexp(
+            match: '@SuppressWarnings\\(\\{"all"[^}]*\\}\\)',
+            replace: '@SuppressWarnings({"all", "this-escape", "cast", "warnings", "unchecked", "unused", "CheckReturnValue"})',
+            encoding: 'UTF-8'
+        ) {
+            fileset(dir: outputPath, includes: 'PiescriptAntlrParser*.java')
         }
         // Remove .interp and .tokens files generated into the output dir
         delete fileTree(outputPath) {

@@ -12,7 +12,7 @@ import org.antlr.v4.runtime.tree.AbstractParseTreeVisitor;
  * operations with no return type.
  */
 @SuppressWarnings("CheckReturnValue")
-class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor<T> implements PiescriptAntlrParserVisitor<T> {
+public class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor<T> implements PiescriptAntlrParserVisitor<T> {
     /**
      * {@inheritDoc}
      *

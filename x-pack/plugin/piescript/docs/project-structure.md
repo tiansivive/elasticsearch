@@ -53,12 +53,16 @@ x-pack/plugin/piescript/
     │       │   ├── CoreRecord.java              # Record literal
     │       │   ├── CoreProject.java             # Field projection
     │       │   ├── CoreUpdate.java              # Record update
-    │       │   └── CorePrimOp.java              # Primitive operation
+    │       │   ├── CorePrimOp.java              # Primitive operation
+    │       │   └── CorePrinter.java             # Pretty-printer for Core IR + types
     │       └── elab/                      # Phase 1b: Elaboration machinery
     │           ├── ElaborationContext.java       # Immutable typing context (Γ + binding level)
     │           ├── ElaborationState.java        # Mutable global state (metavar supply + zonker)
     │           ├── TypeError.java               # Type error sealed interface
-    │           └── Unifier.java                 # Robinson unification
+    │           ├── Unifier.java                 # Robinson unification
+    │           ├── Elaborator.java              # Bidirectional type checker + desugarer
+    │           ├── TypeWalker.java             # Type-level traversal (generalize, instantiate, resolveDeep)
+    │           └── ElaborationException.java    # Fail-fast elaboration error
     ├── test/java/org/elasticsearch/xpack/piescript/
     │   ├── parser/
     │   │   └── PiescriptParserTests.java   # Unit tests for parser
@@ -69,7 +73,8 @@ x-pack/plugin/piescript/
     │   └── elab/
     │       ├── ElaborationContextTests.java # Unit tests for immutable context
     │       ├── ElaborationStateTests.java  # Unit tests for mutable state + integrated scenarios
-    │       └── UnifierTests.java           # Unit tests for unification
+    │       ├── UnifierTests.java           # Unit tests for unification
+    │       └── ElaboratorTests.java        # Unit tests for elaborator (68 tests)
     └── javaRestTest/java/org/elasticsearch/xpack/piescript/
         └── PiescriptIT.java           # Integration tests (6 test methods)
 ```
@@ -90,7 +95,7 @@ x-pack/plugin/piescript/
 | `PiescriptPlugin.java` | Plugin registration. Implements `ActionPlugin` to register the action handler (`PiescriptAction → TransportPiescriptAction`) and the REST handler (`RestPiescriptAction`). |
 | `PiescriptRequest.java` | Immutable request object carrying the `program` string. Implements `CompositeIndicesRequest` for security delegation. Validates that `program` is non-blank. Serializable for transport. |
 | `RestPiescriptAction.java` | HTTP entry point. Registers `POST /_piescript/eval`, parses the JSON body to extract `program`, and dispatches a `PiescriptRequest` to the transport layer. |
-| `RestPiescriptDevAction.java` | Development endpoint. Registers `POST /_piescript/dev`, parses a program and returns the LISP-style CST produced by ANTLR for parser inspection. |
+| `RestPiescriptDevAction.java` | Development endpoint. Registers `POST /_piescript/dev`, runs the full parse → elaborate pipeline and returns `tree` (CST), `core` (pretty-printed Core IR), and `type` (resolved type). Parse errors return `parse_error`; type errors return `tree` + `type_error`. |
 | `TransportPiescriptAction.java` | Core logic. Validates the `query ... ;` wrapper, extracts the ESQL query string, and delegates to `EsqlQueryAction` via the node client. Runs on `DIRECT_EXECUTOR_SERVICE`. |
 
 ### Source (`src/main`) — Parser (Phase 1a)
@@ -131,6 +136,7 @@ x-pack/plugin/piescript/
 | `core/CoreProject.java` | Field projection (`expr.label`). One child (expr). |
 | `core/CoreUpdate.java` | Record update (`{ expr \| field = val }`). 1+N children (base expr + update values). |
 | `core/CorePrimOp.java` | Primitive operation. N children (operands). Carries `Op` enum. |
+| `core/CorePrinter.java` | Pretty-printer for Core IR expressions and types. Produces S-expression-like output with resolved types (via `TypeWalker.resolveDeep`). Used by the dev endpoint. |
 
 ### Source (`src/main`) — Elaboration (Phase 1b)
 
@@ -140,6 +146,9 @@ x-pack/plugin/piescript/
 | `elab/ElaborationState.java` | Mutable global state shared across the elaboration pass. Holds only the metavariable supply (monotonic counter) and the zonker (meta ID → solution map with chain resolution). `freshType(bindingLevel)` and `freshRow(bindingLevel)` take the binding level from the caller's context. `resolve()` returns `Optional<Object>`. |
 | `elab/TypeError.java` | Sealed interface for type errors returned by unification. Variants: `Mismatch` (structural incompatibility), `InfiniteType` (occurs check), `FieldMismatch` (wraps inner error with label), `MissingFields` (field set asymmetry). Not an exception — used as `Optional<TypeError>`. |
 | `elab/Unifier.java` | Static Robinson unification over `MonoType`. Resolves through the zonker, handles `Meta` solving (with occurs check), null-as-bottom (D1.11), and structural matching for `TCon`, `Arrow`, `RecordType` (closed rows), `AppType`. Uses flat `if`-chain early exits + single `switch` expression with `when` guards. Returns `Optional<TypeError>` (empty = success). |
+| `elab/Elaborator.java` | Bidirectional type checker and desugarer. Pattern-matching recursive descent over ANTLR parse tree → Core IR. Single `elaborate` switch dispatches on all CST node types. Handles: let (with generalization), lambda (multi-param desugaring), application, primops (concrete Integer-only typed functions, D-020), records, projection (closed-row direct lookup), update, accessor/update-sugar (lambda desugaring), blocks, ascription, literals, pipe (flipped app), top-level bindings. Phase 1 limitations: no if/then/else, no open rows, no numeric widening. |
+| `elab/TypeWalker.java` | Static type-level traversal utilities. Generalization (collect unsolved metas at binding level → quantify), instantiation (replace quantified metas with fresh ones), deep resolution (fully resolve all metas in a type), and type walking (substitution). Extracted from `Elaborator` for clarity. Public (`resolveDeep` used by `CorePrinter`). |
+| `elab/ElaborationException.java` | Unchecked exception for fail-fast elaboration errors (D1.14). Carries line/column and optional `TypeError`. Avoids calling `Source` methods to sidestep the `WarningSourceLocation` compile dependency. |
 
 ### Tests (`src/test`) — Unit Tests
 
@@ -151,6 +160,7 @@ x-pack/plugin/piescript/
 | `elab/ElaborationContextTests.java` | Unit tests for the immutable context. Tests bind/lookup, de Bruijn indexing, shadowing, immutability guarantees (bind doesn't mutate original), binding level operations, scope unwinding via call stack. |
 | `elab/ElaborationStateTests.java` | Unit tests for the mutable state. Tests fresh meta allocation with explicit binding levels, zonker solve/resolve/chain resolution, `resolveType`, and an integrated let-polymorphism workflow exercising both context and state together. |
 | `elab/UnifierTests.java` | Unit tests for unification. Covers: identical types, meta solving (left/right/meta-meta/transitive/conflict), occurs check (direct/nested), null-as-bottom (with TCon/Arrow/Meta), arrow matching (success/param mismatch/result mismatch/with metas), record matching (success/missing/extra/field type mismatch/with metas/empty), AppType, and cross-form mismatches. |
+| `elab/ElaboratorTests.java` | Unit tests for the elaborator (68 tests). Covers: literals (int, long, decimal, string, escapes, boolean, null), let-bindings (basic, annotated, nested, shadowing, top-level, multiple), lambdas (identity, typed, multi-param), application (direct, type inference), let-polymorphism, all arithmetic/comparison/boolean operators, unary ops (negation, not), records (empty, literal, projection, update, field addition), pipe operator, accessor sugar, update sugar, blocks (let stmts, expr stmts, multi), parentheses, type ascription, de Bruijn indices, and error cases (unbound variable, type mismatch, non-function application, duplicate field, projection on non-record, missing field, annotation mismatch, unknown type, if/then/else unsupported, update on non-record). |
 
 ### Tests (`src/javaRestTest`) — Integration Tests
 

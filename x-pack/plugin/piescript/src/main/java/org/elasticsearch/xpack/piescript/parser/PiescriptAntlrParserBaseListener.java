@@ -11,7 +11,7 @@ import org.antlr.v4.runtime.tree.TerminalNode;
  * of the available methods.
  */
 @SuppressWarnings("CheckReturnValue")
-class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserListener {
+public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserListener {
     /**
      * {@inheritDoc}
      *

@@ -7,7 +7,7 @@ import org.antlr.v4.runtime.tree.ParseTreeListener;
  * This interface defines a complete listener for a parse tree produced by
  * {@link PiescriptAntlrParser}.
  */
-interface PiescriptAntlrParserListener extends ParseTreeListener {
+public interface PiescriptAntlrParserListener extends ParseTreeListener {
     /**
      * Enter a parse tree produced by {@link PiescriptAntlrParser#program}.
      * @param ctx the parse tree

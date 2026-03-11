@@ -50,7 +50,9 @@ Lexer and parser that produce a CST from piescript source text.
 | Dev endpoint `POST /_piescript/dev` (CST inspection) | :white_check_mark: |
 | Error reporting with source locations | :white_check_mark: |
 
-### Phase 1b — Type Checker :construction:
+**Ref**: [Phase 1a parser implementation](3cd2a822-792c-4179-a00e-0ba98b875f52)
+
+### Phase 1b — Type Checker :white_check_mark:
 
 Bidirectional Hindley-Milner type inference with zonker-based elaboration.
 
@@ -60,24 +62,26 @@ Bidirectional Hindley-Milner type inference with zonker-based elaboration.
 | Core IR node types (`CoreExpr` sealed hierarchy extending `Node`) | :white_check_mark: |
 | Elaboration state (context, metavar supply, binding level, zonker) | :white_check_mark: |
 | Unification (Robinson, occurs check, null-as-bottom) | :white_check_mark: |
-| Bidirectional elaborator (infer / check modes, desugaring) | :memo: |
-| Let-generalization (binding-level-based) | :memo: |
-| De Bruijn index representation | :memo: |
-| Null semantics (v0: Null unifies with Any) | :memo: |
-| Elaborator tests | :memo: |
+| Bidirectional elaborator (infer / check modes, desugaring) | :white_check_mark: |
+| Let-generalization (binding-level-based) | :white_check_mark: |
+| De Bruijn index representation | :white_check_mark: |
+| Null semantics (v0: Null unifies with Any) | :white_check_mark: |
+| Elaborator tests | :white_check_mark: |
+| Dev endpoint wired to elaborator (`CorePrinter`, tree + core + type) | :white_check_mark: |
 
-### Phase 1c — Core IR and Evaluator :memo:
+**Ref**: [Phase 1b implementation](36ef4cb3-4c3b-439e-a83a-aae069ca551c)
 
-Elaborated intermediate representation and tree-walking interpreter.
+### Phase 1c — Evaluator + Wiring :memo:
+
+Tree-walking interpreter and end-to-end pipeline integration.
 
 | Task | Status |
 |------|--------|
-| Core IR node types (typed, elaborated) | :memo: |
-| Elaboration pass (CST → Core IR + zonker) | :memo: |
+| Runtime value types (`Eval`, `Value`, `Closure`) | :memo: |
 | Tree-walking evaluator | :memo: |
-| Value representation and result serialization | :memo: |
+| Value serialization (scalar → 1x1 table, record → 1-row table) | :memo: |
 | Wire pipeline into transport action (replace Phase 0 passthrough) | :memo: |
-| Integration tests (vertical slice: `let f = fn x -> x + 1 in f 42` → 43) | :memo: |
+| Integration + unit tests (vertical slice + deferred elaborator tests) | :memo: |
 
 ### Phase 1d — Pattern Matching :memo:
 
@@ -181,6 +185,8 @@ distributed computation language.
 
 ## Phase 6 — QTT Multiplicities, Explicit Channels & Session Types :thought_balloon:
 
+> Design rationale: `6c10d690-5758-49da-88f5-4c38f2f9cd72`
+
 Introduces QTT-style multiplicities {0, 1, ω} on bindings (D-018). Channel endpoints are linear
 (multiplicity 1), enabling session types with deadlock-freedom. Streams and all other values
 remain unrestricted (ω). User-visible channel primitives: `new`, `send`, `recv`.
@@ -220,6 +226,8 @@ Developer experience beyond the REST API.
 ---
 
 ## Speculative: Ownership, Mutable References & Beyond :thought_balloon:
+
+> Design rationale: `6c10d690-5758-49da-88f5-4c38f2f9cd72`
 
 > **Caveat:** These are exploratory ideas. They represent potential directions that QTT
 > multiplicities could unlock if Phase 6 succeeds, but they are NOT planned, NOT committed, and
