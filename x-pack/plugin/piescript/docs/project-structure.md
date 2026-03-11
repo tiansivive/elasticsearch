@@ -42,25 +42,34 @@ x-pack/plugin/piescript/
     │       │   ├── TypeScheme.java              # Polymorphic type scheme (∀-quantified)
     │       │   ├── LitVal.java                  # Literal values for Core IR
     │       │   └── Op.java                      # Primitive operator enum
-    │       └── core/                      # Phase 1b: Core IR (typed, elaborated)
-    │           ├── CoreExpr.java                # Abstract sealed base (extends Node)
-    │           ├── CoreField.java               # Helper record (label + value pair)
-    │           ├── CoreVar.java                 # Variable (de Bruijn index)
-    │           ├── CoreLit.java                 # Literal value
-    │           ├── CoreLam.java                 # Lambda abstraction
-    │           ├── CoreApp.java                 # Function application
-    │           ├── CoreLet.java                 # Let-binding
-    │           ├── CoreRecord.java              # Record literal
-    │           ├── CoreProject.java             # Field projection
-    │           ├── CoreUpdate.java              # Record update
-    │           └── CorePrimOp.java              # Primitive operation
+    │       ├── core/                      # Phase 1b: Core IR (typed, elaborated)
+    │       │   ├── CoreExpr.java                # Abstract sealed base (extends Node)
+    │       │   ├── CoreField.java               # Helper record (label + value pair)
+    │       │   ├── CoreVar.java                 # Variable (de Bruijn index)
+    │       │   ├── CoreLit.java                 # Literal value
+    │       │   ├── CoreLam.java                 # Lambda abstraction
+    │       │   ├── CoreApp.java                 # Function application
+    │       │   ├── CoreLet.java                 # Let-binding
+    │       │   ├── CoreRecord.java              # Record literal
+    │       │   ├── CoreProject.java             # Field projection
+    │       │   ├── CoreUpdate.java              # Record update
+    │       │   └── CorePrimOp.java              # Primitive operation
+    │       └── elab/                      # Phase 1b: Elaboration machinery
+    │           ├── ElaborationContext.java       # Immutable typing context (Γ + binding level)
+    │           ├── ElaborationState.java        # Mutable global state (metavar supply + zonker)
+    │           ├── TypeError.java               # Type error sealed interface
+    │           └── Unifier.java                 # Robinson unification
     ├── test/java/org/elasticsearch/xpack/piescript/
     │   ├── parser/
     │   │   └── PiescriptParserTests.java   # Unit tests for parser
     │   ├── types/
     │   │   └── TypeDataStructureTests.java # Unit tests for type data structures
-    │   └── core/
-    │       └── CoreExprTests.java          # Unit tests for Core IR
+    │   ├── core/
+    │   │   └── CoreExprTests.java          # Unit tests for Core IR
+    │   └── elab/
+    │       ├── ElaborationContextTests.java # Unit tests for immutable context
+    │       ├── ElaborationStateTests.java  # Unit tests for mutable state + integrated scenarios
+    │       └── UnifierTests.java           # Unit tests for unification
     └── javaRestTest/java/org/elasticsearch/xpack/piescript/
         └── PiescriptIT.java           # Integration tests (6 test methods)
 ```
@@ -123,6 +132,15 @@ x-pack/plugin/piescript/
 | `core/CoreUpdate.java` | Record update (`{ expr \| field = val }`). 1+N children (base expr + update values). |
 | `core/CorePrimOp.java` | Primitive operation. N children (operands). Carries `Op` enum. |
 
+### Source (`src/main`) — Elaboration (Phase 1b)
+
+| File | Purpose |
+|------|---------|
+| `elab/ElaborationContext.java` | Immutable typing context passed by value through recursive descent. Holds the de Bruijn-indexed list of named type schemes and the binding level. Returns new instances on `bind()`, `enterBindingLevel()`, `exitBindingLevel()` — the call stack handles scope unwinding. `lookup()` returns `Optional<LookupResult>`. |
+| `elab/ElaborationState.java` | Mutable global state shared across the elaboration pass. Holds only the metavariable supply (monotonic counter) and the zonker (meta ID → solution map with chain resolution). `freshType(bindingLevel)` and `freshRow(bindingLevel)` take the binding level from the caller's context. `resolve()` returns `Optional<Object>`. |
+| `elab/TypeError.java` | Sealed interface for type errors returned by unification. Variants: `Mismatch` (structural incompatibility), `InfiniteType` (occurs check), `FieldMismatch` (wraps inner error with label), `MissingFields` (field set asymmetry). Not an exception — used as `Optional<TypeError>`. |
+| `elab/Unifier.java` | Static Robinson unification over `MonoType`. Resolves through the zonker, handles `Meta` solving (with occurs check), null-as-bottom (D1.11), and structural matching for `TCon`, `Arrow`, `RecordType` (closed rows), `AppType`. Uses flat `if`-chain early exits + single `switch` expression with `when` guards. Returns `Optional<TypeError>` (empty = success). |
+
 ### Tests (`src/test`) — Unit Tests
 
 | File | Purpose |
@@ -130,6 +148,9 @@ x-pack/plugin/piescript/
 | `parser/PiescriptParserTests.java` | Unit tests for the parser. Tests each syntax form and error reporting. |
 | `types/TypeDataStructureTests.java` | Unit tests for type data structures. Tests construction, equality, sealed hierarchy exhaustiveness, and factory methods. |
 | `core/CoreExprTests.java` | Unit tests for Core IR nodes. Tests construction, accessors, equality, replaceChildren, tree traversal, and NamedWriteable guard. |
+| `elab/ElaborationContextTests.java` | Unit tests for the immutable context. Tests bind/lookup, de Bruijn indexing, shadowing, immutability guarantees (bind doesn't mutate original), binding level operations, scope unwinding via call stack. |
+| `elab/ElaborationStateTests.java` | Unit tests for the mutable state. Tests fresh meta allocation with explicit binding levels, zonker solve/resolve/chain resolution, `resolveType`, and an integrated let-polymorphism workflow exercising both context and state together. |
+| `elab/UnifierTests.java` | Unit tests for unification. Covers: identical types, meta solving (left/right/meta-meta/transitive/conflict), occurs check (direct/nested), null-as-bottom (with TCon/Arrow/Meta), arrow matching (success/param mismatch/result mismatch/with metas), record matching (success/missing/extra/field type mismatch/with metas/empty), AppType, and cross-form mismatches. |
 
 ### Tests (`src/javaRestTest`) — Integration Tests
 
@@ -147,6 +168,7 @@ The root package is `org.elasticsearch.xpack.piescript`. Sub-packages are introd
 | `piescript.parser` | 1a | Exists | Lexer, parser, ANTLR-generated classes, parse errors |
 | `piescript.types` | 1b | Exists | Type system (Kind, MonoType, RowType, TypeScheme, LitVal, Op) |
 | `piescript.core` | 1b | Exists | Core IR (CoreExpr sealed hierarchy extending Node, CoreField helper) |
+| `piescript.elab` | 1b | Exists | Elaboration machinery (immutable context, mutable state; future: unification, elaborator) |
 | `piescript.eval` | 1c | Planned | Tree-walking evaluator, runtime values, closures |
 
 ## External Touchpoints
