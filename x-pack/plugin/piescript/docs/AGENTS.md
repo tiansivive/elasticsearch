@@ -135,9 +135,10 @@ Prior design discussions are preserved in agent transcripts:
 - **Phase 1 expression language**: `3cd2a822-792c-4179-a00e-0ba98b875f52` — typing rules
   (bidirectional HM), de Bruijn indices, zonker-based elaboration, parser grammar, null semantics,
   literal alignment with ESQL DataType.
-- **Distributed computation & π-calculus** — plan graph architecture (free monad over π effects),
-  two-layer IR (CoreExpr/CoreProcess), evaluator/planner split, traveling closures, mobility check,
-  join calculus influence, code-as-data model, the IO monad / delimited continuations analogy.
-  Also: stream combinators as prelude built-ins (D-016), stream fan-out via DAG (D-017),
-  linearity roadmap with QTT for channels (D-018), BEAM/Erlang comparison, speculative ownership
-  model. Resulted in D-012 through D-018 and reframing of Phases 3–6.
+- **Distributed computation & π-calculus**: `6c10d690-5758-49da-88f5-4c38f2f9cd72` — plan graph
+  architecture (free monad over π effects), two-layer IR (CoreExpr/CoreProcess), evaluator/planner
+  split, traveling closures, mobility check, join calculus influence, code-as-data model, the IO
+  monad / delimited continuations analogy. Stream combinators as prelude built-ins (D-016), stream
+  fan-out via DAG (D-017), linearity roadmap with QTT for channels (D-018), BEAM/Erlang
+  comparison, speculative ownership model. Resulted in D-012 through D-018 and reframing of
+  Phases 3–6.

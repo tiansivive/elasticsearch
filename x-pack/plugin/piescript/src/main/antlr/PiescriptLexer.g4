@@ -61,9 +61,9 @@ INTEGER_LITERAL
     ;
 
 DECIMAL_LITERAL
-    : DIGIT+ '.' DIGIT*
+    : DIGIT+ '.' DIGIT+
     | '.' DIGIT+
-    | DIGIT+ ('.' DIGIT*)? EXPONENT
+    | DIGIT+ ('.' DIGIT+)? EXPONENT
     | '.' DIGIT+ EXPONENT
     ;
 

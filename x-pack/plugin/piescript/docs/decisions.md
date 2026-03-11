@@ -470,3 +470,118 @@ distributed ownership, and incremental computation. These are exploratory direct
 committed. See [vision.md § Speculative](vision.md).
 
 **Ref**: [references.md § Linear Haskell, QTT](references.md)
+
+---
+
+## D-019: Eager Unification — Phase 1 Simplification
+
+**Phase**: 1b | **Status**: accepted (known limitation; will be revisited)
+
+**Context**: Unification can be performed eagerly (inline during elaboration) or deferred
+(collect constraints, then solve). Which approach should Phase 1 use?
+
+**Decision**: Phase 1 uses **eager (inline) unification**. When two types must agree, `Unifier.unify`
+is called immediately during the elaboration walk. Solutions are written to the shared zonker and are
+visible to all subsequent elaboration steps.
+
+**Rationale**:
+- **Simplicity**: eager unification requires no separate constraint language, no constraint store,
+  and no solver phase. The elaborator is a single recursive-descent pass that checks and infers
+  types as it goes.
+- **Sufficient for HM**: standard Hindley-Milner inference (Algorithm W / Algorithm J) uses eager
+  unification. It is correct and complete for the feature set in Phase 1 (let-polymorphism, records,
+  functions, primops).
+- **Error locality**: type errors are reported at the exact point where unification fails, with the
+  source location of the triggering expression.
+
+**Known limitation**: eager unification makes it harder to implement features that benefit from
+constraint deferral:
+- **GADTs / refinement types**: matching on a GADT constructor should refine type variables in the
+  branch, which requires local constraint assumptions.
+- **Type classes**: instance resolution interleaves with unification; deferred constraints
+  (`Num a => a -> a -> a`) are the standard approach.
+- **Better error messages**: constraint-based approaches can report errors at the most informative
+  location rather than the first failure.
+
+**Migration path**: when type classes or GADTs are introduced (Phase 5+), the unifier will be
+replaced with a constraint-based approach (e.g., OutsideIn(X) style). The elaborator's structure
+(recursive descent, bidirectional) is compatible with both — the change is in how constraints are
+dispatched, not in the traversal itself.
+
+---
+
+## D-020: PrimOp Typing — Concrete Integer-Only (Phase 1)
+
+**Phase**: 1b | **Status**: accepted (will be extended with coercion)
+
+**Context**: How should arithmetic operators like `+`, `-`, `*` be typed? Options:
+(a) polymorphic `α -> α -> α` with numeric constraint, (b) concrete per-type signatures,
+(c) ad-hoc overloading.
+
+**Decision**: Phase 1 uses **concrete, non-polymorphic signatures**. Arithmetic operators have type
+`Integer -> Integer -> Integer`. Comparison operators have type `Integer -> Integer -> Boolean`.
+Boolean operators have type `Boolean -> Boolean -> Boolean`. There are no `Long` or `Double`
+variants; operands that are not `Integer` (for arithmetic/comparison) or `Boolean` (for boolean ops)
+are type errors.
+
+**Rationale**:
+- Phase 1 has no type classes or numeric constraints (`Num a`). Without them, polymorphic primop
+  types (`α -> α -> α`) require ad-hoc post-unification checks (a `requireNumeric` guard), which
+  is fragile and doesn't compose.
+- Concrete types are honest: the type tells you exactly what the operator accepts.
+- `Long` and `Double` literals exist in the parser/IR but cannot be used with arithmetic until
+  coercion rules are defined.
+
+**Migration path**: when type classes arrive (Phase 5+), arithmetic operators become methods on a
+`Num` type class, comparison on `Ord`, etc. Coercion rules (`Integer` widens to `Long`) can be
+added as an intermediate step before type classes, using explicit coercion primitives.
+
+---
+
+## D-021: Accessor/Update Sugar — Closed-Row Constraints (Phase 1)
+
+**Phase**: 1b | **Status**: accepted (will be relaxed with row polymorphism)
+
+**Context**: The accessor sugar (`.field`) and update sugar (`{ _ | field = expr }`) desugar into
+lambdas: `.x` becomes `fn $acc -> $acc.x`, and `{ _ | x = e }` becomes `fn $upd -> { $upd | x = e }`.
+These lambdas need parameter types. The naive approach creates a fresh meta for the parameter type
+and a separate fresh meta for the result type, but this leaves the two metas disconnected — no
+constraint links them, so when the lambda is applied the result type remains unsolved.
+
+**Decision**: Phase 1 constructs the parameter type as a **closed `RecordType`** containing exactly
+the fields referenced by the accessor/update:
+
+- Accessor `.x`: `paramType = { x: β }` where `β` is a fresh meta for the projected field's type.
+  The lambda type is `{ x: β } -> β`.
+- Update sugar `{ _ | x = e }`: `paramType = { x: α }` where `α` is a fresh meta. The result type
+  is `{ x: T }` where `T` is the elaborated type of `e`. The lambda type is `{ x: α } -> { x: T }`.
+
+This establishes the structural constraint between the parameter and the result. When the lambda is
+applied to a concrete record, unification on the closed row resolves the metas.
+
+**Trade-off**: this is restrictive. `.x` applied to `{ x: 1, y: 2 }` will fail because
+`{ x: β }` does not unify with `{ x: Integer, y: Integer }` under closed-row matching (field sets
+must be identical). This means accessor and update sugar only work with records that have exactly the
+referenced fields — no extra fields allowed.
+
+**Migration path**: when open-row unification arrives (Phase 2), the parameter type changes to
+`{ x: β | ρ }` (open row with a row variable tail). This allows the sugar to accept records with
+additional fields, which is the correct semantics.
+
+---
+
+## D-022: Lexer — DECIMAL_LITERAL Requires Digit After Dot
+
+**Phase**: 1a | **Status**: accepted
+
+**Context**: The original `DECIMAL_LITERAL` lexer rule `DIGIT+ '.' DIGIT*` allowed `42.` to be
+tokenized as a decimal literal (zero digits after the dot). This caused `42.x` to be tokenized
+as `DECIMAL_LITERAL(42.) IDENTIFIER(x)` instead of `INTEGER_LITERAL(42) DOT IDENTIFIER(x)`,
+preventing the parser from recognizing field projection on integer expressions.
+
+**Decision**: Changed `DIGIT*` to `DIGIT+` in the `DECIMAL_LITERAL` rule. A decimal literal now
+requires at least one digit after the dot: `42.0` is valid, `42.` is not.
+
+**Rationale**: `42.` as a decimal literal is unusual (most languages require digits after the dot)
+and causes a real ambiguity with field projection syntax. Requiring at least one digit is standard
+practice (Haskell, OCaml, Rust all require digits after the decimal point).

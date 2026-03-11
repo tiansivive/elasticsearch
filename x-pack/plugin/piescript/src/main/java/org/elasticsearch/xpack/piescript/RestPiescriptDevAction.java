@@ -14,6 +14,10 @@ import org.elasticsearch.rest.RestResponse;
 import org.elasticsearch.rest.RestStatus;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xcontent.XContentParser;
+import org.elasticsearch.xpack.piescript.core.CorePrinter;
+import org.elasticsearch.xpack.piescript.elab.ElaborationException;
+import org.elasticsearch.xpack.piescript.elab.ElaborationState;
+import org.elasticsearch.xpack.piescript.elab.Elaborator;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParsingException;
 
@@ -23,8 +27,11 @@ import java.util.List;
 import static org.elasticsearch.rest.RestRequest.Method.POST;
 
 /**
- * Development endpoint for inspecting the parse tree of a Piescript program.
- * Returns the LISP-style CST representation produced by ANTLR.
+ * Development endpoint for inspecting each stage of the Piescript pipeline.
+ * Returns the CST (parse tree), the elaborated Core IR, and the resolved type.
+ *
+ * <p>Stages are independent: a parse error prevents elaboration but still
+ * returns the error; an elaboration (type) error still returns the CST.
  */
 public class RestPiescriptDevAction extends BaseRestHandler {
 
@@ -50,10 +57,20 @@ public class RestPiescriptDevAction extends BaseRestHandler {
             try (XContentBuilder builder = channel.newBuilder()) {
                 builder.startObject();
                 try {
-                    String tree = piescriptParser.parseToTreeString(program);
-                    builder.field("tree", tree);
+                    String treeString = piescriptParser.parseToTreeString(program);
+                    builder.field("tree", treeString);
+
+                    var cst = piescriptParser.parse(program);
+                    var state = new ElaborationState();
+                    var elaborator = new Elaborator(state);
+                    var coreExpr = elaborator.elaborateProgram(cst);
+
+                    builder.field("core", CorePrinter.printExpr(coreExpr, state));
+                    builder.field("type", CorePrinter.printType(coreExpr.type(), state));
                 } catch (PiescriptParsingException e) {
-                    builder.field("error", e.getMessage());
+                    builder.field("parse_error", e.getMessage());
+                } catch (ElaborationException e) {
+                    builder.field("type_error", e.getMessage());
                 }
                 builder.endObject();
                 channel.sendResponse(new RestResponse(RestStatus.OK, builder));

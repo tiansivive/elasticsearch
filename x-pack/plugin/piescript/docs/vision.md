@@ -151,6 +151,8 @@ These are directional, not committed:
 
 ## Speculative: Potential Future Directions
 
+> Design rationale: `6c10d690-5758-49da-88f5-4c38f2f9cd72`
+
 > **Caveat:** The ideas below are exploratory. They represent potential directions that the type
 > system foundations (QTT multiplicities, session types) could unlock, but they are not planned,
 > not committed, and may turn out to be impractical or unnecessary. They are recorded here to
