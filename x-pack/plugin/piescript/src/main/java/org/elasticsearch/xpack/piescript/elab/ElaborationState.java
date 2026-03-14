@@ -9,9 +9,13 @@ package org.elasticsearch.xpack.piescript.elab;
 
 import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
+import org.elasticsearch.xpack.piescript.types.RowType;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -40,10 +44,12 @@ public final class ElaborationState {
 
     private int metaSupply;
     private final Map<Integer, Object> zonker;
+    private final List<Constraint> constraints;
 
     public ElaborationState() {
         this.metaSupply = 0;
         this.zonker = new HashMap<>();
+        this.constraints = new ArrayList<>();
     }
 
     // ──── Metavar supply ────
@@ -101,22 +107,62 @@ public final class ElaborationState {
     }
 
     /**
+     * Allocate a fresh rigid type variable. Shares the ID space with metas
+     * so that IDs are globally unique across both Rigids and Metas.
+     */
+    public MonoType.Rigid freshRigid(Kind kind) {
+        return new MonoType.Rigid(metaSupply++, kind);
+    }
+
+    /**
      * Resolve a MonoType by following any meta chains in the zonker.
      * If the type is a solved meta, returns the resolved solution.
-     * Otherwise returns the type unchanged.
+     * Otherwise returns the type unchanged (including unsolved metas).
      */
-    public MonoType resolveType(MonoType type) {
+    public MonoType zonkOrKeep(MonoType type) {
         return switch (type) {
             case MonoType.Meta meta -> resolve(meta.id()).filter(MonoType.class::isInstance)
                 .map(MonoType.class::cast)
-                .map(this::resolveType)
+                .map(this::zonkOrKeep)
                 .orElse(type);
             default -> type;
         };
     }
 
+    /**
+     * Flatten a row by following its tail through the zonker. If the row var is
+     * solved to a {@link RowType}, merge the tail's fields into the parent and recurse.
+     */
+    public RowType resolveRow(RowType row) {
+        if (row.rowVar().isEmpty()) return row;
+        var meta = row.rowVar().get();
+        var resolved = zonkOrKeep(meta);
+        if (resolved instanceof MonoType.Meta m && !m.equals(meta)) {
+            return new RowType(row.fields(), Optional.of(m));
+        }
+        var solution = resolve(meta.id());
+        if (solution.isPresent() && solution.get() instanceof RowType tailRow) {
+            var merged = new LinkedHashMap<>(row.fields());
+            merged.putAll(tailRow.fields());
+            return resolveRow(new RowType(merged, tailRow.rowVar()));
+        }
+        return row;
+    }
+
     /** Read-only view of the zonker for inspection (e.g., generalization). */
     public Map<Integer, Object> zonker() {
         return Collections.unmodifiableMap(zonker);
+    }
+
+    // ──── Constraint accumulator ────
+
+    /** Record a deferred type equality constraint to be solved post-elaboration. */
+    public void emitConstraint(MonoType left, MonoType right, int line, int column) {
+        constraints.add(new Constraint(left, right, line, column));
+    }
+
+    /** The accumulated constraints, in emission order. */
+    public List<Constraint> constraints() {
+        return Collections.unmodifiableList(constraints);
     }
 }

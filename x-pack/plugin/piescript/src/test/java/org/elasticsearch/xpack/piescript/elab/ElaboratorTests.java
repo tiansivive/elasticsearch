@@ -17,6 +17,8 @@ import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
+import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
+import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
 import org.elasticsearch.xpack.piescript.core.CoreUpdate;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
@@ -56,7 +58,7 @@ public class ElaboratorTests extends ESTestCase {
     }
 
     private MonoType resolveType(CoreExpr expr) {
-        return TypeWalker.resolveDeep(expr.type(), state);
+        return state.zonkOrKeep(expr.type());
     }
 
     // ──── Literals ────
@@ -516,7 +518,7 @@ public class ElaboratorTests extends ESTestCase {
 
     public void testApplicationOfNonFunction() {
         var ex = expectThrows(ElaborationException.class, () -> elaborate("let x = 1 in x 2"));
-        assertThat(ex.getMessage(), containsString("not a function"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
     public void testDuplicateRecordField() {
@@ -526,12 +528,12 @@ public class ElaboratorTests extends ESTestCase {
 
     public void testProjectionOnNonRecord() {
         var ex = expectThrows(ElaborationException.class, () -> elaborate("42.x"));
-        assertThat(ex.getMessage(), containsString("projection requires a record type"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
     public void testProjectionMissingField() {
         var ex = expectThrows(ElaborationException.class, () -> elaborate("{ x: 1 }.y"));
-        assertThat(ex.getMessage(), containsString("no field"));
+        assertThat(ex.getMessage(), containsString("missing fields"));
     }
 
     public void testWrongAnnotationType() {
@@ -551,11 +553,143 @@ public class ElaboratorTests extends ESTestCase {
 
     public void testUpdateOnNonRecord() {
         var ex = expectThrows(ElaborationException.class, () -> elaborate("{ 42 | x = 1 }"));
-        assertThat(ex.getMessage(), containsString("record update requires a record type"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
     public void testUnknownTypeAnnotation() {
         var ex = expectThrows(ElaborationException.class, () -> elaborate("(42 : Foo)"));
         assertThat(ex.getMessage(), containsString("unknown type"));
+    }
+
+    // ──── Deferred tests (Phase 1c) ────
+
+    public void testOccursCheck() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("fn x -> x x"));
+        assertThat(ex.getMessage(), containsString("infinite type"));
+    }
+
+    public void testCrossTypeArithmeticStringPlusInt() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("\"hello\" + 1"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
+    }
+
+    public void testCrossTypeArithmeticDoublePlusInt() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("3.14 + 1"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
+    }
+
+    public void testLambdaAppliedToWrongType() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("(fn (x : Integer) -> x) \"hello\""));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
+    }
+
+    // ──── Open-row tests (Phase 1d) ────
+
+    public void testRowPolymorphicLet() {
+        var result = elaborate("let get = fn r -> r.x in get { x: 1, y: 2 }");
+        assertThat(resolveType(result), is(INTEGER));
+    }
+
+    public void testRowPolymorphicLetDifferentShapes() {
+        var result = elaborate("let getX = fn r -> r.x in let a = getX { x: 1 } in getX { x: 2, y: true }");
+        assertThat(resolveType(result), is(INTEGER));
+    }
+
+    // ──── Type annotation with type variables (Phase 1d) ────
+
+    public void testTypeAnnotationWithTypeVar() {
+        var result = elaborate("let id : a -> a = fn x -> x in id 42");
+        assertThat(resolveType(result), is(INTEGER));
+    }
+
+    public void testTypeAnnotationMismatch() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("let f : a -> a = fn x -> 42 in f"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
+    }
+
+    public void testAnnotatedIdentityPolymorphic() {
+        var result = elaborate("let id : a -> a = fn x -> x in let a = id 1 in id true");
+        assertThat(resolveType(result), is(BOOLEAN));
+    }
+
+    // ──── Polytype ascription (D-036) ────
+
+    @AwaitsFix(bugUrl = "D-038: MonoType needs Forall variant for polytype ascription")
+    public void testPolytypeAscription() {
+        var result = elaborate("let f = (fn x -> x : a -> a) in let a = f 1 in f true");
+        assertThat(resolveType(result), is(BOOLEAN));
+    }
+
+    @AwaitsFix(bugUrl = "D-038: MonoType needs Forall variant for polytype ascription")
+    public void testPolytypeAscriptionApplied() {
+        var result = elaborate("(fn x -> x : a -> a) 42");
+        assertThat(resolveType(result), is(INTEGER));
+    }
+
+    @AwaitsFix(bugUrl = "D-038: MonoType needs Forall variant for polytype ascription")
+    public void testAscriptionMismatchWithPolytype() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("(42 : a -> a)"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
+    }
+
+    // ──── Record check mode (D-036) ────
+
+    public void testRecordCheckedAgainstAnnotation() {
+        var result = elaborate("let r : { x: Integer, y: Boolean } = { x: 1, y: true } in r.x");
+        assertThat(resolveType(result), is(INTEGER));
+    }
+
+    public void testRecordCheckFieldMismatch() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("let r : { x: Integer } = { x: true } in r"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
+    }
+
+    // ──── Multi-param lambda check (D-036) ────
+
+    public void testMultiParamLambdaCheckedAgainstAnnotation() {
+        var result = elaborate("let add : Integer -> Integer -> Integer = fn x y -> x + y in add 1 2");
+        assertThat(resolveType(result), is(INTEGER));
+    }
+
+    public void testMultiParamLambdaPolymorphicAnnotation() {
+        var result = elaborate("let const : a -> b -> a = fn x y -> x in let a = const 1 true in const true 42");
+        assertThat(resolveType(result), is(BOOLEAN));
+    }
+
+    // ──── Let/block body propagation (D-036) ────
+
+    public void testLetBodyCheckPropagation() {
+        var result = elaborate("(let x = fn a -> a in x 42 : Integer)");
+        assertThat(resolveType(result), is(INTEGER));
+    }
+
+    public void testBlockBodyCheckPropagation() {
+        var result = elaborate("({ let x = 1; x } : Integer)");
+        assertThat(resolveType(result), is(INTEGER));
+    }
+
+    // ──── CoreTypeAbs / CoreTypeApp wrapping ────
+
+    public void testPolymorphicLetProducesCoreTypeAbs() {
+        var result = elaborate("let id = fn x -> x in id 42");
+        assertThat(result, instanceOf(CoreLet.class));
+        var let = (CoreLet) result;
+        assertThat(let.rhs(), instanceOf(CoreTypeAbs.class));
+    }
+
+    public void testPolymorphicUseProducesCoreTypeApp() {
+        var result = elaborate("let id = fn x -> x in id 42");
+        assertThat(result, instanceOf(CoreLet.class));
+        var let = (CoreLet) result;
+        assertThat(let.body(), instanceOf(CoreApp.class));
+        var app = (CoreApp) let.body();
+        assertThat(app.fn(), instanceOf(CoreTypeApp.class));
+    }
+
+    // ──── Lambda param type variable ────
+
+    public void testLambdaParamTypeVarIsMonomorphic() {
+        var result = elaborate("let f = fn (x : Integer) -> fn (y : Integer) -> x + y in f 1 2");
+        assertThat(resolveType(result), is(INTEGER));
     }
 }

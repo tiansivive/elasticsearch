@@ -20,6 +20,17 @@ public class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor
      * {@link #visitChildren} on {@code ctx}.</p>
      */
     @Override
+    public T visitIdent(PiescriptAntlrParser.IdentContext ctx) {
+        return visitChildren(ctx);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation returns the result of calling
+     * {@link #visitChildren} on {@code ctx}.</p>
+     */
+    @Override
     public T visitProgram(PiescriptAntlrParser.ProgramContext ctx) {
         return visitChildren(ctx);
     }
@@ -560,6 +571,17 @@ public class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor
      */
     @Override
     public T visitTypeCon(PiescriptAntlrParser.TypeConContext ctx) {
+        return visitChildren(ctx);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation returns the result of calling
+     * {@link #visitChildren} on {@code ctx}.</p>
+     */
+    @Override
+    public T visitTypeVar(PiescriptAntlrParser.TypeVarContext ctx) {
         return visitChildren(ctx);
     }
 

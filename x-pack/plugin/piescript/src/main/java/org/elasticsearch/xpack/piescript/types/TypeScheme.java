@@ -7,19 +7,19 @@
 
 package org.elasticsearch.xpack.piescript.types;
 
-import java.util.Set;
+import java.util.Map;
 
 /**
- * Polymorphic type scheme: {@code ∀{α₁..αₙ}.body}. The {@code quantified} set contains
- * meta IDs that are universally quantified. At each use site, the elaborator instantiates
- * the scheme by allocating fresh metas for the quantified variables.
+ * Polymorphic type scheme: {@code ∀{α₁..αₙ}.body}. The {@code quantified} map holds
+ * Rigid IDs to their kinds. At each use site, the elaborator instantiates the scheme by
+ * allocating fresh metas (of the appropriate kind) for the quantified variables.
  *
- * <p>Monomorphic types are represented as schemes with an empty quantified set.
+ * <p>Monomorphic types are represented as schemes with an empty quantified map.
  */
-public record TypeScheme(Set<Integer> quantified, MonoType body) {
+public record TypeScheme(Map<Integer, Kind> quantified, MonoType body) {
 
     /** Wrap a monomorphic type as a trivial scheme with no quantified variables. */
     public static TypeScheme mono(MonoType type) {
-        return new TypeScheme(Set.of(), type);
+        return new TypeScheme(Map.of(), type);
     }
 }

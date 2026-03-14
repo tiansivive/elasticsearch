@@ -9,6 +9,18 @@ import org.antlr.v4.runtime.tree.ParseTreeListener;
  */
 public interface PiescriptAntlrParserListener extends ParseTreeListener {
     /**
+     * Enter a parse tree produced by {@link PiescriptAntlrParser#ident}.
+     * @param ctx the parse tree
+     */
+    void enterIdent(PiescriptAntlrParser.IdentContext ctx);
+
+    /**
+     * Exit a parse tree produced by {@link PiescriptAntlrParser#ident}.
+     * @param ctx the parse tree
+     */
+    void exitIdent(PiescriptAntlrParser.IdentContext ctx);
+
+    /**
      * Enter a parse tree produced by {@link PiescriptAntlrParser#program}.
      * @param ctx the parse tree
      */
@@ -697,6 +709,20 @@ public interface PiescriptAntlrParserListener extends ParseTreeListener {
      * @param ctx the parse tree
      */
     void exitTypeCon(PiescriptAntlrParser.TypeConContext ctx);
+
+    /**
+     * Enter a parse tree produced by the {@code TypeVar}
+     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * @param ctx the parse tree
+     */
+    void enterTypeVar(PiescriptAntlrParser.TypeVarContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code TypeVar}
+     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * @param ctx the parse tree
+     */
+    void exitTypeVar(PiescriptAntlrParser.TypeVarContext ctx);
 
     /**
      * Enter a parse tree produced by the {@code RecordType}

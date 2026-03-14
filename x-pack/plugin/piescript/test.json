@@ -1,0 +1,9 @@
+{
+    "tree": "(program (expr let (ident f) = (expr fn (param (ident x)) -> (expr (pipeExpr (orExpr (andExpr (eqExpr (cmpExpr (addExpr (mulExpr (unaryExpr (appExpr (primary (ident x))))))))))))) in (expr (pipeExpr (orExpr (andExpr (eqExpr (cmpExpr (addExpr (mulExpr (unaryExpr (appExpr (primary { (recordField (ident fst) : (expr (pipeExpr (orExpr (andExpr (eqExpr (cmpExpr (addExpr (mulExpr (unaryExpr (appExpr (appExpr (primary (ident f))) (primary 1)))))))))))) , (recordField (ident snd) : (expr (pipeExpr (orExpr (andExpr (eqExpr (cmpExpr (addExpr (mulExpr (unaryExpr (appExpr (appExpr (primary (ident f))) (primary true)))))))))))) })))))))))))) <EOF>)",
+    "core": "(let f : b -> b = (Λ b. (fn x : b -> x)) in { fst: ((f @?2) 1), snd: ((f @?5) true) })",
+    "core_raw": "(let f : ?0 -> ?0 = (Λ b. (fn x : ?0 -> x)) in { fst: ((f @?2) 1), snd: ((f @?5) true) })",
+    "type": "{ fst: Integer, snd: Boolean }",
+    "constraints": "C0: ?2 -> ?2 ~ ?3 -> ?4  [1:28]\nC1: Integer ~ ?3  [1:28]\nC2: ?5 -> ?5 ~ ?6 -> ?7  [1:38]\nC3: Boolean ~ ?6  [1:38]\n",
+    "zonker": "?0 |=> b\n?2 |=> ?3\n?3 |=> ?4\n?4 |=> Integer\n?5 |=> ?6\n?6 |=> ?7\n?7 |=> Boolean\n",
+    "eval": "RecordVal[fields={fst=IntegerVal[value=1], snd=BooleanVal[value=true]}]"
+}

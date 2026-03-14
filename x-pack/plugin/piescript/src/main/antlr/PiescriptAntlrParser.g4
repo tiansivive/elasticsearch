@@ -9,18 +9,21 @@ parser grammar PiescriptAntlrParser;
 
 options { tokenVocab = PiescriptLexer; }
 
+// ──── Identifier helper (D-033) ────
+ident : UPPER_IDENT | LOWER_IDENT ;
+
 // ──── Program ────
 program
     : topBinding* expr EOF
     ;
 
 topBinding
-    : LET IDENTIFIER (COLON type)? ASSIGN expr SEMICOLON
+    : LET ident (COLON type)? ASSIGN expr SEMICOLON
     ;
 
 // ──── Expressions ────
 expr
-    : LET IDENTIFIER (COLON type)? ASSIGN expr IN expr   # LetExpr
+    : LET ident (COLON type)? ASSIGN expr IN expr        # LetExpr
     | FN param+ ARROW expr                               # LambdaExpr
     | pipeExpr                                           # ExprPipe
     ;
@@ -72,14 +75,14 @@ appExpr
 
 // ──── Primary expressions ────
 primary
-    : DOT IDENTIFIER                                     # Accessor
+    : DOT ident                                          # Accessor
     | INTEGER_LITERAL                                    # IntegerLiteral
     | DECIMAL_LITERAL                                    # DecimalLiteral
     | QUOTED_STRING                                      # StringLiteral
     | TRUE                                               # TrueLiteral
     | FALSE                                              # FalseLiteral
     | NULL                                               # NullLiteral
-    | IDENTIFIER                                         # Variable
+    | ident                                              # Variable
     | LPAREN expr COLON type RPAREN                      # Ascription
     | LPAREN expr RPAREN                                 # ParenExpr
     | LBRACE RBRACE                                      # EmptyRecord
@@ -88,15 +91,15 @@ primary
     | LBRACE UNDERSCORE BAR recordUpdate (COMMA recordUpdate)* RBRACE  # UpdateSugar
     | IF expr THEN expr ELSE expr                        # IfExpr
     | block                                              # BlockExpr
-    | primary DOT IDENTIFIER                             # Projection
+    | primary DOT ident                                  # Projection
     ;
 
 recordField
-    : IDENTIFIER COLON expr
+    : ident COLON expr
     ;
 
 recordUpdate
-    : IDENTIFIER ASSIGN expr
+    : ident ASSIGN expr
     ;
 
 // ──── Blocks ────
@@ -105,14 +108,14 @@ block
     ;
 
 blockStmt
-    : LET IDENTIFIER (COLON type)? ASSIGN expr SEMICOLON  # BlockLet
+    : LET ident (COLON type)? ASSIGN expr SEMICOLON       # BlockLet
     | expr SEMICOLON                                       # BlockExprStmt
     ;
 
 // ──── Lambda parameters ────
 param
-    : IDENTIFIER                                          # UntypedParam
-    | LPAREN IDENTIFIER COLON type RPAREN                 # TypedParam
+    : ident                                               # UntypedParam
+    | LPAREN ident COLON type RPAREN                      # TypedParam
     ;
 
 // ──── Types ────
@@ -122,15 +125,16 @@ type
     ;
 
 typePrimary
-    : IDENTIFIER                                          # TypeCon
+    : UPPER_IDENT                                         # TypeCon
+    | LOWER_IDENT                                         # TypeVar
     | LBRACE rowType RBRACE                               # RecordType
     | LPAREN type RPAREN                                  # ParenType
     ;
 
 rowType
-    : rowField (COMMA rowField)* (BAR IDENTIFIER)?
+    : rowField (COMMA rowField)* (BAR LOWER_IDENT)?
     ;
 
 rowField
-    : IDENTIFIER COLON type
+    : ident COLON type
     ;
