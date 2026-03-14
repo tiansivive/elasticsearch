@@ -198,7 +198,7 @@ checker verifies field compatibility across the entire pipeline before anything 
 
 The MVP requires completing these phases from the [roadmap](roadmap.md):
 
-- **Phase 1e**: Pattern matching (control flow in transforms)
+- **Phase 1e**: Pattern matching (control flow in transforms) — *deferred; not blocking Phases 2–4*
 - **Phase 2**: Index resolution + query typing (typed query results)
 - **Phase 3**: Stream runtime + plan graph + map/filter/fold + ExpressionEvaluator compiler +
   push-down optimizer + `writeTo` sink primitive + `groupBy` combinator
