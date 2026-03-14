@@ -3,7 +3,7 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-13 (session 5 — D-035 implementation)
+> **Last updated**: 2026-03-14 (Phase 1 wrap-up, Phase 2 opened)
 
 ## Summary
 
@@ -15,7 +15,11 @@ solving: constraints are emitted during elaboration and solved incrementally at 
 boundaries. `generalize` and `instantiateAndWrap` live in `Elaborator`;
 `TypeWalker.walkType`, `.generalize`, and `.instantiate` have been deleted. The dev endpoint
 now exposes `core_raw`, `constraints`, and `zonker` fields for debugging. 332 tests passing.
-Phase 1e (Pattern Matching) is next — postponed from the original Phase 1d (D-029).
+
+**Phase 1e (Pattern Matching) is deferred** — it is not blocking the MVP-critical path. Phase 2
+(Index Resolution + Concrete-Row Constraints) is now the active phase. See
+[roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt) for the
+consolidated list of Phase 1 items carried forward.
 
 ## What Works
 
@@ -57,7 +61,7 @@ Phase 1e (Pattern Matching) is next — postponed from the original Phase 1d (D-
 
 | Capability | Target Phase | Notes |
 |-----------|-------------|-------|
-| Pattern matching | 1e | No match expressions (postponed from original 1d, see D-029) |
+| Pattern matching | 1e (deferred) | No match expressions (deferred — not blocking Phase 2+; see D-029) |
 | Typed query results | 2 | `query` returns untyped ESQL passthrough, not `Stream (Record ρ)` |
 | Stream runtime + plan graph | 3 | No `CoreProcess` IR, no plan graph, no stream combinators |
 | `writeTo` sink primitive | 3 | No mechanism to write stream results to an index |
@@ -134,15 +138,32 @@ architecture will enable the push-down optimizer to route computation to data no
 
 ## Immediate Next Steps
 
-Phase 1d and D-035 are complete. Next up:
+Phase 1 (sub-phases 1a–1d + D-035) is complete. Phase 1e (Pattern Matching) is deferred — it is
+not on the critical path for Phase 2+. **Phase 2 (Index Resolution + Concrete-Row Constraints)
+is now the active phase.**
 
-1. **Phase 1e: Pattern Matching** (postponed from the original Phase 1d, see D-029). Adds
-   `match` expressions with exhaustiveness checking and `if/then/else` as sugar (D-010).
+Phase 2 work:
 
-Minor tech-debt items that can be addressed opportunistically:
+1. **Index resolution pre-pass** — integrate with `IndexResolver` to resolve index mappings at
+   elaboration time.
+2. **`query` expression typing** — `query` returns `Stream (Record ρ)` where `ρ` is derived from
+   the resolved index mapping, not an untyped ESQL passthrough.
+3. **Concrete-row constraint processing** — detect cross-index field type conflicts at the
+   field-access site.
+4. **`map`/`filter` as built-in typed functions** — prelude functions that operate on streams
+   (D-016). Paves the way for Phase 3's plan graph.
+5. **DataType → TCon mapping table** — bridge between ESQL `DataType` and piescript type
+   constructors.
 
-- Replace `resolveDeep` in `CorePrinter` with environment-based Rigid resolution.
+Phase 1 tech debt that can be addressed opportunistically (not blocking Phase 2):
+
+- Replace `resolveDeep` in `CorePrinter` with environment-based Rigid resolution (D-032).
 - Switch `zonkOrKeep` to an `Optional`-returning `zonk` API (D-032).
+- `MonoType` → `Type` with `Forall` variant (D-038) — needed eventually for expression-level
+  polytype ascription; annotated-let path works without it.
+
+See [roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt) for
+the full consolidated list.
 
 Review:
 

@@ -26,13 +26,13 @@ unification (one language replacing multiple chained features).
 
 **MVP scope** — the following phases must be complete:
 
-| Phase | What it contributes to the MVP |
-|-------|-------------------------------|
-| Phase 1e | Pattern matching — control flow in transforms |
-| Phase 2 | Index resolution — typed query results, field-level type checking |
-| Phase 3 | Stream runtime + plan graph + combinators + push-down optimizer + `writeTo` + `groupBy` |
-| Phase 4 (partial) | `par` — merging results from multiple queries |
-| New: Scheduler | Persistent task wrapper for scheduled async execution |
+| Phase | What it contributes to the MVP | Status |
+|-------|-------------------------------|--------|
+| Phase 1e | Pattern matching — control flow in transforms | Deferred — not blocking Phase 2+ |
+| Phase 2 | Index resolution — typed query results, field-level type checking | :construction: |
+| Phase 3 | Stream runtime + plan graph + combinators + push-down optimizer + `writeTo` + `groupBy` | :memo: |
+| Phase 4 (partial) | `par` — merging results from multiple queries | :memo: |
+| New: Scheduler | Persistent task wrapper for scheduled async execution | :memo: |
 
 **Post-MVP enhancements** (not required for the MVP demonstration):
 
@@ -178,10 +178,12 @@ Dev endpoint now exposes `core_raw`, `constraints`, and `zonker` for debugging.
 
 **Ref**: [D-035](decisions.md#d-035), [D-032](decisions.md#d-032), [D-005](decisions.md#d-005)
 
-### Phase 1e — Pattern Matching :memo:
+### Phase 1e — Pattern Matching :fast_forward: (deferred)
 
 Pattern matching as the primary control-flow mechanism. `if/then/else` desugars to `match`.
 Postponed from original Phase 1d position — row polymorphism was more pressing (D-029).
+**Deferred again**: not blocking the MVP-critical path (Phases 2–4). Will be picked up when
+control flow is needed by downstream work, or opportunistically between phases.
 
 | Task | Status |
 |------|--------|
@@ -194,7 +196,29 @@ Postponed from original Phase 1d position — row polymorphism was more pressing
 
 ---
 
-## Phase 2 — Index Resolution + Concrete-Row Constraints :memo:
+### Phase 1 — Outstanding Tech Debt
+
+Consolidated list of known deviations, limitations, and deferred work from Phase 1. These are
+tracked here for visibility; they do not block Phase 2. Items may be addressed opportunistically
+or when downstream work requires them.
+
+| Item | Ref | Notes |
+|------|-----|-------|
+| `resolveDeep` still used by `CorePrinter` | D-032 | Should be replaced with environment-based Rigid resolution in downstream passes (printer, optimizer, lowering). |
+| `zonkOrKeep` returns meta-on-miss instead of `Optional` | D-032 | D-032 specifies an `Optional`-returning `zonk` API. Current implementation preserves old semantics. |
+| Bidirectional checking mode partially implemented | D-036 | Elaborator has `elaborate` (synthesis) and `check` modes, but polytype ascription at expression level does not work correctly (see D-038). |
+| `MonoType` cannot represent polytypes (`∀a. τ`) | D-038 | `CoreTypeAbs.type()` returns body monotype with bare rigids. Fix: rename `MonoType` → `Type`, add `Forall` variant. Related tests are `@AwaitsFix`. |
+| Pattern matching deferred (Phase 1e) | D-010, D-029 | `match` expressions, exhaustiveness checking, `if/then/else` as sugar — all deferred. Not blocking Phase 2+. |
+| Integer-only arithmetic | D-020 | `Long` and `Double` literals exist but cannot participate in arithmetic. Requires coercion rules or type classes. |
+| Null semantics unsound | D-007 | `Null` unifies with any type. Proper `Option` type requires ADTs (Phase 1e+). |
+| `DIRECT_EXECUTOR_SERVICE` | D-004 | Parse, elaborate, evaluate all run synchronously on the calling thread. Needs a dedicated thread pool when computation becomes heavier. |
+| `KeywordVal` uses `String`, not `BytesRef` | D-026 | Reverse conversion needed when piescript values flow into ESQL query parameters (Phase 2+). |
+| No backwards-compatibility versioning | — | `PiescriptRequest`/`PiescriptResponse` do not use `TransportVersion` checks. |
+| No semicolon handling in queries | — | `extractEsqlQuery()` splits on last `;`. Temporary — the `query ... ;` syntax is a Phase 0 artifact. |
+
+---
+
+## Phase 2 — Index Resolution + Concrete-Row Constraints :construction:
 
 Programs containing `query` expressions are typechecked against real ES index mappings. Cross-index
 type conflicts and unmapped fields produce precise errors at the field-access site. Builds on the
