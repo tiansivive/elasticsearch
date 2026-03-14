@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.piescript.elab;
 
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
 
@@ -43,7 +44,7 @@ public class UnifierTests extends ESTestCase {
         var alpha = state.freshType(0);
 
         assertTrue(Unifier.unify(alpha, INTEGER, state).isEmpty());
-        assertThat(state.resolveType(alpha), is(INTEGER));
+        assertThat(state.zonkOrKeep(alpha), is(INTEGER));
     }
 
     public void testMetaRight() {
@@ -51,7 +52,7 @@ public class UnifierTests extends ESTestCase {
         var alpha = state.freshType(0);
 
         assertTrue(Unifier.unify(INTEGER, alpha, state).isEmpty());
-        assertThat(state.resolveType(alpha), is(INTEGER));
+        assertThat(state.zonkOrKeep(alpha), is(INTEGER));
     }
 
     public void testMetaMeta() {
@@ -72,8 +73,8 @@ public class UnifierTests extends ESTestCase {
         assertTrue(Unifier.unify(alpha, beta, state).isEmpty());
         assertTrue(Unifier.unify(beta, INTEGER, state).isEmpty());
 
-        assertThat(state.resolveType(alpha), is(INTEGER));
-        assertThat(state.resolveType(beta), is(INTEGER));
+        assertThat(state.zonkOrKeep(alpha), is(INTEGER));
+        assertThat(state.zonkOrKeep(beta), is(INTEGER));
     }
 
     public void testMetaAlreadySolved() {
@@ -190,8 +191,8 @@ public class UnifierTests extends ESTestCase {
         var b = new MonoType.Arrow(INTEGER, beta);
 
         assertTrue(Unifier.unify(a, b, state).isEmpty());
-        assertThat(state.resolveType(alpha), is(INTEGER));
-        assertThat(state.resolveType(beta), is(BOOLEAN));
+        assertThat(state.zonkOrKeep(alpha), is(INTEGER));
+        assertThat(state.zonkOrKeep(beta), is(BOOLEAN));
     }
 
     // ──── Record (closed rows) ────
@@ -244,7 +245,7 @@ public class UnifierTests extends ESTestCase {
         var b = new MonoType.RecordType(RowType.closed(Map.of("x", INTEGER)));
 
         assertTrue(Unifier.unify(a, b, state).isEmpty());
-        assertThat(state.resolveType(alpha), is(INTEGER));
+        assertThat(state.zonkOrKeep(alpha), is(INTEGER));
     }
 
     public void testEmptyRecords() {
@@ -298,5 +299,85 @@ public class UnifierTests extends ESTestCase {
         var error = Unifier.unify(arrow, record, state);
         assertTrue(error.isPresent());
         assertThat(error.get(), instanceOf(TypeError.Mismatch.class));
+    }
+
+    // ──── Open-row unification (D-030) ────
+
+    public void testOpenRowAbsorbsExcess() {
+        var state = new ElaborationState();
+        var tail = state.freshRow(0);
+        var open = new MonoType.RecordType(RowType.open(Map.of("x", INTEGER), tail));
+        var closed = new MonoType.RecordType(RowType.closed(Map.of("x", INTEGER, "y", BOOLEAN)));
+
+        assertTrue(Unifier.unify(open, closed, state).isEmpty());
+        var resolved = state.resolveRow(RowType.open(Map.of("x", INTEGER), tail));
+        assertTrue(resolved.fields().containsKey("y"));
+        assertThat(resolved.fields().get("y"), is(BOOLEAN));
+    }
+
+    public void testClosedRowExcessVsOpenTail() {
+        var state = new ElaborationState();
+        var tail = state.freshRow(0);
+        var open = new MonoType.RecordType(RowType.open(Map.of("x", INTEGER), tail));
+        var closed = new MonoType.RecordType(RowType.closed(Map.of("x", INTEGER)));
+
+        assertTrue(Unifier.unify(open, closed, state).isEmpty());
+    }
+
+    public void testOpenRowExcessVsClosed() {
+        var state = new ElaborationState();
+        var closed = new MonoType.RecordType(RowType.closed(Map.of("x", INTEGER)));
+        var open = new MonoType.RecordType(RowType.open(Map.of("x", INTEGER, "y", BOOLEAN), state.freshRow(0)));
+
+        var error = Unifier.unify(closed, open, state);
+        assertTrue(error.isPresent());
+        assertThat(error.get(), instanceOf(TypeError.MissingFields.class));
+    }
+
+    public void testTwoOpenRowsUnify() {
+        var state = new ElaborationState();
+        var tail1 = state.freshRow(0);
+        var tail2 = state.freshRow(0);
+        var open1 = new MonoType.RecordType(RowType.open(Map.of("x", INTEGER), tail1));
+        var open2 = new MonoType.RecordType(RowType.open(Map.of("y", BOOLEAN), tail2));
+
+        assertTrue(Unifier.unify(open1, open2, state).isEmpty());
+        var resolved1 = state.resolveRow(RowType.open(Map.of("x", INTEGER), tail1));
+        assertTrue(resolved1.fields().containsKey("y"));
+        var resolved2 = state.resolveRow(RowType.open(Map.of("y", BOOLEAN), tail2));
+        assertTrue(resolved2.fields().containsKey("x"));
+    }
+
+    // ──── Rigid type variables (D-031) ────
+
+    public void testRigidSameId() {
+        var state = new ElaborationState();
+        var r = new MonoType.Rigid(0, Kind.TYPE);
+        assertTrue(Unifier.unify(r, r, state).isEmpty());
+    }
+
+    public void testRigidDifferentId() {
+        var state = new ElaborationState();
+        var r1 = new MonoType.Rigid(0, Kind.TYPE);
+        var r2 = new MonoType.Rigid(1, Kind.TYPE);
+        var error = Unifier.unify(r1, r2, state);
+        assertTrue(error.isPresent());
+        assertThat(error.get(), instanceOf(TypeError.Mismatch.class));
+    }
+
+    public void testRigidVsTCon() {
+        var state = new ElaborationState();
+        var r = new MonoType.Rigid(0, Kind.TYPE);
+        var error = Unifier.unify(r, INTEGER, state);
+        assertTrue(error.isPresent());
+        assertThat(error.get(), instanceOf(TypeError.Mismatch.class));
+    }
+
+    public void testMetaSolvesToRigid() {
+        var state = new ElaborationState();
+        var alpha = state.freshType(0);
+        var r = new MonoType.Rigid(99, Kind.TYPE);
+        assertTrue(Unifier.unify(alpha, r, state).isEmpty());
+        assertThat(state.zonkOrKeep(alpha), is(r));
     }
 }

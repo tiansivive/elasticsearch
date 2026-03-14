@@ -158,6 +158,17 @@ If you encounter any of the following methods, you must go and read their javado
 * `TestAnalyzer.statementError`
 * `TestAnalyzer.error`
 * `forciblyCast`
+  
+## Handling Ambiguity and Conflicting Information
+- **STOP and ask the user** when you encounter contradictory, ambiguous, or unclear requirements in plans, decisions, or design documents. Do NOT silently pick an interpretation. Examples:
+  - A plan says "remove X" but the implementation you're building seems to need X.
+  - Two sections of the same document describe incompatible designs.
+  - A design decision uses terminology that could be read in multiple ways (e.g., "implicit" could mean "absent" or "inferred by the compiler").
+  - The Core IR spec omits a node that a later section describes the core as having.
+- When asking, **state the conflict explicitly**: quote the two contradictory passages, explain both possible interpretations, and ask which one is correct.
+- **Never resolve ambiguity by omitting a feature or taking the simpler path** without confirming with the user. The simpler interpretation is not always the intended one.
+- If a plan or decision document seems internally inconsistent, it is more likely that the document was written incrementally and needs clarification than that the contradiction is intentional. Ask.
+- This rule applies equally to design documents, plan files, decision logs, code comments, and any other source of requirements. When in doubt, ask.
 
 ## Backwards compatibility
 - For changes to a `Writeable` implementation (`writeTo` and constructor from `StreamInput`), add a new `public static final <UNIQUE_DESCRIPTIVE_NAME> = TransportVersion.fromName("<unique_descriptive_name>")` and use it in the new code paths. Confirm the backport branches and then generate a new version file with `./gradlew generateTransportVersion`.

@@ -1,0 +1,44 @@
+/*
+ * Copyright Elasticsearch B.V. and/or licensed to Elasticsearch B.V. under one
+ * or more contributor license agreements. Licensed under the Elastic License
+ * 2.0; you may not use this file except in compliance with the Elastic License
+ * 2.0.
+ */
+
+package org.elasticsearch.xpack.piescript.eval;
+
+import org.elasticsearch.xpack.piescript.core.CoreExpr;
+
+import java.util.Map;
+
+/**
+ * Runtime values produced by the tree-walking evaluator. Each variant
+ * corresponds to a type in the piescript type system.
+ *
+ * <p>String values use {@code String}, not Lucene's {@code BytesRef}.
+ * The conversion boundary from the Core IR's {@code LitVal.KeywordLit(BytesRef)}
+ * lives in the evaluator's {@code CoreLit} handler (see D-026).
+ */
+public sealed interface Value {
+
+    record IntegerVal(int value) implements Value {}
+
+    record LongVal(long value) implements Value {}
+
+    record DoubleVal(double value) implements Value {}
+
+    record KeywordVal(String value) implements Value {}
+
+    record BooleanVal(boolean value) implements Value {}
+
+    record NullVal() implements Value {}
+
+    record RecordVal(Map<String, Value> fields) implements Value {}
+
+    /**
+     * A closure: a lambda body paired with the captured environment at the
+     * point of lambda creation. The environment is indexed by de Bruijn index;
+     * when applied, the argument is prepended to produce the body's environment.
+     */
+    record ClosureVal(CoreExpr body, Value[] env) implements Value {}
+}

@@ -12,6 +12,13 @@ import org.antlr.v4.runtime.tree.ParseTreeVisitor;
  */
 public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
     /**
+     * Visit a parse tree produced by {@link PiescriptAntlrParser#ident}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitIdent(PiescriptAntlrParser.IdentContext ctx);
+
+    /**
      * Visit a parse tree produced by {@link PiescriptAntlrParser#program}.
      * @param ctx the parse tree
      * @return the visitor result
@@ -405,6 +412,14 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
      * @return the visitor result
      */
     T visitTypeCon(PiescriptAntlrParser.TypeConContext ctx);
+
+    /**
+     * Visit a parse tree produced by the {@code TypeVar}
+     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitTypeVar(PiescriptAntlrParser.TypeVarContext ctx);
 
     /**
      * Visit a parse tree produced by the {@code RecordType}

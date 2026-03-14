@@ -18,6 +18,22 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      * <p>The default implementation does nothing.</p>
      */
     @Override
+    public void enterIdent(PiescriptAntlrParser.IdentContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitIdent(PiescriptAntlrParser.IdentContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
     public void enterProgram(PiescriptAntlrParser.ProgramContext ctx) {}
 
     /**
@@ -811,6 +827,22 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      */
     @Override
     public void exitTypeCon(PiescriptAntlrParser.TypeConContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void enterTypeVar(PiescriptAntlrParser.TypeVarContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitTypeVar(PiescriptAntlrParser.TypeVarContext ctx) {}
 
     /**
      * {@inheritDoc}

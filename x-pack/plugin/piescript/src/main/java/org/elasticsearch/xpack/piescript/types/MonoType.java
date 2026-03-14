@@ -11,7 +11,7 @@ package org.elasticsearch.xpack.piescript.types;
  * Monomorphic types in the Piescript type system. Every Core IR node carries a MonoType
  * (possibly containing unsolved {@link Meta} variables that are resolved via the zonker).
  *
- * <p>Design spec (from Phase 1 plan D1.9):
+ * <p>Design spec:
  * <pre>{@code
  * MonoType
  *   = TCon(name: String)                           -- "Integer", "Keyword", ...
@@ -19,6 +19,7 @@ package org.elasticsearch.xpack.piescript.types;
  *   | RecordType(row: RowType)
  *   | AppType(constructor: MonoType, argument: MonoType)
  *   | Meta(id: int, bindingLevel: int, kind: Kind)  -- unsolved metavar
+ *   | Rigid(id: int, kind: Kind)                    -- bound/skolemized type variable (D-031)
  * }</pre>
  */
 public sealed interface MonoType {
@@ -42,4 +43,12 @@ public sealed interface MonoType {
      * Solutions are stored in the zonker, not on the meta itself.
      */
     record Meta(int id, int bindingLevel, Kind kind) implements MonoType {}
+
+    /**
+     * Bound (skolemized) type variable introduced when elaborating a type annotation
+     * or generalizing an unannotated definition. Rigids do NOT unify with anything
+     * except themselves (same {@code id}). They represent universally quantified
+     * variables in {@link TypeScheme} bodies.
+     */
+    record Rigid(int id, Kind kind) implements MonoType {}
 }

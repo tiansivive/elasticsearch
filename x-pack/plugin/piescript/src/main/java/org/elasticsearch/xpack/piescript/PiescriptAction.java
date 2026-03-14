@@ -8,9 +8,8 @@
 package org.elasticsearch.xpack.piescript;
 
 import org.elasticsearch.action.ActionType;
-import org.elasticsearch.xpack.esql.action.EsqlQueryResponse;
 
-public class PiescriptAction extends ActionType<EsqlQueryResponse> {
+public class PiescriptAction extends ActionType<PiescriptResponse> {
 
     public static final PiescriptAction INSTANCE = new PiescriptAction();
     public static final String NAME = "indices:data/read/piescript";

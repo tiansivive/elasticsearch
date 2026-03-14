@@ -41,6 +41,30 @@ calculus — they can be modeled within standard π.
 
 - [Semantic Scholar](https://www.semanticscholar.org/paper/pi-Calculus%2C-Internal-Mobility%2C-and-Agent-Passing-Sangiorgi/80159843149f602792d36d6c3e65f72bc8b48822)
 
+## Row Types and Record Systems
+
+### Leijen — *Extensible records with scoped labels* (2005)
+
+Defines a system of extensible records with row polymorphism using scoped labels. The key
+insight is that rows are flat field sets with optional tail variables, and row unification
+operates on field-set differences rather than recursive head/tail decomposition. This is the
+basis for piescript's open-row unification (D-030), adapted to our flat `RowType` representation.
+
+- [PDF (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/fclabels.pdf)
+
+## Bidirectional Type Checking
+
+### Dunfield & Krishnaswami — *Complete and Easy Bidirectional Typechecking for Higher-Rank Polymorphism* (ICFP, 2013)
+
+The foundational reference for practical bidirectional type checking. Describes how to combine
+inference mode (synthesize types bottom-up) and checking mode (propagate expected types
+top-down) in a single algorithm. The checking rule for universal types — "to check `e` against
+`∀a. τ`, introduce a fresh skolem `a` and check `e` against `τ`" — directly informs piescript's
+handling of type annotations (D-034). While piescript currently uses rank-1 polymorphism (not
+higher-rank), the bidirectional structure is the same.
+
+- [PDF (arXiv)](https://arxiv.org/pdf/1306.6032.pdf)
+
 ## Session Types (Typing Channels)
 
 For the future: type-checking that processes communicate correctly on channels (if process A sends
@@ -241,6 +265,8 @@ if piescript ever needs finer-grained usage tracking (e.g., "used at most N time
 | Sangiorgi (agent-passing) | Traveling closures: code mobility reduces to name passing |
 | Fournet & Gonthier (join calculus) | Which process primitives are distributedly implementable |
 | JoCaml | How to embed process primitives in an ML-family language |
+| Leijen (extensible records) | Open-row unification algorithm for row polymorphism (D-030) |
+| Dunfield & Krishnaswami (bidirectional) | Checking rule for universal types, annotation elaboration (D-034) |
 | Honda et al. (session types) | Future: typing channel protocols for safety |
 | Wadler (propositions as sessions) | Future: deadlock-freedom from the type system |
 | Stark & Fiore (free-algebra models) | Plan graph as free monad over Π effects |

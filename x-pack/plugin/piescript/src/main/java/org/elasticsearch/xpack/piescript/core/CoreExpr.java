@@ -39,7 +39,7 @@ import java.util.List;
  * }</pre>
  */
 public abstract sealed class CoreExpr extends Node<CoreExpr> permits CoreVar, CoreLit, CoreLam, CoreApp, CoreLet, CoreRecord, CoreProject,
-    CoreUpdate, CorePrimOp {
+    CoreUpdate, CorePrimOp, CoreTypeAbs, CoreTypeApp {
 
     protected CoreExpr(Source source, List<CoreExpr> children) {
         super(source, children);

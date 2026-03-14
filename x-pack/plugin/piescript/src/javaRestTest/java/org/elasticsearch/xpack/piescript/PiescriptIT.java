@@ -36,6 +36,7 @@ public class PiescriptIT extends ESRestTestCase {
     public static ElasticsearchCluster cluster = ElasticsearchCluster.local()
         .distribution(DistributionType.DEFAULT)
         .setting("xpack.security.enabled", "false")
+        .setting("xpack.ml.enabled", "false")
         .setting("xpack.license.self_generated.type", "trial")
         .build();
 
@@ -113,7 +114,6 @@ public class PiescriptIT extends ESRestTestCase {
         Request request = piescriptRequest("FROM piescript-test;");
         ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
-        assertThat(e.getMessage(), containsString("must start with 'query'"));
     }
 
     public void testMissingProgramField() throws IOException {
@@ -124,6 +124,62 @@ public class PiescriptIT extends ESRestTestCase {
         ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
         assertThat(e.getMessage(), containsString("[program]"));
+    }
+
+    // ──── Expression evaluation (Phase 1c) ────
+
+    public void testExpressionEval() throws IOException {
+        Request request = piescriptRequest("let x = 1 + 2 in x");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("type"), equalTo("Integer"));
+        assertThat(responseMap.get("result"), equalTo(3));
+    }
+
+    public void testRecordEval() throws IOException {
+        Request request = piescriptRequest("{ x: 1, y: 2 }");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("type"), equalTo("{ x: Integer, y: Integer }"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) responseMap.get("result");
+        assertThat(result.get("x"), equalTo(1));
+        assertThat(result.get("y"), equalTo(2));
+    }
+
+    public void testLambdaEval() throws IOException {
+        Request request = piescriptRequest("fn x -> x");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("result"), equalTo("<function>"));
+    }
+
+    public void testBooleanEval() throws IOException {
+        Request request = piescriptRequest("true && false");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("type"), equalTo("Boolean"));
+        assertThat(responseMap.get("result"), equalTo(false));
+    }
+
+    public void testTypeError() throws IOException {
+        Request request = piescriptRequest("1 + true");
+        ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
+        assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
+    }
+
+    public void testParseError() throws IOException {
+        Request request = piescriptRequest("let = in");
+        ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
+        assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
     }
 
     private static Request piescriptRequest(String program) {

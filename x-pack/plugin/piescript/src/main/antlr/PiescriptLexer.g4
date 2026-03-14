@@ -71,9 +71,13 @@ QUOTED_STRING
     : '"' (ESCAPE_SEQUENCE | ~["\\\r\n])* '"'
     ;
 
-// ──── Identifiers ────
-IDENTIFIER
-    : LETTER (LETTER | DIGIT | '_')*
+// ──── Identifiers (D-033: lexer split for type variable convention) ────
+UPPER_IDENT
+    : [A-Z] (LETTER | DIGIT | '_')*
+    ;
+
+LOWER_IDENT
+    : [a-z] (LETTER | DIGIT | '_')*
     | '_' (LETTER | DIGIT | '_')+
     ;
 
