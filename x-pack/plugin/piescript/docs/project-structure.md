@@ -55,14 +55,18 @@ x-pack/plugin/piescript/
     │       │   ├── CoreUpdate.java              # Record update
     │       │   ├── CorePrimOp.java              # Primitive operation
     │       │   └── CorePrinter.java             # Pretty-printer for Core IR + types
-    │       └── elab/                      # Phase 1b: Elaboration machinery
-    │           ├── ElaborationContext.java       # Immutable typing context (Γ + binding level)
-    │           ├── ElaborationState.java        # Mutable global state (metavar supply + zonker)
-    │           ├── TypeError.java               # Type error sealed interface
-    │           ├── Unifier.java                 # Robinson unification
-    │           ├── Elaborator.java              # Bidirectional type checker + desugarer
-    │           ├── TypeWalker.java             # Type-level traversal (generalize, instantiate, resolveDeep)
-    │           └── ElaborationException.java    # Fail-fast elaboration error
+    │       ├── elab/                      # Phase 1b: Elaboration machinery
+    │       │   ├── ElaborationContext.java       # Immutable typing context (Γ + binding level)
+    │       │   ├── ElaborationState.java        # Mutable global state (metavar supply + zonker)
+    │       │   ├── TypeError.java               # Type error sealed interface
+    │       │   ├── Unifier.java                 # Robinson unification
+    │       │   ├── Elaborator.java              # Bidirectional type checker + desugarer
+    │       │   ├── TypeWalker.java             # Type-level traversal (generalize, instantiate, resolveDeep)
+    │       │   └── ElaborationException.java    # Fail-fast elaboration error
+    │       └── eval/                      # Phase 1c: Evaluation
+    │           ├── Value.java                   # Runtime value sealed interface (8 variants)
+    │           ├── Evaluator.java               # Tree-walking de Bruijn environment machine
+    │           └── EvaluationException.java     # Runtime evaluation error
     ├── test/java/org/elasticsearch/xpack/piescript/
     │   ├── parser/
     │   │   └── PiescriptParserTests.java   # Unit tests for parser
@@ -70,13 +74,15 @@ x-pack/plugin/piescript/
     │   │   └── TypeDataStructureTests.java # Unit tests for type data structures
     │   ├── core/
     │   │   └── CoreExprTests.java          # Unit tests for Core IR
-    │   └── elab/
-    │       ├── ElaborationContextTests.java # Unit tests for immutable context
-    │       ├── ElaborationStateTests.java  # Unit tests for mutable state + integrated scenarios
-    │       ├── UnifierTests.java           # Unit tests for unification
-    │       └── ElaboratorTests.java        # Unit tests for elaborator (68 tests)
+    │   ├── elab/
+    │   │   ├── ElaborationContextTests.java # Unit tests for immutable context
+    │   │   ├── ElaborationStateTests.java  # Unit tests for mutable state + integrated scenarios
+    │   │   ├── UnifierTests.java           # Unit tests for unification
+    │   │   └── ElaboratorTests.java        # Unit tests for elaborator (72 tests)
+    │   └── eval/
+    │       └── EvaluatorTests.java        # Unit tests for evaluator (50 tests)
     └── javaRestTest/java/org/elasticsearch/xpack/piescript/
-        └── PiescriptIT.java           # Integration tests (6 test methods)
+        └── PiescriptIT.java           # Integration tests (12 test methods)
 ```
 
 ## File Responsibilities
@@ -91,19 +97,20 @@ x-pack/plugin/piescript/
 
 | File | Purpose |
 |------|---------|
-| `PiescriptAction.java` | Defines the `ActionType` singleton (`indices:data/read/piescript`) with response type `EsqlQueryResponse`. This is the handle used to dispatch and route the action through the transport layer. |
+| `PiescriptAction.java` | Defines the `ActionType` singleton (`indices:data/read/piescript`) with response type `PiescriptResponse`. This is the handle used to dispatch and route the action through the transport layer. |
+| `PiescriptResponse.java` | Response wrapper: holds either a `Value` + type string (expression result) or an `EsqlQueryResponse` (query passthrough). Implements `ChunkedToXContentObject` and `Releasable`. Serializable for transport (D-023). |
 | `PiescriptPlugin.java` | Plugin registration. Implements `ActionPlugin` to register the action handler (`PiescriptAction → TransportPiescriptAction`) and the REST handler (`RestPiescriptAction`). |
 | `PiescriptRequest.java` | Immutable request object carrying the `program` string. Implements `CompositeIndicesRequest` for security delegation. Validates that `program` is non-blank. Serializable for transport. |
 | `RestPiescriptAction.java` | HTTP entry point. Registers `POST /_piescript/eval`, parses the JSON body to extract `program`, and dispatches a `PiescriptRequest` to the transport layer. |
-| `RestPiescriptDevAction.java` | Development endpoint. Registers `POST /_piescript/dev`, runs the full parse → elaborate pipeline and returns `tree` (CST), `core` (pretty-printed Core IR), and `type` (resolved type). Parse errors return `parse_error`; type errors return `tree` + `type_error`. |
-| `TransportPiescriptAction.java` | Core logic. Validates the `query ... ;` wrapper, extracts the ESQL query string, and delegates to `EsqlQueryAction` via the node client. Runs on `DIRECT_EXECUTOR_SERVICE`. |
+| `RestPiescriptDevAction.java` | Development endpoint. Registers `POST /_piescript/dev`, runs the full parse → elaborate → evaluate pipeline and returns `tree` (CST), `core` (pretty-printed Core IR), `type` (resolved type), and `eval` (evaluated result). Parse errors return `parse_error`; type errors return `tree` + `type_error`; eval errors return `eval_error`. |
+| `TransportPiescriptAction.java` | Core logic. Dual dispatch: `query ... ;` programs delegate to ESQL passthrough, all other programs go through parse → elaborate → evaluate pipeline. Runs on `DIRECT_EXECUTOR_SERVICE`. |
 
 ### Source (`src/main`) — Parser (Phase 1a)
 
 | File | Purpose |
 |------|---------|
-| `src/main/antlr/PiescriptLexer.g4` | ANTLR lexer grammar. Defines tokens for the piescript surface syntax per D1.17. |
-| `src/main/antlr/PiescriptAntlrParser.g4` | ANTLR parser grammar. Defines the full expression grammar (precedence tower, lambdas, let-bindings, records, etc.) per D1.17. |
+| `src/main/antlr/PiescriptLexer.g4` | ANTLR lexer grammar. Defines tokens for the piescript surface syntax per D1.17. **Phase 1d splits `IDENTIFIER` into `UPPER_IDENT` / `LOWER_IDENT` (D-033).** |
+| `src/main/antlr/PiescriptAntlrParser.g4` | ANTLR parser grammar. Defines the full expression grammar (precedence tower, lambdas, let-bindings, records, etc.) per D1.17. **Phase 1d adds `ident` helper rule, splits type `TypeCon` into `TypeCon` (UPPER_IDENT) and `TypeVar` (LOWER_IDENT).** |
 | `parser/PiescriptParser.java` | Parser entry point. Invokes the generated ANTLR parser and converts the CST to a usable parse tree. |
 | `parser/PiescriptParsingException.java` | Parse error wrapper with source location. |
 | `parser/PiescriptLexer.java` | Generated from `PiescriptLexer.g4` by ANTLR. |
@@ -115,9 +122,9 @@ x-pack/plugin/piescript/
 | File | Purpose |
 |------|---------|
 | `types/Kind.java` | Enum distinguishing type-level (`TYPE`) from row-level (`ROW`) metavariables. |
-| `types/MonoType.java` | Sealed interface for monomorphic types: `TCon` (type constructor), `Arrow` (function), `RecordType`, `AppType` (type application), `Meta` (unsolved metavariable). |
+| `types/MonoType.java` | Sealed interface for monomorphic types: `TCon` (type constructor), `Arrow` (function), `RecordType`, `AppType` (type application), `Meta` (unsolved metavariable). **Phase 1d adds `Rigid(int id, Kind kind)` for bound/skolemized type variables (D-031).** |
 | `types/RowType.java` | Record representing row structure: labeled fields (`Map<String, MonoType>`) plus optional row variable tail for row polymorphism. |
-| `types/TypeScheme.java` | Polymorphic type scheme `∀{α₁..αₙ}.body`. Quantified set contains meta IDs. Monomorphic types use empty quantified set. |
+| `types/TypeScheme.java` | Polymorphic type scheme `∀{α₁..αₙ}.body`. Quantified set contains meta IDs. Monomorphic types use empty quantified set. **Phase 1d changes `quantified` from `Set<Integer>` to `Map<Integer, Kind>` for kind-aware instantiation; Rigids replace Metas in the quantified set.** |
 | `types/LitVal.java` | Sealed interface for literal values carried by Core IR `Lit` nodes. Variants aligned with ES DataType: `IntegerLit`, `LongLit`, `DoubleLit`, `KeywordLit` (BytesRef), `BooleanLit`, `NullLit`. |
 | `types/Op.java` | Enum for primitive operators used in Core IR `PrimOp` nodes: arithmetic, comparison, boolean, and unary operators. |
 
@@ -143,12 +150,20 @@ x-pack/plugin/piescript/
 | File | Purpose |
 |------|---------|
 | `elab/ElaborationContext.java` | Immutable typing context passed by value through recursive descent. Holds the de Bruijn-indexed list of named type schemes and the binding level. Returns new instances on `bind()`, `enterBindingLevel()`, `exitBindingLevel()` — the call stack handles scope unwinding. `lookup()` returns `Optional<LookupResult>`. |
-| `elab/ElaborationState.java` | Mutable global state shared across the elaboration pass. Holds only the metavariable supply (monotonic counter) and the zonker (meta ID → solution map with chain resolution). `freshType(bindingLevel)` and `freshRow(bindingLevel)` take the binding level from the caller's context. `resolve()` returns `Optional<Object>`. |
+| `elab/ElaborationState.java` | Mutable global state shared across the elaboration pass. Holds only the metavariable supply (monotonic counter) and the zonker (meta ID → solution map with chain resolution). `freshType(bindingLevel)` and `freshRow(bindingLevel)` take the binding level from the caller's context. `resolve()` returns `Optional<Object>`. **Phase 1d renames `resolveType` → `zonk` returning `Optional<MonoType>` (D-032), adds `resolveRow(RowType)` for flattening.** |
 | `elab/TypeError.java` | Sealed interface for type errors returned by unification. Variants: `Mismatch` (structural incompatibility), `InfiniteType` (occurs check), `FieldMismatch` (wraps inner error with label), `MissingFields` (field set asymmetry). Not an exception — used as `Optional<TypeError>`. |
-| `elab/Unifier.java` | Static Robinson unification over `MonoType`. Resolves through the zonker, handles `Meta` solving (with occurs check), null-as-bottom (D1.11), and structural matching for `TCon`, `Arrow`, `RecordType` (closed rows), `AppType`. Uses flat `if`-chain early exits + single `switch` expression with `when` guards. Returns `Optional<TypeError>` (empty = success). |
-| `elab/Elaborator.java` | Bidirectional type checker and desugarer. Pattern-matching recursive descent over ANTLR parse tree → Core IR. Single `elaborate` switch dispatches on all CST node types. Handles: let (with generalization), lambda (multi-param desugaring), application, primops (concrete Integer-only typed functions, D-020), records, projection (closed-row direct lookup), update, accessor/update-sugar (lambda desugaring), blocks, ascription, literals, pipe (flipped app), top-level bindings. Phase 1 limitations: no if/then/else, no open rows, no numeric widening. |
-| `elab/TypeWalker.java` | Static type-level traversal utilities. Generalization (collect unsolved metas at binding level → quantify), instantiation (replace quantified metas with fresh ones), deep resolution (fully resolve all metas in a type), and type walking (substitution). Extracted from `Elaborator` for clarity. Public (`resolveDeep` used by `CorePrinter`). |
+| `elab/Unifier.java` | Static Robinson unification over `MonoType`. Resolves through the zonker, handles `Meta` solving (with occurs check), null-as-bottom (D1.11), and structural matching for `TCon`, `Arrow`, `RecordType` (closed rows), `AppType`. Uses flat `if`-chain early exits + single `switch` expression with `when` guards. Returns `Optional<TypeError>` (empty = success). **Phase 1d rewrites `unifyRows` to Leijen-style open-row decomposition (D-030) and adds `Rigid` handling (D-031).** |
+| `elab/Elaborator.java` | Bidirectional type checker and desugarer. Pattern-matching recursive descent over ANTLR parse tree → Core IR. Single `elaborate` switch dispatches on all CST node types. Handles: let (with generalization), lambda (multi-param desugaring), application, primops (concrete Integer-only typed functions, D-020), records, projection (closed-row direct lookup), update, accessor/update-sugar (lambda desugaring), blocks, ascription, literals, pipe (flipped app), top-level bindings. Phase 1 limitations: no if/then/else, no open rows, no numeric widening. **Phase 1d changes `resolveTypeAnnotation` to return `TypeScheme` (D-034), adds checking rule for universal types, updates accessor/update/projection to use open rows with unification (supersedes D-021).** |
+| `elab/TypeWalker.java` | Static type-level traversal utilities. Generalization (collect unsolved metas at binding level → quantify), instantiation (replace quantified metas with fresh ones), deep resolution (fully resolve all metas in a type), and type walking (substitution). Extracted from `Elaborator` for clarity. Public (`resolveDeep` used by `CorePrinter`). **Phase 1d removes `resolveDeep` (D-032), changes `collectMetas` to return `Map<Integer, Kind>`, and makes `instantiate` kind-aware.** |
 | `elab/ElaborationException.java` | Unchecked exception for fail-fast elaboration errors (D1.14). Carries line/column and optional `TypeError`. Avoids calling `Source` methods to sidestep the `WarningSourceLocation` compile dependency. |
+
+### Source (`src/main`) — Evaluation (Phase 1c)
+
+| File | Purpose |
+|------|---------|
+| `eval/Value.java` | Sealed interface for runtime values. 8 variants: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)` (D-026), `BooleanVal`, `NullVal`, `RecordVal(Map<String, Value>)`, `ClosureVal(CoreExpr body, Value[] env)`. |
+| `eval/Evaluator.java` | Tree-walking de Bruijn environment machine. Evaluates all 9 `CoreExpr` variants. `CoreLit` converts `BytesRef` to `String` at the boundary. `CorePrimOp` dispatches arithmetic (integer-only, D-020), comparison, and boolean operations. Pattern matches on `Value` variants with `AssertionError` for invariant violations (D-025). `EvaluationException` for null-in-arithmetic (D-027) and division by zero. |
+| `eval/EvaluationException.java` | Unchecked runtime error for user-observable evaluation failures (null in arithmetic, division by zero). |
 
 ### Tests (`src/test`) — Unit Tests
 
@@ -160,13 +175,14 @@ x-pack/plugin/piescript/
 | `elab/ElaborationContextTests.java` | Unit tests for the immutable context. Tests bind/lookup, de Bruijn indexing, shadowing, immutability guarantees (bind doesn't mutate original), binding level operations, scope unwinding via call stack. |
 | `elab/ElaborationStateTests.java` | Unit tests for the mutable state. Tests fresh meta allocation with explicit binding levels, zonker solve/resolve/chain resolution, `resolveType`, and an integrated let-polymorphism workflow exercising both context and state together. |
 | `elab/UnifierTests.java` | Unit tests for unification. Covers: identical types, meta solving (left/right/meta-meta/transitive/conflict), occurs check (direct/nested), null-as-bottom (with TCon/Arrow/Meta), arrow matching (success/param mismatch/result mismatch/with metas), record matching (success/missing/extra/field type mismatch/with metas/empty), AppType, and cross-form mismatches. |
-| `elab/ElaboratorTests.java` | Unit tests for the elaborator (68 tests). Covers: literals (int, long, decimal, string, escapes, boolean, null), let-bindings (basic, annotated, nested, shadowing, top-level, multiple), lambdas (identity, typed, multi-param), application (direct, type inference), let-polymorphism, all arithmetic/comparison/boolean operators, unary ops (negation, not), records (empty, literal, projection, update, field addition), pipe operator, accessor sugar, update sugar, blocks (let stmts, expr stmts, multi), parentheses, type ascription, de Bruijn indices, and error cases (unbound variable, type mismatch, non-function application, duplicate field, projection on non-record, missing field, annotation mismatch, unknown type, if/then/else unsupported, update on non-record). |
+| `elab/ElaboratorTests.java` | Unit tests for the elaborator (72 tests). Covers: literals (int, long, decimal, string, escapes, boolean, null), let-bindings (basic, annotated, nested, shadowing, top-level, multiple), lambdas (identity, typed, multi-param), application (direct, type inference), let-polymorphism, all arithmetic/comparison/boolean operators, unary ops (negation, not), records (empty, literal, projection, update, field addition), pipe operator, accessor sugar, update sugar, blocks (let stmts, expr stmts, multi), parentheses, type ascription, de Bruijn indices, error cases (unbound variable, type mismatch, non-function application, duplicate field, projection on non-record, missing field, annotation mismatch, unknown type, if/then/else unsupported, update on non-record), and deferred tests (occurs check, cross-type arithmetic, lambda type mismatch). |
+| `eval/EvaluatorTests.java` | Unit tests for the evaluator (50 tests). Covers: literals (int, long, double, string, boolean, null), arithmetic (+, -, *, /, %), comparisons (<, >, <=, >=, ==, !=), boolean ops (&&, \|\|, !), unary negation, let-bindings (basic, expression, nested, shadowing, top-level), lambdas (identity, increment, multi-param, returns closure), let-polymorphism, records (empty, literal, projection, update, add field), pipe operator, blocks, closures (curried, capture), accessor sugar, nested record projection, error cases (division by zero, modulo by zero, null in arithmetic), and complex expressions. |
 
 ### Tests (`src/javaRestTest`) — Integration Tests
 
 | File | Purpose |
 |------|---------|
-| `PiescriptIT.java` | Java REST integration test suite. Spins up a single-node cluster with trial license and security disabled. Tests: basic passthrough, filtered queries, invalid ESQL, empty program, missing `query` prefix, missing `program` field. |
+| `PiescriptIT.java` | Java REST integration test suite. Spins up a single-node cluster with trial license, security disabled, ML disabled. Tests: query passthrough (basic, filtered, invalid ESQL), expression evaluation (arithmetic, records, lambdas, booleans), error handling (empty program, missing field, type error, parse error, malformed input). |
 
 ## Packages
 
@@ -179,7 +195,7 @@ The root package is `org.elasticsearch.xpack.piescript`. Sub-packages are introd
 | `piescript.types` | 1b | Exists | Type system (Kind, MonoType, RowType, TypeScheme, LitVal, Op) |
 | `piescript.core` | 1b | Exists | Core IR (CoreExpr sealed hierarchy extending Node, CoreField helper) |
 | `piescript.elab` | 1b | Exists | Elaboration machinery (immutable context, mutable state; future: unification, elaborator) |
-| `piescript.eval` | 1c | Planned | Tree-walking evaluator, runtime values, closures |
+| `piescript.eval` | 1c | Exists | Tree-walking evaluator, runtime values, closures |
 
 ## External Touchpoints
 

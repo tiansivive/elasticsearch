@@ -14,7 +14,6 @@ import org.elasticsearch.xpack.piescript.types.RowType;
 import org.elasticsearch.xpack.piescript.types.TypeScheme;
 
 import java.util.Map;
-import java.util.Set;
 
 import static org.hamcrest.Matchers.is;
 
@@ -112,7 +111,7 @@ public class ElaborationStateTests extends ESTestCase {
         var integer = new MonoType.TCon("Integer");
         state.solve(alpha.id(), integer);
 
-        assertThat(state.resolveType(alpha), is(integer));
+        assertThat(state.zonkOrKeep(alpha), is(integer));
     }
 
     public void testResolveTypeChain() {
@@ -124,21 +123,21 @@ public class ElaborationStateTests extends ESTestCase {
         state.solve(alpha.id(), beta);
         state.solve(beta.id(), integer);
 
-        assertThat(state.resolveType(alpha), is(integer));
+        assertThat(state.zonkOrKeep(alpha), is(integer));
     }
 
     public void testResolveTypeNonMeta() {
         var state = new ElaborationState();
         var tcon = new MonoType.TCon("Integer");
 
-        assertThat(state.resolveType(tcon), is(tcon));
+        assertThat(state.zonkOrKeep(tcon), is(tcon));
     }
 
     public void testResolveTypeUnsolvedMeta() {
         var state = new ElaborationState();
         var alpha = state.freshType(0);
 
-        assertThat(state.resolveType(alpha), is(alpha));
+        assertThat(state.zonkOrKeep(alpha), is(alpha));
     }
 
     public void testSolveRowMeta() {
@@ -167,8 +166,10 @@ public class ElaborationStateTests extends ESTestCase {
      * Simulates the elaboration of:
      * <pre>{@code let id = fn x -> x in id 42}</pre>
      *
-     * Exercises the immutable context and mutable state together, as they
-     * would be used in a real recursive descent elaborator.
+     * Exercises the immutable context and mutable state together, following
+     * the same flow as the real elaborator: fresh meta for the param, then
+     * generalize solves the meta to a Rigid and builds a TypeScheme keyed
+     * by Rigid IDs.
      */
     public void testLetPolymorphismWorkflow() {
         var state = new ElaborationState();
@@ -185,19 +186,22 @@ public class ElaborationStateTests extends ESTestCase {
         assertThat(xResult.get().scheme().body(), is(alpha));
 
         var idType = new MonoType.Arrow(alpha, alpha);
-        var scheme = new TypeScheme(Set.of(alpha.id()), idType);
+
+        var rigid = state.freshRigid(Kind.TYPE);
+        state.solve(alpha.id(), rigid);
+        var scheme = new TypeScheme(Map.of(rigid.id(), Kind.TYPE), idType);
 
         var bodyCtx = ctx.bind("id", scheme);
         var idResult = bodyCtx.lookup("id");
         assertTrue(idResult.isPresent());
         assertThat(idResult.get().index(), is(0));
         assertThat(idResult.get().scheme().quantified().size(), is(1));
-        assertTrue(idResult.get().scheme().quantified().contains(alpha.id()));
+        assertTrue(idResult.get().scheme().quantified().containsKey(rigid.id()));
 
         var beta = state.freshType(bodyCtx.bindingLevel());
         assertThat(beta.bindingLevel(), is(0));
         state.solve(beta.id(), new MonoType.TCon("Integer"));
-        assertThat(state.resolveType(beta), is(new MonoType.TCon("Integer")));
+        assertThat(state.zonkOrKeep(beta), is(new MonoType.TCon("Integer")));
 
         assertThat(ctx.depth(), is(0));
     }

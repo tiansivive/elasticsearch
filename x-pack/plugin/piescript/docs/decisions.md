@@ -82,13 +82,22 @@ adds type checking and evaluation (CPU-bound work), a dedicated thread pool shou
 
 ## D-005: Type System — Bidirectional Hindley-Milner with zonker-based elaboration
 
-**Phase**: 1 | **Status**: accepted
+**Phase**: 1 | **Status**: accepted (refined by D-031, D-032, D-034 in Phase 1d; clarified by D-035)
 
 **Context**: The expression language needs type inference. Options considered:
 (a) simple structural typing, (b) classic Algorithm W, (c) bidirectional HM,
 (d) full System F with explicit type applications.
 
 **Decision**: Bidirectional Hindley-Milner inference with zonker-based elaboration.
+
+The **surface language** is HM-style — no explicit `forall`, no explicit type application
+syntax. Type abstractions and applications are **implicit in the surface language**: the user
+never writes them.
+
+The **Core IR** is System F. The elaborator infers type abstractions and type applications and
+emits them as explicit nodes in the Core IR (`CoreTypeAbs`, `CoreTypeApp` — see D-035). This
+is the standard compilation model: HM surface in, System F core out (Dunfield & Krishnaswami,
+GHC's OutsideIn(X)).
 
 **Rationale**:
 - *Bidirectional* checking gives better error messages than pure inference (Algorithm W) because
@@ -100,8 +109,13 @@ adds type checking and evaluation (CPU-bound work), a dedicated thread pool shou
   evaluation, or lowering. There is **no zonking pass** that rewrites the AST. The zonker is
   carried as a lookup table throughout the pipeline. This avoids the cost of repeated substitution
   and keeps the Core IR immutable. See Phase 1 plan, D1.7.
-- *System F* was rejected because it requires explicit type applications, which conflicts with the
-  "types are inferred, not annotated" philosophy.
+- *System F* was rejected as the **surface language** because it requires explicit type
+  applications, which conflicts with the "types are inferred, not annotated" philosophy.
+  However, the **Core IR is System F**: the elaborator infers type abstractions (`CoreTypeAbs`)
+  at generalization sites and type applications (`CoreTypeApp`) at instantiation sites. Rigid
+  type variables (`MonoType.Rigid`, D-031) in the Core IR refer to binders introduced by
+  `CoreTypeAbs`. At downstream passes (printing, optimization, lowering), Rigids are resolved
+  via environment-based lookup — no tree-walking substitution needed. See D-035.
 
 **Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
 
@@ -540,7 +554,7 @@ added as an intermediate step before type classes, using explicit coercion primi
 
 ## D-021: Accessor/Update Sugar — Closed-Row Constraints (Phase 1)
 
-**Phase**: 1b | **Status**: accepted (will be relaxed with row polymorphism)
+**Phase**: 1b | **Status**: accepted (superseded by open-row sugar in Phase 1d; see D-029, D-030)
 
 **Context**: The accessor sugar (`.field`) and update sugar (`{ _ | field = expr }`) desugar into
 lambdas: `.x` becomes `fn $acc -> $acc.x`, and `{ _ | x = e }` becomes `fn $upd -> { $upd | x = e }`.
@@ -585,3 +599,555 @@ requires at least one digit after the dot: `42.0` is valid, `42.` is not.
 **Rationale**: `42.` as a decimal literal is unusual (most languages require digits after the dot)
 and causes a real ambiguity with field projection syntax. Requiring at least one digit is standard
 practice (Haskell, OCaml, Rust all require digits after the decimal point).
+
+---
+
+## D-023: PiescriptResponse — Wrapper, Not Subclass
+
+**Phase**: 1c | **Status**: accepted
+
+**Context**: The eval endpoint needs to return either an expression evaluation result (for piescript
+expressions) or an ESQL query response (for the Phase 0 passthrough path). Options: (a) subclass
+`EsqlQueryResponse`, (b) create a wrapper that delegates to `EsqlQueryResponse` for queries, (c)
+use two separate `ActionType`s.
+
+**Decision**: `PiescriptResponse` is a wrapper. It implements `ChunkedToXContentObject` and
+`Releasable`. For expression results, it holds a `Value` and type string and serializes as
+`{"type": "...", "result": ...}`. For query passthrough, it holds an `EsqlQueryResponse` and
+delegates chunked serialization and cleanup.
+
+**Rationale**: `EsqlQueryResponse` is tightly coupled to ESQL internals (Pages, BlockFactory,
+ref-counting for off-heap memory). Subclassing it from an external plugin would create a fragile
+dependency. A wrapper cleanly separates concerns: piescript owns its value format, ESQL owns its
+columnar format. A single `ActionType<PiescriptResponse>` keeps the REST handler and transport
+layer unified.
+
+---
+
+## D-024: Evaluator Architecture — De Bruijn Environment Machine
+
+**Phase**: 1c | **Status**: accepted
+
+**Context**: The evaluator needs a runtime environment for variable lookup. Options: (a) named
+variable map, (b) de Bruijn environment (array indexed by index), (c) substitution-based.
+
+**Decision**: De Bruijn environment machine. The environment is a `Value[]` indexed by de Bruijn
+index, with position 0 being the most recently bound variable. Lambda application prepends the
+argument to the closure's captured environment.
+
+**Rationale**: The Core IR already uses de Bruijn indices (D-006). An indexed array is the natural
+and fastest lookup mechanism. No hashing, no name comparisons. `prepend` is a single array copy.
+Closures capture the environment by cloning the array at lambda creation time.
+
+---
+
+## D-025: Evaluator Trusts the Type Checker
+
+**Phase**: 1c | **Status**: accepted
+
+**Context**: When the evaluator encounters a `CoreApp` node, it evaluates the function position
+and expects a `ClosureVal`. What if it's not? Similarly, `CoreProject` expects a `RecordVal`.
+
+**Decision**: The evaluator uses pattern matches. If the value is not of the expected variant, it
+throws `AssertionError` (internal bug), not `EvaluationException` (user error). The only user-facing
+runtime errors are null-in-arithmetic (D-027) and division by zero.
+
+**Rationale**: The type checker guarantees that a well-typed program cannot produce a non-closure
+in function position or a non-record in projection position. If it happens, the type checker has a
+bug. Using `AssertionError` makes this distinction clear: it's an invariant violation, not a
+user-caused condition.
+
+---
+
+## D-026: KeywordVal Uses String, Not BytesRef
+
+**Phase**: 1c | **Status**: accepted (deliberate deviation from D-009)
+
+**Context**: D-009 aligns literal types with ESQL's `DataType`. ESQL represents keywords as
+`BytesRef` (Lucene's byte-array wrapper). Should the runtime `Value.KeywordVal` also use `BytesRef`?
+
+**Decision**: `KeywordVal` uses `String`. The conversion from `BytesRef` to `String` happens in the
+evaluator's `CoreLit` handler (`BytesRef.utf8ToString()`).
+
+**Rationale**: `BytesRef` is a Lucene internal optimized for index storage, not for general-purpose
+string manipulation. For Phase 1c's expression evaluator (which doesn't touch indices), `String` is
+simpler, safer, and sufficient. The conversion boundary is narrow (one line in `litToValue`).
+
+**Future**: when ESQL query results flow into piescript expressions (Phase 2+), `BytesRef` values
+from ESQL result pages will need conversion to `String` at the boundary. The reverse conversion
+(`String` to `BytesRef`) will be needed if piescript values flow into ESQL query parameters.
+
+---
+
+## D-027: Null in Arithmetic — Runtime Error
+
+**Phase**: 1c | **Status**: accepted
+
+**Context**: D-007 allows `null` to unify with any type (null-as-bottom). This means `let x :
+Integer = null in x + 1` passes type checking. What should the evaluator do when `null` reaches
+an arithmetic operation?
+
+**Decision**: `NullVal` in an arithmetic or boolean PrimOp throws `EvaluationException("null value
+in <op> operation")`. Division by zero also throws `EvaluationException`.
+
+**Rationale**: The type system is deliberately unsound w.r.t. null (D-007). The evaluator must
+catch the cases where this unsoundness surfaces at runtime. Treating null in arithmetic as a
+user-facing error (not an `AssertionError`) is correct because it stems from a user-written
+program (`null` is user-provided), not a type checker bug.
+
+---
+
+## D-028: Type Variable Convention — Lowercase = Variable, Uppercase = Constructor
+
+**Phase**: 1 | **Status**: accepted
+
+**Context**: Type annotations need to distinguish type variables (`a`, `r`) from concrete type
+constructors (`Integer`, `Keyword`). The master plan's formal grammar (Section 13.2) already uses
+lowercase identifiers for type variables (`a : Type or a : Row`) and PascalCase for constructors
+(`"Keyword"`, `"Int"`), but this convention was not formalized as a decision or implemented in
+the parser/elaborator.
+
+**Decision**: In type annotations, identifier case determines interpretation:
+
+- **Lowercase-initial** identifiers (`a`, `r`, `elem`, `row`) are **type variables**. They are
+  implicitly universally quantified at the nearest enclosing `let` binding.
+- **Uppercase-initial** identifiers (`Integer`, `Keyword`, `Boolean`, `Stream`) are **type
+  constructors**. They must resolve to known concrete types.
+
+Examples:
+```
+let id : a -> a = fn x -> x
+let getMsg : { msg: a | r } -> a = fn rec -> rec.msg
+let inc : Integer -> Integer = fn x -> x + 1
+```
+
+**Rationale**:
+- This is the standard convention in ML-family languages (Haskell, OCaml, Elm, PureScript).
+  Piescript's target audience overlaps with users of these languages' type annotation styles.
+- It avoids the need for explicit `forall` quantifiers in most cases — the elaborator can
+  collect all lowercase identifiers in a type annotation and implicitly quantify them.
+- The ANTLR grammar's `typePrimary` rule currently treats all `IDENTIFIER` tokens as `TypeCon`.
+  Implementation requires splitting this into two cases based on the first character's case.
+- Aligns with master plan Section 13.2: `| a -- type variable (a : Type or a : Row)`.
+
+**Implementation notes**: The ANTLR lexer is split into `UPPER_IDENT` and `LOWER_IDENT`
+tokens (see D-033). In type annotation positions, the parser uses `UPPER_IDENT` for type
+constructors and `LOWER_IDENT` for type variables. Expression-level rules accept both via
+a helper `ident` rule. This enforces the convention at the grammar level, not the elaborator.
+
+---
+
+## D-029: Phase Reordering — Open Rows Before Pattern Matching
+
+**Phase**: 1 | **Status**: accepted (supersedes Phase 1d ordering)
+
+**Context**: The original roadmap scheduled Phase 1d as Pattern Matching and deferred row
+polymorphism to Phase 2 (bundled with index resolution). After completing Phase 1c (Evaluator),
+the accessor/update sugar limitation (D-021: closed-row constraints) became the more pressing
+issue — functions like `.x` cannot accept records with extra fields.
+
+**Decision**: Reorder the phases:
+
+- **Phase 1d becomes: Open Rows & Row Polymorphism** — open-row unification, row variables in
+  accessor/update sugar, type variable convention (D-028), and row-polymorphic function tests.
+- **Phase 1e becomes: Pattern Matching** — the original Phase 1d content (match expressions,
+  exhaustiveness, if/then/else sugar).
+- **Phase 2 retains: Index Resolution** — the parts of the original Phase 2 that depend on ES
+  mappings (`IndexResolver` integration, concrete-row constraints, `query` typing). Row
+  unification infrastructure built in Phase 1d is a prerequisite.
+
+**Rationale**:
+- Row polymorphism is foundational for the language's expressiveness. Without it, even basic
+  record-handling functions are artificially restricted to exact field sets.
+- Pattern matching, while important, is independent of the row type system and can follow later
+  without blocking other work.
+- Pulling open-row unification forward de-risks Phase 2: the core unification algorithm is
+  tested in isolation before adding the complexity of index resolution and concrete-row
+  constraints.
+- D-021 (closed-row accessor/update sugar) is explicitly superseded by the open-row work in
+  Phase 1d.
+
+---
+
+## D-030: Open-Row Unification — Leijen-Style, Not Rémy-Style
+
+**Phase**: 1d | **Status**: accepted
+
+**Context**: Open-row unification is needed for row polymorphism. Two well-known approaches
+exist: Rémy-style (recursive row constructors with head/tail decomposition, requiring 4-way
+pattern matching on row shapes) and Leijen-style (flat field sets with optional tail variables,
+operating on field-set differences).
+
+**Decision**: Leijen-style row unification, adapted to piescript's flat `RowType` representation
+(`Map<String, MonoType>` fields + `Optional<MonoType.Meta>` row variable tail).
+
+**Algorithm**:
+1. Flatten both rows through the zonker (`resolveRow`)
+2. Pairwise-unify common fields
+3. Compute `onlyA` and `onlyB` (excess field sets)
+4. Dispatch on tails:
+   - Both closed, no excess → success
+   - Both closed, any excess → `MissingFields` error
+   - A open, B closed → if `onlyA` non-empty, error; else solve `tailA = RowType(onlyB, ∅)`
+   - B open, A closed → symmetric
+   - Both open → fresh `r3`; solve `tailA = RowType(onlyB, r3)`; solve `tailB = RowType(onlyA, r3)`
+5. Occurs check before solving row metas
+
+**Rationale**:
+- Our `RowType` is already a flat map, not a recursive row-cons structure. Rémy-style would
+  require converting to/from recursive form or simulating it — unnecessary complexity.
+- Leijen's approach is a single recursive function operating on set differences, which maps
+  directly to our data structure.
+- The commutative unification (field order doesn't matter) is natural with map-based rows.
+
+**Ref**: Leijen — *Extensible records with scoped labels* (2005). See [references.md](references.md).
+
+---
+
+## D-031: Rigid Type Variables — Skolem Constants for Bound Variables
+
+**Phase**: 1d | **Status**: accepted
+
+**Context**: The type system needs to distinguish between unification variables (metas — "holes"
+to be solved) and universally quantified type variables (which must not be solved). Without this
+distinction, type annotations like `a -> a` cannot be correctly checked — the `a` would be
+treated as a meta and immediately solved, losing its universal meaning.
+
+**Decision**: Add `record Rigid(int id, Kind kind) implements MonoType {}` to the `MonoType`
+sealed interface. Rigids are skolem constants representing bound type variables.
+
+**Semantics**:
+- Two Rigids with the **same id** unify successfully.
+- A Rigid with a **different id**, any `TCon`, `Arrow`, `RecordType`, `AppType`, or `Meta` is
+  a type error (`Mismatch`).
+- Rigids appear in the **body** of `TypeScheme`s, representing the quantified variables.
+- At **instantiation** (use site), Rigids are replaced with fresh Metas.
+- At **annotation elaboration**, lowercase type variable names are mapped to fresh Rigids.
+- At **generalization** (unannotated definitions), unsolved metas are converted to Rigids.
+
+**Rationale**:
+- Standard approach in ML/Haskell type inference (GHC calls them "skolems" or "rigid type
+  variables"). Necessary for correct checking against universal types.
+- Without Rigids, there is no way to verify that a body works "for all a" — metas would be
+  eagerly solved, defeating universal quantification.
+- `TypeScheme` remains our type abstraction (no `Forall` variant in `MonoType` needed for
+  rank-1).
+
+---
+
+## D-032: Zonker API — `zonk` Returns `Optional<MonoType>`
+
+**Phase**: 1d | **Status**: accepted (supersedes `resolveType` semantics in D-005)
+
+**Context**: The current `resolveType` method on `ElaborationState` returns the meta itself
+when unsolved — `state.resolveType(meta)` returns the same `Meta` on miss. This makes it
+impossible for callers to distinguish "unsolved meta" from "the solution happens to be a meta
+of the same shape." It also conflicts with the no-substitution principle (D-005): consumers
+should use the zonker as a lookup table, not get confused by sentinel returns.
+
+**Decision**:
+- Rename `resolveType` to `zonk`.
+- Return `Optional<MonoType>`: `Optional.of(solution)` when the meta is solved (following
+  chains), `Optional.empty()` when unsolved.
+- Remove `resolveDeep` from `TypeWalker`. It performs a full substitution pass over a type tree,
+  which violates D-005's no-substitution principle. Consumers that need display-ready types
+  (e.g., `CorePrinter`) resolve inline at point of use.
+
+**Rationale**:
+- `Optional.empty()` is unambiguous — the meta is unsolved.
+- Callers that want the old behavior use `state.zonk(type).orElse(type)`.
+- Removing `resolveDeep` keeps the system honest about the no-substitution invariant. Every
+  type resolution is point-of-use, explicit, and lazy.
+
+**Implementation status (updated after D-035)**: `resolveType` was renamed to `zonkOrKeep`
+(preserving the old return-meta-on-miss semantics) rather than the `Optional`-returning `zonk`
+specified here. D-035 eliminated `TypeWalker.walkType`, `TypeWalker.generalize`, and
+`TypeWalker.instantiate`. `resolveDeep` remains in `TypeWalker` and is used by `CorePrinter`
+for display; it will eventually be replaced by environment-based Rigid resolution in
+downstream passes. The `zonkOrKeep` vs `Optional`-returning `zonk` deviation remains.
+
+---
+
+## D-033: ANTLR Lexer Split — `UPPER_IDENT` and `LOWER_IDENT`
+
+**Phase**: 1d | **Status**: accepted (refines D-028 implementation)
+
+**Context**: D-028 established the convention: lowercase identifiers are type variables,
+uppercase identifiers are type constructors. The initial plan was to enforce this in the
+elaborator (runtime check on the first character). This is fragile and misplaced — grammar-level
+conventions belong in the grammar.
+
+**Decision**: Split the `IDENTIFIER` lexer rule into two tokens:
+
+```antlr
+UPPER_IDENT : [A-Z] (LETTER | DIGIT | '_')* ;
+LOWER_IDENT : [a-z] (LETTER | DIGIT | '_')* ;
+```
+
+Parser rules are updated:
+- Expression positions (variables, field names, bindings): use helper rule `ident : UPPER_IDENT | LOWER_IDENT`
+- Type constructor position (`typePrimary`): `UPPER_IDENT` only
+- Type variable position (`typePrimary`): `LOWER_IDENT` only
+- Row variable tail: `BAR LOWER_IDENT`
+
+**Rationale**:
+- The grammar is the source of truth for syntax. Enforcing case conventions in the elaborator
+  mixes concerns (syntax analysis vs. semantic analysis).
+- Parser errors for misplaced casing are immediate and clear ("expected UPPER_IDENT, got
+  LOWER_IDENT 'integer'") rather than delayed elaboration errors.
+- Keywords (`let`, `fn`, `in`, etc.) are matched before identifiers by ANTLR's priority rules,
+  so no conflicts arise.
+
+---
+
+## D-034: Type Annotations Elaborate to `TypeScheme`
+
+**Phase**: 1d | **Status**: accepted
+
+**Context**: The current `resolveTypeAnnotation` returns `MonoType`. This cannot represent
+polymorphic type annotations like `a -> a`. When type variables appear in an annotation, the
+result must be a universal type (type abstraction), not a monomorphic type with dangling
+unification variables.
+
+**Decision**: `resolveTypeAnnotation` returns `TypeScheme`. The elaboration of a type annotation
+proceeds:
+
+1. Walk the CST type, collecting `LOWER_IDENT` names into a rigid scope
+   (`Map<String, MonoType.Rigid>`).
+2. Each new lowercase name allocates a fresh `Rigid` with the appropriate `Kind` (TYPE for type
+   positions, ROW for row-variable tail positions).
+3. Construct the `MonoType` body using Rigids in place of type variables.
+4. If the rigid scope is empty, return `TypeScheme.mono(body)`.
+5. Otherwise, return `new TypeScheme(rigidScope.toKindMap(), body)`.
+
+**Checking against a universal type**: when checking an expression against a `TypeScheme` from
+an annotation, the Rigids are already in the body. Check the expression against `scheme.body()`
+directly. Rigids in the body cannot be solved by unification — they act as opaque constants.
+If the body does not work for all possible types, unification will fail (e.g., `Integer` vs
+`Rigid(0)` → Mismatch).
+
+**Binding flow**:
+- **Annotated definitions**: the `TypeScheme` from the annotation is stored directly in the
+  environment. No generalization step — the annotation already specifies the polymorphic
+  structure.
+- **Unannotated definitions**: the body is inferred using Metas. Generalization collects
+  unsolved metas, converts them to Rigids, and wraps in a `TypeScheme`.
+
+Both paths produce equivalent TypeSchemes. At use sites, instantiation replaces Rigids with
+fresh Metas.
+
+**Rationale**:
+- Returning `MonoType` from annotation elaboration loses the universal quantification. The
+  elaborator must know which variables are bound (Rigids) vs. which are holes (Metas).
+- The annotation-as-TypeScheme approach is standard in bidirectional type checkers (Dunfield &
+  Krishnaswami 2013, GHC's OutsideIn(X)).
+
+---
+
+## D-035: Core IR is System F — Explicit `CoreTypeAbs` and `CoreTypeApp`
+
+**Phase**: 1d+ | **Status**: accepted, **implemented**
+
+**Context**: D-005 describes the Core IR as "System F-omega-like" where type abstractions and
+applications are "implicit — inferred by the elaborator, never written by the user." The word
+"implicit" was ambiguous: it means **implicit in the surface language** (the user doesn't write
+them), not **absent from the Core IR**. The standard PL meaning of elaboration is translating
+an implicit surface language into an explicit core language. The elaborator infers type
+abstractions and applications and emits them as Core IR nodes.
+
+**Decision**: The Core IR is System F with deferred constraint solving. Two new **unary** nodes
+are added to the `CoreExpr` sealed hierarchy:
+
+```java
+CoreTypeAbs(Source, int rigidId, Kind kind, CoreExpr body, MonoType type)
+CoreTypeApp(Source, CoreExpr polyExpr, MonoType typeArg, MonoType type)
+```
+
+Both are unary: multiple quantifiers/applications are represented as nested nodes.
+
+**`CoreTypeAbs`** (type abstraction / Λ-node):
+- Emitted at generalization sites (let-bindings with polymorphic types).
+- Binds a single type variable: `rigidId` + `kind`.
+- Multiple quantified variables → nested `CoreTypeAbs` nodes.
+- `type` is the body's type.
+
+**`CoreTypeApp`** (type application / @-node):
+- Emitted at instantiation sites (use sites of polymorphic bindings).
+- Applies a single type argument: `typeArg` (a fresh meta).
+- Multiple type arguments → nested `CoreTypeApp` nodes.
+- `type` is the instantiated type.
+
+**Deferred constraint solving**: The elaborator does not call `Unifier.unify` inline. Instead,
+it emits `Constraint(left, right, line, column)` records into an accumulator on
+`ElaborationState`. Constraints are solved incrementally at generalization boundaries (so that
+`collectMetas` can see through solved metas) and at the end of the program. This decouples
+constraint generation from solving and keeps the elaboration logic clean.
+
+**`generalize` creates Rigids**: At each generalization site, the elaborator solves pending
+constraints, collects unsolved metas at the binding level, converts each to a `Rigid` in the
+zonker, and builds a `TypeScheme` mapping Rigid IDs to kinds.
+
+**`instantiate` uses the same fresh metas for CoreTypeApp**: At each use site,
+`instantiateAndWrap` creates fresh metas for each quantified Rigid, walks the scheme body
+(resolving metas through the zonker and substituting Rigids), and wraps the `CoreVar` in
+nested `CoreTypeApp` nodes using those same fresh metas.
+
+**Example**: `let f = fn x -> x in { fst: f 1, snd: f true }` elaborates to:
+
+```
+(let f : b -> b = (Λ b. (fn x : b -> x)) in { fst: ((f @Integer) 1), snd: ((f @Boolean) true) })
+```
+
+**What was eliminated**:
+- `TypeWalker.walkType` — deleted.
+- `TypeWalker.instantiate` — deleted; replaced by `Elaborator.instantiateAndWrap`.
+- `TypeWalker.generalize` — deleted; replaced by `Elaborator.generalize`.
+
+**What remains**:
+- `TypeWalker.resolveDeep` — used by `CorePrinter` for display. Will eventually be replaced
+  by environment-based Rigid resolution in downstream passes.
+- `TypeWalker.collectMetas` — used by `generalize` to find unsolved metas.
+- `ElaborationState.zonkOrKeep` — the zonker is the union-find; it does not go away.
+
+**Rationale**:
+- The Core IR being System F is the standard compilation model for HM languages (GHC, MLton,
+  OCaml's Flambda). The surface is implicit; the core is explicit.
+- Deferred constraints decouple constraint generation from solving, making the elaborator
+  easier to reason about and extend.
+- Solving at generalization boundaries ensures `collectMetas` sees through solved metas
+  (e.g., row tails), producing correct polymorphic type schemes.
+- `CoreTypeAbs`/`CoreTypeApp` nodes provide explicit information for downstream passes:
+  the optimizer can see exactly where polymorphism is introduced and eliminated, enabling
+  specialization and monomorphization as future optimizations.
+
+**Ref**: Dunfield & Krishnaswami 2013 (bidirectional HM elaborating to System F),
+GHC Core (System FC with explicit type abstractions and applications)
+
+---
+
+## D-036: Bidirectional Checking Mode — Missing, Tracked for Implementation
+
+**Phase**: 1b (gap) | **Status**: accepted
+
+**Context**: D-005 specifies "bidirectional Hindley-Milner" and states that "checking mode
+propagates expected types inward." The roadmap marked "Bidirectional elaborator (infer / check
+modes, desugaring)" as complete. However, the elaborator only has a single `elaborate` method
+(synthesis mode). There is no checking mode — no mechanism to propagate an expected type inward
+through the elaboration. All type-directed information flows outward (synthesize) and is then
+constrained after the fact via `emitConstraint`.
+
+This means:
+- **Let with annotation**: the RHS is synthesized first, then constrained against the annotation
+  after the fact — backwards from bidirectional checking, which should resolve the annotation
+  first and check the RHS against it.
+- **Ascription** (`e : T`): the canonical "switch to checking mode" form in any bidirectional
+  system. Currently synthesizes `e` and constrains afterward.
+- **Lambda against arrow type**: when a lambda is checked against a known function type, the
+  parameter type should flow inward. Currently a fresh meta is created and constrained later.
+- **∀-CHECK rule**: to check an expression against a universal type (`∀a. τ`), the standard
+  rule introduces the type variable and checks against the body, producing a `CoreTypeAbs`.
+  Currently, `CoreTypeAbs` insertion is hardcoded at the let level via `wrapTypeAbs`, not a
+  general elaboration rule.
+
+For rank-1 HM with deferred constraints, the current approach produces correct results — the
+semantics are equivalent. But the structure loses the key benefit of bidirectional checking:
+propagating known types inward for better error locality and enabling the ∀-CHECK rule as a
+general principle.
+
+**Decision**: Add a `check` method to the elaborator that accepts a `TypeScheme` as the expected
+type. The `elaborate` method remains as the synthesis mode. The checking mode:
+
+1. If the expected `TypeScheme` has quantifiers, introduce `CoreTypeAbs` nodes (the ∀-CHECK
+   rule) and recurse with the body.
+2. Delegate to form-specific checking rules where beneficial (e.g., lambda checked against
+   arrow decomposes the arrow and assigns the parameter type directly).
+3. Fall back to synthesize + constrain for forms without specialized checking rules.
+
+`TypeScheme` is used instead of adding a `Forall` variant to `MonoType` — the scheme already
+represents universal quantification and is the natural carrier for the expected type.
+
+**Immediate fix (D-036a)**: refactor `Let.let` and `Let.topBindings` to resolve the annotation
+(or create a fresh meta) *before* elaborating the RHS, and constrain/generalize in the correct
+order. This is the minimal structural fix.
+
+**Full implementation (D-036b)**: add the `check` method with ∀-CHECK, lambda-against-arrow,
+and ascription-as-check. This is the full bidirectional checking mode.
+
+**Rationale**: The elaborator should match the system it claims to implement. Bidirectional
+checking is not just a label — it provides concrete benefits (better error messages, natural
+∀-handling, cleaner let-binding flow). The current synthesis-only approach is Algorithm J with
+deferred solving, not bidirectional HM.
+
+---
+
+## D-037: Environment-Carrying Instantiation — Future Enhancement
+
+**Phase**: 1b (future) | **Status**: proposed
+
+**Context**: Instantiation of polymorphic variables currently walks the entire `TypeScheme` body,
+substituting each quantified `Rigid` with a fresh `Meta`. This is complicated by the fact that
+`generalize` does not rebuild the scheme body — it records `meta → rigid` solutions in the
+zonker but stores the original type (still containing `Meta` nodes) as the body. Therefore
+`instantiateBody` must zonk through metas to find the rigids underneath before substituting,
+leading to the tangled logic in `Polymorphism.instantiateBody`.
+
+The project's design principle is to avoid eager substitutions where possible (the zonker itself
+embodies this — metas are resolved lazily via lookup, not by rewriting type trees). Instantiation
+currently violates this principle: it walks and rebuilds the type on every use of a polymorphic
+variable.
+
+**Proposed approach**: Attach a small type-level environment (a `Map<Integer, MonoType>` mapping
+rigid IDs to their instantiated metas) to the instantiated type, analogous to how closures pair
+a term body with a value environment. Instantiation becomes O(k) (extend the env with k fresh
+metas) instead of O(n) (walk an n-node type body). Rigids resolve lazily through this environment
+at the point of use — unification, lowering, printing, etc.
+
+This eliminates:
+- The `instantiateBody` walk entirely.
+- The need for `generalize` to rebuild or zonk the body.
+- The `meta → rigid → meta` round-trip through the zonker.
+
+**Trade-offs**: Downstream consumers (unifier, printer, evaluator) must be aware of the env and
+resolve rigids through it. This is the same trade-off as the zonker itself — lazy resolution
+requires cooperation from all readers.
+
+**Decision**: Deferred as a future enhancement. The current substitution-based instantiation is
+correct and the type bodies are small in practice. Revisit when type complexity grows or
+instantiation becomes a measurable cost.
+
+---
+
+## D-038: `MonoType` → `Type` with `Forall` Variant
+
+**Phase**: 1b | **Status**: planned
+
+**Context**: The type representation `MonoType` currently has no way to express polymorphic types
+(`∀a. τ`). In System F, type abstraction (`Λa. e`) has type `∀a. τ`, which is itself a type —
+not a separate metalinguistic concept. Our current design represents polymorphism out-of-band via
+`TypeScheme`, which maps quantified Rigid IDs to Kinds alongside a monomorphic body. This works
+for let-bindings (where generalization produces a scheme stored in the context) but breaks for
+expression-level polytypes such as polytype ascription.
+
+**Symptom**: `(fn x -> x : a -> a)` correctly elaborates to `CoreTypeAbs(a, CoreLam(x, x))` via
+the ∀-CHECK rule, but `CoreTypeAbs.type()` returns the body's monotype `Arrow(Rigid(0), Rigid(0))`
+rather than a proper `∀a. a → a`. When the surrounding `let` binding calls `generalize`, it finds
+no unsolved metas (only rigids) and produces a monomorphic scheme. The rigids then leak into
+unification, where `Rigid ~ Integer` fails. The fundamental issue is that `CoreTypeAbs` cannot
+express its own type because `MonoType` has no `Forall` constructor.
+
+**Proposed approach**: Rename `MonoType` to `Type` and add a `Forall(int rigidId, Kind kind, Type body)`
+variant. `CoreTypeAbs.type()` would then return `Type.Forall(...)`, and consumers (let-binding,
+application, unifier) can pattern-match on it. `TypeScheme` remains useful as a convenience for
+let-generalization and will later serve as the representation for qualified types (e.g., type-class
+constraints `∀a. C a => τ`), so it should not be removed.
+
+**Impact**:
+- `CoreExpr.type()` return type changes from `MonoType` to `Type`.
+- The unifier must handle `Forall` (likely by instantiation before unifying).
+- `generalize` can detect `Forall` in the RHS type and extract the scheme directly.
+- The evaluator and printer must handle `Forall` in type positions.
+- Constraint emission and `emitConstraint` signatures change accordingly.
+
+**Decision**: Planned. Polytype ascription tests are skipped (`@AwaitsFix`) until this is
+implemented. The annotated-let path (`let f : a -> a = ...`) works because the scheme is
+constructed directly from the annotation, bypassing `generalize`.

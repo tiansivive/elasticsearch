@@ -18,6 +18,8 @@ import org.elasticsearch.xpack.piescript.core.CorePrinter;
 import org.elasticsearch.xpack.piescript.elab.ElaborationException;
 import org.elasticsearch.xpack.piescript.elab.ElaborationState;
 import org.elasticsearch.xpack.piescript.elab.Elaborator;
+import org.elasticsearch.xpack.piescript.eval.EvaluationException;
+import org.elasticsearch.xpack.piescript.eval.Evaluator;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParsingException;
 
@@ -66,7 +68,18 @@ public class RestPiescriptDevAction extends BaseRestHandler {
                     var coreExpr = elaborator.elaborateProgram(cst);
 
                     builder.field("core", CorePrinter.printExpr(coreExpr, state));
+                    builder.field("core_raw", CorePrinter.printExprRaw(coreExpr));
                     builder.field("type", CorePrinter.printType(coreExpr.type(), state));
+                    builder.field("constraints", CorePrinter.printConstraints(state));
+                    builder.field("zonker", CorePrinter.printZonker(state));
+
+                    try {
+                        var evaluator = new Evaluator();
+                        var value = evaluator.evaluate(coreExpr);
+                        builder.field("eval", value.toString());
+                    } catch (EvaluationException e) {
+                        builder.field("eval_error", e.getMessage());
+                    }
                 } catch (PiescriptParsingException e) {
                     builder.field("parse_error", e.getMessage());
                 } catch (ElaborationException e) {

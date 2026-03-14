@@ -11,7 +11,6 @@ import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.test.ESTestCase;
 
 import java.util.Map;
-import java.util.Set;
 
 import static org.hamcrest.Matchers.is;
 
@@ -126,9 +125,9 @@ public class TypeDataStructureTests extends ESTestCase {
     public void testPolyScheme() {
         var meta = new MonoType.Meta(0, 0, Kind.TYPE);
         var arrow = new MonoType.Arrow(meta, meta);
-        var scheme = new TypeScheme(Set.of(0), arrow);
+        var scheme = new TypeScheme(Map.of(0, Kind.TYPE), arrow);
         assertThat(scheme.quantified().size(), is(1));
-        assertTrue(scheme.quantified().contains(0));
+        assertTrue(scheme.quantified().containsKey(0));
         assertThat(scheme.body(), is(arrow));
     }
 

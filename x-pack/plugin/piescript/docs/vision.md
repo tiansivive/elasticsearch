@@ -25,6 +25,31 @@ safety via type inference. Crucially, it is designed from the ground up for **di
 computation** — user-defined transforms travel to the nodes where data resides, rather than pulling
 all data to a single coordinator.
 
+### The Fragmentation Problem
+
+Beyond the gap between ESQL and general-purpose programming, Elasticsearch has a deeper problem:
+the same fundamental operation — *query some data, compute something, put the result somewhere* —
+is implemented as a constellation of separate, incompatible features:
+
+| Feature | When it runs | What it does | How you configure it |
+|---------|-------------|-------------|---------------------|
+| Ingest pipelines | Write time | Transform documents before indexing | JSON processor chain |
+| Enrich processors | Write time (inside ingest) | Look up data from another index, merge into document | Enrich policy + processor config |
+| Transforms | Scheduled batch | Query, aggregate, write to destination | JSON config (pivot/latest mode) |
+| Watcher | Scheduled/triggered | Query, evaluate condition, take action | JSON watch definition |
+| Runtime fields | Query time | Compute derived fields on the fly | Painless script |
+| Painless scripts | Various | Ad-hoc computation | Imperative untyped scripts |
+
+Each has its own API, configuration format, execution model, and limitations. When users need
+something that crosses boundaries — enrich documents from index A using a lookup against index B,
+aggregate the results, write to index C — they chain multiple features together, each with its own
+failure modes, no shared type checking, and no unified debugging story.
+
+Piescript can subsume all of these. Every feature in the table above is a specific instantiation of
+the same pattern: query → compute → output. A programming language expresses this natively. The plan
+graph architecture means the same program can be executed in different contexts (batch, ingest-time,
+query-time, triggered) by different executors, without changing the program itself.
+
 ## The Distributed Computation Model
 
 Piescript's core insight is the separation of two concerns:
@@ -110,6 +135,79 @@ decoration — it gives us a formal framework for reasoning about parallel compo
 communication, and code mobility. The join calculus variant (Fournet & Gonthier) specifically
 informs which primitives are efficiently implementable in a distributed setting. See
 [references.md](references.md) for the full theoretical lineage.
+
+## MVP: Unified Data Pipelines
+
+The MVP goal is a piescript program that can express the equivalent of — and more than — ES
+Transforms, enrich policies, and ingest pipeline chains, as a single typed program.
+
+### What the MVP demonstrates
+
+1. **Query data** from one or more indices via ESQL.
+2. **Transform, filter, and aggregate** the results using typed, composable functions.
+3. **Join / enrich** by querying a second index and merging fields — no separate enrich policy
+   or processor configuration needed.
+4. **Write results** to a target index.
+5. **Run on a schedule** as an async persistent task within Elasticsearch.
+6. **Execute distributed** — the plan graph optimizer pushes compatible transforms into the ESQL
+   query (map → EVAL, filter → WHERE, groupBy + fold → STATS), so they run on data nodes via
+   ESQL's existing distributed engine.
+
+### Why this proves the use case
+
+- **Expressiveness**: a piescript transform is a *program*, not a configuration. Users can write
+  arbitrary logic — not just the fixed aggregation modes the Transform API anticipated.
+- **Type safety**: the entire pipeline — source query, transforms, joins, output — is type-checked
+  as one unit. If an enrich join references a field that doesn't exist, the error is caught at
+  compile time, not at 3 AM on the 10 millionth document.
+- **Performance**: piescript transforms that compile to ESQL expressions run on data nodes,
+  vectorized, parallel across shards — leveraging ESQL's compute engine rather than pulling data
+  to the coordinator. The plan graph optimizer can fuse adjacent transforms and push computation
+  down, achieving performance that a rigid API configuration cannot match.
+- **Unification**: one program replaces what today requires chaining a Transform, an enrich policy,
+  an enrich processor, an ingest pipeline, and the glue between them. One language, one type system,
+  one error model, one debugging story.
+
+### Conceptual example
+
+What today requires an enrich policy + enrich processor + ingest pipeline + transform:
+
+```
+let orders = query FROM incoming-orders | WHERE @timestamp > now() - 1h;
+let customers = query FROM customer-database;
+
+let enriched = orders |> map (fn order ->
+  let customer = customers
+    |> filter (fn c -> c.id == order.customer_id)
+    |> first;
+  { order | customer_name: customer.name, tier: customer.tier });
+
+let summary = enriched
+  |> groupBy .tier
+  |> fold { count: 0, revenue: 0 } (fn acc -> fn row ->
+       { count: acc.count + 1, revenue: acc.revenue + row.amount });
+
+summary |> writeTo "order-summary-by-tier"
+```
+
+One typed program. The optimizer pushes the filter and field projections into the ESQL queries.
+The join, aggregation, and write-back are plan graph nodes executed by the runtime. The type
+checker verifies field compatibility across the entire pipeline before anything runs.
+
+### MVP scope (mapped to phases)
+
+The MVP requires completing these phases from the [roadmap](roadmap.md):
+
+- **Phase 1e**: Pattern matching (control flow in transforms)
+- **Phase 2**: Index resolution + query typing (typed query results)
+- **Phase 3**: Stream runtime + plan graph + map/filter/fold + ExpressionEvaluator compiler +
+  push-down optimizer + `writeTo` sink primitive + `groupBy` combinator
+- **Parts of Phase 4**: `par` for merging multiple query results
+- **New**: Persistent task wrapper for scheduled async execution
+
+Full distributed execution (Phase 5 — serializing closures and shipping them to data nodes for
+logic that cannot be expressed as ESQL) is a post-MVP enhancement. The MVP achieves distributed
+performance for common cases through push-down into ESQL's engine.
 
 ## What Piescript is Not
 
