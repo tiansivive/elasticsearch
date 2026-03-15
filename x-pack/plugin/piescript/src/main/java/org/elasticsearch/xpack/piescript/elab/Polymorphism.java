@@ -12,7 +12,6 @@ import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
-import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
@@ -22,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * Polymorphism machinery: generalization, instantiation, the ∀-CHECK rule,
@@ -71,14 +71,16 @@ final class Polymorphism {
     // ──── Instantiate ────
 
     /**
-     * Instantiate a polymorphic variable: create fresh metas for each
+     * Instantiate a polymorphic type scheme: create fresh metas for each
      * quantified Rigid, walk the scheme body to substitute them, and wrap
-     * in nested {@link CoreTypeApp} nodes.
+     * in nested {@link CoreTypeApp} nodes. The {@code baseFactory} produces
+     * the inner expression (e.g. {@code CoreVar} for local bindings,
+     * {@code CoreFree} for module-level free variables) given the instantiated
+     * monotype.
      */
     static CoreExpr instantiateAndWrap(
         Elaborator elab,
-        int debruijn,
-        String name,
+        Function<MonoType, CoreExpr> baseFactory,
         TypeScheme scheme,
         ElaborationContext ctx,
         Source source
@@ -89,7 +91,7 @@ final class Polymorphism {
             freshMetas.put(entry.getKey(), fresh);
         }
         var instantiated = instantiateBody(elab, scheme.body(), freshMetas);
-        CoreExpr wrapped = new CoreVar(source, debruijn, name, instantiated);
+        CoreExpr wrapped = baseFactory.apply(instantiated);
         for (var fresh : freshMetas.values()) {
             wrapped = new CoreTypeApp(source, wrapped, fresh, instantiated);
         }

@@ -57,20 +57,35 @@ final class TypeAnnotations {
     static MonoType translateType(Elaborator elab, PiescriptAntlrParser.TypeContext typeCtx, Map<String, MonoType.Rigid> rigidScope) {
         return switch (typeCtx) {
             case PiescriptAntlrParser.FunctionTypeContext fn -> new MonoType.Arrow(
-                translatePrimary(elab, fn.typePrimary(), rigidScope),
+                translateApp(elab, fn.typeApp(), rigidScope),
                 translateType(elab, fn.type(), rigidScope)
             );
-            case PiescriptAntlrParser.TypeAtomContext atom -> translatePrimary(elab, atom.typePrimary(), rigidScope);
+            case PiescriptAntlrParser.TypeNonArrowContext pass -> translateApp(elab, pass.typeApp(), rigidScope);
             default -> throw Elaborator.error(Elaborator.source(typeCtx), "unexpected type syntax");
         };
     }
 
-    private static MonoType translatePrimary(
+    private static MonoType translateApp(
         Elaborator elab,
-        PiescriptAntlrParser.TypePrimaryContext primary,
+        PiescriptAntlrParser.TypeAppContext appCtx,
         Map<String, MonoType.Rigid> rigidScope
     ) {
-        return switch (primary) {
+        return switch (appCtx) {
+            case PiescriptAntlrParser.TypeApplicationContext app -> new MonoType.AppType(
+                translateApp(elab, app.typeApp(), rigidScope),
+                translateAtom(elab, app.typeAtom(), rigidScope)
+            );
+            case PiescriptAntlrParser.TypeAppPassthroughContext pass -> translateAtom(elab, pass.typeAtom(), rigidScope);
+            default -> throw Elaborator.error(Elaborator.source(appCtx), "unexpected type syntax");
+        };
+    }
+
+    private static MonoType translateAtom(
+        Elaborator elab,
+        PiescriptAntlrParser.TypeAtomContext atom,
+        Map<String, MonoType.Rigid> rigidScope
+    ) {
+        return switch (atom) {
             case PiescriptAntlrParser.TypeConContext tc -> {
                 var name = tc.UPPER_IDENT().getText();
                 var type = Elaborator.KNOWN_TYPES.get(name);
@@ -97,7 +112,7 @@ final class TypeAnnotations {
                 yield new MonoType.RecordType(RowType.closed(fields));
             }
             case PiescriptAntlrParser.ParenTypeContext pt -> translateType(elab, pt.type(), rigidScope);
-            default -> throw Elaborator.error(Elaborator.source(primary), "unexpected type syntax");
+            default -> throw Elaborator.error(Elaborator.source(atom), "unexpected type syntax");
         };
     }
 }

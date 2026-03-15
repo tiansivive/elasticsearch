@@ -3,7 +3,7 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-14 (Phase 1 wrap-up, Phase 2 opened)
+> **Last updated**: 2026-03-15 (session 7 — bidirectional refinements, D-038)
 
 ## Summary
 

@@ -18,7 +18,7 @@ TRUE      : 'true';
 FALSE     : 'false';
 NULL      : 'null';
 MATCH     : 'match';
-QUERY     : 'query';
+QUERY     : 'query' -> pushMode(ESQL_MODE);
 PAR       : 'par';
 DO        : 'do';
 UNDERSCORE: '_';
@@ -111,3 +111,11 @@ fragment ESCAPE_SEQUENCE
 fragment EXPONENT
     : [eE] [+-]? DIGIT+
     ;
+
+// ──── ESQL query mode ────
+// After 'query', capture the backtick-delimited ESQL text. Backtick
+// delimiters avoid ambiguity with piescript's own semicolons in let
+// bindings and block statements. Syntax: query `FROM logs-* | LIMIT 10`
+mode ESQL_MODE;
+ESQL_BODY : '`' ~[`]+ '`' -> popMode ;
+ESQL_WS   : [ \t\r\n]+ -> skip ;

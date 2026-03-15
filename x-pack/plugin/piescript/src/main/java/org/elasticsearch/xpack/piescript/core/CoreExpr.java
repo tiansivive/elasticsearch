@@ -38,8 +38,8 @@ import java.util.List;
  *   | PrimOp(op: Op, args: List<CoreExpr>, type: MonoType)
  * }</pre>
  */
-public abstract sealed class CoreExpr extends Node<CoreExpr> permits CoreVar, CoreLit, CoreLam, CoreApp, CoreLet, CoreRecord, CoreProject,
-    CoreUpdate, CorePrimOp, CoreTypeAbs, CoreTypeApp {
+public abstract sealed class CoreExpr extends Node<CoreExpr> permits CoreVar, CoreFree, CoreLit, CoreLam, CoreApp, CoreLet, CoreRecord,
+    CoreProject, CoreUpdate, CorePrimOp, CoreTypeAbs, CoreTypeApp, CoreQuery {
 
     protected CoreExpr(Source source, List<CoreExpr> children) {
         super(source, children);

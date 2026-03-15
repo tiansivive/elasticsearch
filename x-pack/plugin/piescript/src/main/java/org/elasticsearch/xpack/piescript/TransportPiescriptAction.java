@@ -15,51 +15,71 @@ import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.transport.TransportService;
-import org.elasticsearch.xpack.esql.action.EsqlQueryAction;
-import org.elasticsearch.xpack.esql.action.EsqlQueryRequest;
 import org.elasticsearch.xpack.piescript.core.CorePrinter;
+import org.elasticsearch.xpack.piescript.elab.ElaborationException;
 import org.elasticsearch.xpack.piescript.elab.ElaborationState;
 import org.elasticsearch.xpack.piescript.elab.Elaborator;
+import org.elasticsearch.xpack.piescript.elab.IndexResolutionPrePass;
+import org.elasticsearch.xpack.piescript.elab.ResolvedMapping;
+import org.elasticsearch.xpack.piescript.eval.EvaluationException;
 import org.elasticsearch.xpack.piescript.eval.Evaluator;
+import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
+import org.elasticsearch.xpack.piescript.parser.PiescriptParsingException;
+
+import java.util.List;
+import java.util.Map;
 
 public class TransportPiescriptAction extends HandledTransportAction<PiescriptRequest, PiescriptResponse> {
 
-    private final Client client;
     private final PiescriptParser parser = new PiescriptParser();
+    private final IndexResolutionPrePass indexResolutionPrePass;
 
     @Inject
     public TransportPiescriptAction(TransportService transportService, ActionFilters actionFilters, Client client) {
         super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, EsExecutors.DIRECT_EXECUTOR_SERVICE);
-        this.client = client;
+        this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService);
     }
 
     @Override
     protected void doExecute(Task task, PiescriptRequest request, ActionListener<PiescriptResponse> listener) {
         String program = request.program().strip();
-        if (program.startsWith("query") && program.endsWith(";")) {
-            executeQueryPassthrough(program, listener);
+        if (request.dev()) {
+            executeDev(program, listener);
         } else {
-            executeExpression(program, listener);
+            executeEval(program, listener);
         }
     }
 
-    private void executeQueryPassthrough(String program, ActionListener<PiescriptResponse> listener) {
-        String esql;
-        try {
-            esql = extractEsqlQuery(program);
-        } catch (IllegalArgumentException e) {
-            listener.onFailure(e);
-            return;
-        }
-        EsqlQueryRequest esqlRequest = EsqlQueryRequest.syncEsqlQueryRequest(esql);
-        client.execute(EsqlQueryAction.INSTANCE, esqlRequest, listener.map(PiescriptResponse::fromEsqlResponse));
-    }
+    // ── Normal eval pipeline ──
 
-    private void executeExpression(String program, ActionListener<PiescriptResponse> listener) {
+    private void executeEval(String program, ActionListener<PiescriptResponse> listener) {
         try {
             var cst = parser.parse(program);
+            var queries = IndexResolutionPrePass.collectQueries(cst);
+
+            if (queries.isEmpty()) {
+                elaborateAndEvaluate(cst, null, listener);
+            } else {
+                indexResolutionPrePass.resolve(queries, listener.delegateFailureAndWrap((l, resolvedMappings) -> {
+                    elaborateAndEvaluate(cst, resolvedMappings, l);
+                }));
+            }
+        } catch (Exception e) {
+            listener.onFailure(e);
+        }
+    }
+
+    private void elaborateAndEvaluate(
+        PiescriptAntlrParser.ProgramContext cst,
+        Map<String, ResolvedMapping> resolvedMappings,
+        ActionListener<PiescriptResponse> listener
+    ) {
+        try {
             var state = new ElaborationState();
+            if (resolvedMappings != null) {
+                state.setResolvedMappings(resolvedMappings);
+            }
             var elaborator = new Elaborator(state);
             var coreExpr = elaborator.elaborateProgram(cst);
             var evaluator = new Evaluator();
@@ -71,14 +91,97 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         }
     }
 
-    static String extractEsqlQuery(String program) {
-        String trimmed = program.strip();
-        if (trimmed.startsWith("query") == false) {
-            throw new IllegalArgumentException("program must start with 'query'");
+    // ── Dev pipeline: same stages, never fails — errors are reported in the response ──
+
+    private void executeDev(String program, ActionListener<PiescriptResponse> listener) {
+        String treeString;
+        PiescriptAntlrParser.ProgramContext cst;
+        try {
+            treeString = parser.parseToTreeString(program);
+            cst = parser.parse(program);
+        } catch (PiescriptParsingException e) {
+            listener.onResponse(devParseError(e.getMessage()));
+            return;
         }
-        if (trimmed.endsWith(";") == false) {
-            throw new IllegalArgumentException("program must end with ';'");
+
+        try {
+            var queries = IndexResolutionPrePass.collectQueries(cst);
+            if (queries.isEmpty()) {
+                elaborateAndEvaluateDev(cst, treeString, null, listener);
+            } else {
+                indexResolutionPrePass.resolve(queries, ActionListener.wrap(resolvedMappings -> {
+                    elaborateAndEvaluateDev(cst, treeString, resolvedMappings, listener);
+                }, e -> { listener.onResponse(devTypeError(treeString, "index resolution failed: " + e.getMessage())); }));
+            }
+        } catch (Exception e) {
+            listener.onResponse(devTypeError(treeString, e.getMessage()));
         }
-        return trimmed.substring("query".length(), trimmed.length() - 1).strip();
+    }
+
+    private void elaborateAndEvaluateDev(
+        PiescriptAntlrParser.ProgramContext cst,
+        String treeString,
+        Map<String, ResolvedMapping> resolvedMappings,
+        ActionListener<PiescriptResponse> listener
+    ) {
+        try {
+            var state = new ElaborationState();
+            if (resolvedMappings != null) {
+                state.setResolvedMappings(resolvedMappings);
+            }
+            var elaborator = new Elaborator(state);
+            var coreExpr = elaborator.elaborateProgram(cst);
+
+            String core = CorePrinter.printExpr(coreExpr, state);
+            String coreRaw = CorePrinter.printExprRaw(coreExpr);
+            String type = CorePrinter.printType(coreExpr.type(), state);
+            String constraints = CorePrinter.printConstraints(state);
+            String zonker = CorePrinter.printZonker(state);
+            List<String> diagnostics = state.diagnostics();
+
+            String eval = null;
+            String evalError = null;
+            try {
+                var evaluator = new Evaluator();
+                var value = evaluator.evaluate(coreExpr);
+                eval = value.toString();
+            } catch (EvaluationException e) {
+                evalError = e.getMessage();
+            }
+
+            listener.onResponse(
+                PiescriptResponse.fromDev(
+                    new PiescriptResponse.DevInfo(
+                        treeString,
+                        core,
+                        coreRaw,
+                        type,
+                        constraints,
+                        zonker,
+                        diagnostics,
+                        eval,
+                        evalError,
+                        null,
+                        null
+                    )
+                )
+            );
+        } catch (ElaborationException e) {
+            listener.onResponse(devTypeError(treeString, e.getMessage()));
+        } catch (Exception e) {
+            listener.onResponse(devTypeError(treeString, e.getMessage()));
+        }
+    }
+
+    private static PiescriptResponse devParseError(String message) {
+        return PiescriptResponse.fromDev(
+            new PiescriptResponse.DevInfo(null, null, null, null, null, null, List.of(), null, null, message, null)
+        );
+    }
+
+    private static PiescriptResponse devTypeError(String tree, String message) {
+        return PiescriptResponse.fromDev(
+            new PiescriptResponse.DevInfo(tree, null, null, null, null, null, List.of(), null, null, null, message)
+        );
     }
 }

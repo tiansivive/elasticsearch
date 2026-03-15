@@ -10,18 +10,8 @@ package org.elasticsearch.xpack.piescript;
 import org.elasticsearch.client.internal.node.NodeClient;
 import org.elasticsearch.rest.BaseRestHandler;
 import org.elasticsearch.rest.RestRequest;
-import org.elasticsearch.rest.RestResponse;
-import org.elasticsearch.rest.RestStatus;
-import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.rest.action.RestChunkedToXContentListener;
 import org.elasticsearch.xcontent.XContentParser;
-import org.elasticsearch.xpack.piescript.core.CorePrinter;
-import org.elasticsearch.xpack.piescript.elab.ElaborationException;
-import org.elasticsearch.xpack.piescript.elab.ElaborationState;
-import org.elasticsearch.xpack.piescript.elab.Elaborator;
-import org.elasticsearch.xpack.piescript.eval.EvaluationException;
-import org.elasticsearch.xpack.piescript.eval.Evaluator;
-import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
-import org.elasticsearch.xpack.piescript.parser.PiescriptParsingException;
 
 import java.io.IOException;
 import java.util.List;
@@ -29,15 +19,18 @@ import java.util.List;
 import static org.elasticsearch.rest.RestRequest.Method.POST;
 
 /**
- * Development endpoint for inspecting each stage of the Piescript pipeline.
- * Returns the CST (parse tree), the elaborated Core IR, and the resolved type.
+ * Development endpoint that runs the same pipeline as {@code /_piescript/eval}
+ * but returns the full debug output (CST tree, Core IR, type, constraints,
+ * zonker, diagnostics) with graceful per-stage error reporting.
  *
- * <p>Stages are independent: a parse error prevents elaboration but still
- * returns the error; an elaboration (type) error still returns the CST.
+ * <p>Dispatches to the same {@link TransportPiescriptAction} with
+ * {@code dev=true}; the transport action collects intermediate results and
+ * packages them into the response.
+ *
+ * <p>TODO: merge this endpoint into {@code /_piescript/eval} with a
+ * {@code ?dev} query parameter, eliminating the need for a separate handler.
  */
 public class RestPiescriptDevAction extends BaseRestHandler {
-
-    private final PiescriptParser piescriptParser = new PiescriptParser();
 
     @Override
     public String getName() {
@@ -55,40 +48,8 @@ public class RestPiescriptDevAction extends BaseRestHandler {
         try (XContentParser parser = request.contentOrSourceParamParser()) {
             program = parseProgram(parser);
         }
-        return channel -> {
-            try (XContentBuilder builder = channel.newBuilder()) {
-                builder.startObject();
-                try {
-                    String treeString = piescriptParser.parseToTreeString(program);
-                    builder.field("tree", treeString);
-
-                    var cst = piescriptParser.parse(program);
-                    var state = new ElaborationState();
-                    var elaborator = new Elaborator(state);
-                    var coreExpr = elaborator.elaborateProgram(cst);
-
-                    builder.field("core", CorePrinter.printExpr(coreExpr, state));
-                    builder.field("core_raw", CorePrinter.printExprRaw(coreExpr));
-                    builder.field("type", CorePrinter.printType(coreExpr.type(), state));
-                    builder.field("constraints", CorePrinter.printConstraints(state));
-                    builder.field("zonker", CorePrinter.printZonker(state));
-
-                    try {
-                        var evaluator = new Evaluator();
-                        var value = evaluator.evaluate(coreExpr);
-                        builder.field("eval", value.toString());
-                    } catch (EvaluationException e) {
-                        builder.field("eval_error", e.getMessage());
-                    }
-                } catch (PiescriptParsingException e) {
-                    builder.field("parse_error", e.getMessage());
-                } catch (ElaborationException e) {
-                    builder.field("type_error", e.getMessage());
-                }
-                builder.endObject();
-                channel.sendResponse(new RestResponse(RestStatus.OK, builder));
-            }
-        };
+        PiescriptRequest piescriptRequest = new PiescriptRequest(program, true);
+        return channel -> client.execute(PiescriptAction.INSTANCE, piescriptRequest, new RestChunkedToXContentListener<>(channel));
     }
 
     private static String parseProgram(XContentParser parser) throws IOException {

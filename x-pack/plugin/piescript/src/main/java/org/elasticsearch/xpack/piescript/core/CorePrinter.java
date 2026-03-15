@@ -84,6 +84,7 @@ public final class CorePrinter {
                     sb.append('#').append(v.index());
                 }
             }
+            case CoreFree f -> sb.append(f.name());
             case CoreLam lam -> {
                 sb.append("(fn ");
                 sb.append(lam.debugName() != null ? lam.debugName() : "_");
@@ -158,6 +159,13 @@ public final class CorePrinter {
                 writeExpr(typeApp.polyExpr(), state, sb);
                 sb.append(" @");
                 sb.append(state != null ? writeType(TypeWalker.resolveDeep(typeApp.typeArg(), state)) : writeType(typeApp.typeArg()));
+                sb.append(')');
+            }
+            case CoreQuery q -> {
+                sb.append("(query ");
+                sb.append(q.indexPattern());
+                sb.append(" : ");
+                sb.append(state != null ? writeType(TypeWalker.resolveDeep(q.type(), state)) : writeType(q.type()));
                 sb.append(')');
             }
         }

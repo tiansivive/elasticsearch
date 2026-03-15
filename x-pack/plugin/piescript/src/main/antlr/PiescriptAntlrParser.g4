@@ -14,7 +14,7 @@ ident : UPPER_IDENT | LOWER_IDENT ;
 
 // ──── Program ────
 program
-    : topBinding* expr EOF
+    : topBinding* expr SEMICOLON? EOF
     ;
 
 topBinding
@@ -90,6 +90,7 @@ primary
     | LBRACE expr BAR recordUpdate (COMMA recordUpdate)* RBRACE  # RecordUpdateExpr
     | LBRACE UNDERSCORE BAR recordUpdate (COMMA recordUpdate)* RBRACE  # UpdateSugar
     | IF expr THEN expr ELSE expr                        # IfExpr
+    | QUERY ESQL_BODY                                    # QueryExpr
     | block                                              # BlockExpr
     | primary DOT ident                                  # Projection
     ;
@@ -120,11 +121,16 @@ param
 
 // ──── Types ────
 type
-    : typePrimary ARROW type                              # FunctionType
-    | typePrimary                                         # TypeAtom
+    : typeApp ARROW type                                  # FunctionType
+    | typeApp                                             # TypeNonArrow
     ;
 
-typePrimary
+typeApp
+    : typeApp typeAtom                                    # TypeApplication
+    | typeAtom                                            # TypeAppPassthrough
+    ;
+
+typeAtom
     : UPPER_IDENT                                         # TypeCon
     | LOWER_IDENT                                         # TypeVar
     | LBRACE rowType RBRACE                               # RecordType

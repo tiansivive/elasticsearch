@@ -15,6 +15,7 @@ import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.xpack.esql.core.tree.Location;
 import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
+import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
@@ -57,19 +58,34 @@ public final class Elaborator {
     static final MonoType BOOLEAN = new MonoType.TCon("Boolean");
     static final MonoType NULL_TYPE = new MonoType.TCon("Null");
 
-    static final Map<String, MonoType> KNOWN_TYPES = Map.of(
-        "Integer",
-        INTEGER,
-        "Long",
-        LONG,
-        "Double",
-        DOUBLE,
-        "Keyword",
-        KEYWORD,
-        "Boolean",
-        BOOLEAN,
-        "Null",
-        NULL_TYPE
+    static final MonoType STREAM = new MonoType.TCon("Stream");
+    static final MonoType DATETIME = new MonoType.TCon("DateTime");
+    static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
+    static final MonoType IP = new MonoType.TCon("Ip");
+    static final MonoType VERSION = new MonoType.TCon("Version");
+    static final MonoType GEO_POINT = new MonoType.TCon("GeoPoint");
+    static final MonoType CARTESIAN_POINT = new MonoType.TCon("CartesianPoint");
+    static final MonoType GEO_SHAPE = new MonoType.TCon("GeoShape");
+    static final MonoType CARTESIAN_SHAPE = new MonoType.TCon("CartesianShape");
+    static final MonoType UNSUPPORTED = new MonoType.TCon("Unsupported");
+
+    static final Map<String, MonoType> KNOWN_TYPES = Map.ofEntries(
+        Map.entry("Integer", INTEGER),
+        Map.entry("Long", LONG),
+        Map.entry("Double", DOUBLE),
+        Map.entry("Keyword", KEYWORD),
+        Map.entry("Boolean", BOOLEAN),
+        Map.entry("Null", NULL_TYPE),
+        Map.entry("DateTime", DATETIME),
+        Map.entry("UnsignedLong", UNSIGNED_LONG),
+        Map.entry("Ip", IP),
+        Map.entry("Version", VERSION),
+        Map.entry("GeoPoint", GEO_POINT),
+        Map.entry("CartesianPoint", CARTESIAN_POINT),
+        Map.entry("GeoShape", GEO_SHAPE),
+        Map.entry("CartesianShape", CARTESIAN_SHAPE),
+        Map.entry("Unsupported", UNSUPPORTED),
+        Map.entry("Stream", STREAM)
     );
 
     final ElaborationState state;
@@ -93,7 +109,7 @@ public final class Elaborator {
      * wrapping the final expression.
      */
     public CoreExpr elaborateProgram(PiescriptAntlrParser.ProgramContext program) {
-        var ctx = ElaborationContext.EMPTY;
+        var ctx = ElaborationContext.withModule(Prelude.MODULE);
         var topBindings = program.topBinding();
         var finalExpr = program.expr();
 
@@ -236,6 +252,7 @@ public final class Elaborator {
             case PiescriptAntlrParser.BlockContext b -> Blocks.block(this, b, ctx);
 
             case PiescriptAntlrParser.IfExprContext e -> throw error(source(e), "if/then/else is not yet supported (Phase 1e)");
+            case PiescriptAntlrParser.QueryExprContext q -> Queries.query(this, q, ctx);
 
             default -> throw new ElaborationException(0, 0, "unexpected parse node: " + node.getClass().getSimpleName());
         };
@@ -246,12 +263,33 @@ public final class Elaborator {
     private CoreExpr elaborateVar(PiescriptAntlrParser.VariableContext v, ElaborationContext ctx) {
         var src = source(v);
         var name = v.ident().getText();
-        var lookup = ctx.lookup(name).orElseThrow(() -> error(src, "unbound variable: " + name));
-        var scheme = lookup.scheme();
-        if (scheme.quantified().isEmpty()) {
-            return new CoreVar(src.source, lookup.index(), name, scheme.body());
+
+        var localLookup = ctx.lookup(name);
+        if (localLookup.isPresent()) {
+            var lookup = localLookup.get();
+            var scheme = lookup.scheme();
+            if (scheme.quantified().isEmpty()) {
+                return new CoreVar(src.source, lookup.index(), name, scheme.body());
+            }
+            return Polymorphism.instantiateAndWrap(
+                this,
+                type -> new CoreVar(src.source, lookup.index(), name, type),
+                scheme,
+                ctx,
+                src.source
+            );
         }
-        return Polymorphism.instantiateAndWrap(this, lookup.index(), name, scheme, ctx, src.source);
+
+        var moduleLookup = ctx.lookupModule(name);
+        if (moduleLookup.isPresent()) {
+            var scheme = moduleLookup.get();
+            if (scheme.quantified().isEmpty()) {
+                return new CoreFree(src.source, name, scheme.body());
+            }
+            return Polymorphism.instantiateAndWrap(this, type -> new CoreFree(src.source, name, type), scheme, ctx, src.source);
+        }
+
+        throw error(src, "unbound variable: " + name);
     }
 
     // ──── Integer literal ────
