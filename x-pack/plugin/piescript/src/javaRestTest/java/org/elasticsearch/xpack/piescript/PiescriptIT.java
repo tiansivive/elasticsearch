@@ -21,13 +21,11 @@ import org.junit.Before;
 import org.junit.ClassRule;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.hamcrest.Matchers.hasSize;
 
 @ThreadLeakFilters(filters = TestClustersThreadFilter.class)
 public class PiescriptIT extends ESRestTestCase {
@@ -69,35 +67,36 @@ public class PiescriptIT extends ESRestTestCase {
         assertOK(adminClient().performRequest(bulk));
     }
 
-    public void testBasicQueryPassthrough() throws IOException {
-        Request request = piescriptRequest("query FROM piescript-test | SORT status ASC | LIMIT 10;");
+    public void testQueryTypechecking() throws IOException {
+        Request request = piescriptDevRequest("query `FROM piescript-test | SORT status ASC | LIMIT 10`");
         Response response = client().performRequest(request);
         assertOK(response);
 
         Map<String, Object> responseMap = entityAsMap(response);
-        assertThat(responseMap.containsKey("columns"), equalTo(true));
-        assertThat(responseMap.containsKey("values"), equalTo(true));
-
-        @SuppressWarnings("unchecked")
-        List<List<Object>> values = (List<List<Object>>) responseMap.get("values");
-        assertThat(values, hasSize(3));
+        assertThat(responseMap.containsKey("type"), equalTo(true));
+        String type = (String) responseMap.get("type");
+        assertThat(type, containsString("Stream"));
+        assertThat(type, containsString("message"));
+        assertThat(type, containsString("status"));
+        assertThat(responseMap.containsKey("eval_error"), equalTo(true));
     }
 
-    public void testQueryWithFilter() throws IOException {
-        Request request = piescriptRequest("query FROM piescript-test | WHERE status >= 500;");
+    public void testQueryTypecheckingWithFilter() throws IOException {
+        Request request = piescriptDevRequest("query `FROM piescript-test | WHERE status >= 500`");
         Response response = client().performRequest(request);
         assertOK(response);
 
         Map<String, Object> responseMap = entityAsMap(response);
-        @SuppressWarnings("unchecked")
-        List<List<Object>> values = (List<List<Object>>) responseMap.get("values");
-        assertThat(values, hasSize(2));
+        String type = (String) responseMap.get("type");
+        assertThat(type, containsString("Stream"));
+        assertThat(responseMap.containsKey("eval_error"), equalTo(true));
     }
 
-    public void testInvalidEsqlQuery() throws IOException {
-        Request request = piescriptRequest("query INVALID SYNTAX HERE;");
+    public void testQueryEvalThroughPipeline() throws IOException {
+        Request request = piescriptRequest("query `FROM piescript-test | SORT status ASC | LIMIT 10`");
         ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
+        assertThat(e.getMessage(), containsString("query evaluation is not yet supported"));
     }
 
     public void testEmptyProgram() throws IOException {
@@ -184,6 +183,16 @@ public class PiescriptIT extends ESRestTestCase {
 
     private static Request piescriptRequest(String program) {
         Request request = new Request("POST", "/_piescript/eval");
+        request.setJsonEntity("{\"program\":\"" + program + "\"}");
+        request.addParameter("error_trace", "true");
+        RequestOptions.Builder options = RequestOptions.DEFAULT.toBuilder();
+        options.setWarningsHandler(warnings -> false);
+        request.setOptions(options);
+        return request;
+    }
+
+    private static Request piescriptDevRequest(String program) {
+        Request request = new Request("POST", "/_piescript/dev");
         request.setJsonEntity("{\"program\":\"" + program + "\"}");
         request.addParameter("error_trace", "true");
         RequestOptions.Builder options = RequestOptions.DEFAULT.toBuilder();

@@ -142,3 +142,13 @@ Prior design discussions are preserved in agent transcripts:
   fan-out via DAG (D-017), linearity roadmap with QTT for channels (D-018), BEAM/Erlang
   comparison, speculative ownership model. Resulted in D-012 through D-018 and reframing of
   Phases 3–6.
+- **System F Core IR**: `8f5cc3a8-4c26-4f71-8fb0-1ea3c17f527b` — explicit CoreTypeAbs/CoreTypeApp
+  nodes (D-035), type annotations as TypeScheme (D-034), deferred constraint solving, generalize
+  and instantiate refactoring.
+- **Bidirectional elaborator**: `3308f68e-e239-4a60-912c-47cfba6eabcc` — discovery of missing
+  check mode (D-036), implementation of bidirectional checking for lambdas/records/let/blocks,
+  extraction of Polymorphism.java and Applications.java, environment-carrying instantiation
+  proposal (D-037), method renaming in TypeAnnotations.
+- **Bidir refinements & D-038**: `303bcf3e-9eef-4719-a47d-24c1ff27a675` — test fixes, polytype
+  ascription bug discovery (CoreTypeAbs cannot express its own type), MonoType→Type with Forall
+  variant decision (D-038), TypeScheme retained for future qualified types.

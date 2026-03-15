@@ -395,6 +395,20 @@ public interface PiescriptAntlrParserListener extends ParseTreeListener {
     void exitVariable(PiescriptAntlrParser.VariableContext ctx);
 
     /**
+     * Enter a parse tree produced by the {@code QueryExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     */
+    void enterQueryExpr(PiescriptAntlrParser.QueryExprContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code QueryExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     */
+    void exitQueryExpr(PiescriptAntlrParser.QueryExprContext ctx);
+
+    /**
      * Enter a parse tree produced by the {@code Projection}
      * labeled alternative in {@link PiescriptAntlrParser#primary}.
      * @param ctx the parse tree
@@ -683,71 +697,99 @@ public interface PiescriptAntlrParserListener extends ParseTreeListener {
     void exitFunctionType(PiescriptAntlrParser.FunctionTypeContext ctx);
 
     /**
-     * Enter a parse tree produced by the {@code TypeAtom}
+     * Enter a parse tree produced by the {@code TypeNonArrow}
      * labeled alternative in {@link PiescriptAntlrParser#type}.
      * @param ctx the parse tree
      */
-    void enterTypeAtom(PiescriptAntlrParser.TypeAtomContext ctx);
+    void enterTypeNonArrow(PiescriptAntlrParser.TypeNonArrowContext ctx);
 
     /**
-     * Exit a parse tree produced by the {@code TypeAtom}
+     * Exit a parse tree produced by the {@code TypeNonArrow}
      * labeled alternative in {@link PiescriptAntlrParser#type}.
      * @param ctx the parse tree
      */
-    void exitTypeAtom(PiescriptAntlrParser.TypeAtomContext ctx);
+    void exitTypeNonArrow(PiescriptAntlrParser.TypeNonArrowContext ctx);
+
+    /**
+     * Enter a parse tree produced by the {@code TypeAppPassthrough}
+     * labeled alternative in {@link PiescriptAntlrParser#typeApp}.
+     * @param ctx the parse tree
+     */
+    void enterTypeAppPassthrough(PiescriptAntlrParser.TypeAppPassthroughContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code TypeAppPassthrough}
+     * labeled alternative in {@link PiescriptAntlrParser#typeApp}.
+     * @param ctx the parse tree
+     */
+    void exitTypeAppPassthrough(PiescriptAntlrParser.TypeAppPassthroughContext ctx);
+
+    /**
+     * Enter a parse tree produced by the {@code TypeApplication}
+     * labeled alternative in {@link PiescriptAntlrParser#typeApp}.
+     * @param ctx the parse tree
+     */
+    void enterTypeApplication(PiescriptAntlrParser.TypeApplicationContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code TypeApplication}
+     * labeled alternative in {@link PiescriptAntlrParser#typeApp}.
+     * @param ctx the parse tree
+     */
+    void exitTypeApplication(PiescriptAntlrParser.TypeApplicationContext ctx);
 
     /**
      * Enter a parse tree produced by the {@code TypeCon}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      */
     void enterTypeCon(PiescriptAntlrParser.TypeConContext ctx);
 
     /**
      * Exit a parse tree produced by the {@code TypeCon}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      */
     void exitTypeCon(PiescriptAntlrParser.TypeConContext ctx);
 
     /**
      * Enter a parse tree produced by the {@code TypeVar}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      */
     void enterTypeVar(PiescriptAntlrParser.TypeVarContext ctx);
 
     /**
      * Exit a parse tree produced by the {@code TypeVar}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      */
     void exitTypeVar(PiescriptAntlrParser.TypeVarContext ctx);
 
     /**
      * Enter a parse tree produced by the {@code RecordType}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      */
     void enterRecordType(PiescriptAntlrParser.RecordTypeContext ctx);
 
     /**
      * Exit a parse tree produced by the {@code RecordType}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      */
     void exitRecordType(PiescriptAntlrParser.RecordTypeContext ctx);
 
     /**
      * Enter a parse tree produced by the {@code ParenType}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      */
     void enterParenType(PiescriptAntlrParser.ParenTypeContext ctx);
 
     /**
      * Exit a parse tree produced by the {@code ParenType}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      */
     void exitParenType(PiescriptAntlrParser.ParenTypeContext ctx);

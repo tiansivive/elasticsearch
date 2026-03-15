@@ -20,20 +20,28 @@ import static org.elasticsearch.action.ValidateActions.addValidationError;
 public class PiescriptRequest extends ActionRequest implements CompositeIndicesRequest {
 
     private final String program;
+    private final boolean dev;
 
     public PiescriptRequest(String program) {
+        this(program, false);
+    }
+
+    public PiescriptRequest(String program, boolean dev) {
         this.program = program;
+        this.dev = dev;
     }
 
     public PiescriptRequest(StreamInput in) throws IOException {
         super(in);
         this.program = in.readString();
+        this.dev = in.readBoolean();
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
         super.writeTo(out);
         out.writeString(program);
+        out.writeBoolean(dev);
     }
 
     @Override
@@ -47,5 +55,9 @@ public class PiescriptRequest extends ActionRequest implements CompositeIndicesR
 
     public String program() {
         return program;
+    }
+
+    public boolean dev() {
+        return dev;
     }
 }

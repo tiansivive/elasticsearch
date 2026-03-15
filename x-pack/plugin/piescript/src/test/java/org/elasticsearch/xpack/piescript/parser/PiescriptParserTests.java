@@ -337,6 +337,19 @@ public class PiescriptParserTests extends ESTestCase {
         assertParses("let f : { name: String | r } -> String = .name in f { name: \"a\", age: 1 }");
     }
 
+    public void testTypeApplication() {
+        assertParses("(fn x -> x : Stream Int -> Stream Int)");
+    }
+
+    public void testTypeAppWithRecord() {
+        assertParses("(fn x -> x : Stream { name: Int } -> Stream { name: Int })");
+    }
+
+    public void testTypeAppPrecedenceOverArrow() {
+        // f a -> f b -> f c should parse as (f a) -> ((f b) -> (f c))
+        assertParses("(fn x -> x : Stream Int -> Stream Int -> Stream Int)");
+    }
+
     public void testNestedFunctionType() {
         assertParses("let f : (Int -> Int) -> Int = fn g -> g 0 in f (fn x -> x)");
     }
@@ -353,6 +366,44 @@ public class PiescriptParserTests extends ESTestCase {
 
     public void testCommentInExpression() {
         assertParses("1 + /* inline */ 2");
+    }
+
+    // ──── Query expressions ────
+
+    public void testQueryExprStandalone() {
+        String tree = parse("query `FROM logs-*`");
+        assertThat(tree, containsString("query"));
+        assertThat(tree, containsString("FROM logs-*"));
+    }
+
+    public void testQueryExprInTopBinding() {
+        assertParses("let docs = query `FROM logs-*`; docs");
+    }
+
+    public void testQueryExprInBlock() {
+        assertParses("{ let docs = query `FROM my_index`; docs }");
+    }
+
+    public void testQueryExprWithEsqlPipes() {
+        String tree = parse("query `FROM logs-* | WHERE status >= 500 | LIMIT 10`");
+        assertThat(tree, containsString("FROM logs-*"));
+        assertThat(tree, containsString("WHERE status >= 500"));
+    }
+
+    public void testQueryExprMultipleInTopBindings() {
+        assertParses("let a = query `FROM idx_a`; let b = query `FROM idx_b`; a");
+    }
+
+    public void testQueryExprWithTrailingExpression() {
+        assertParses("let docs = query `FROM logs-*`; docs |> f");
+    }
+
+    public void testQueryExprInLetIn() {
+        assertParses("let docs = query `FROM logs-*` in docs");
+    }
+
+    public void testQueryExprEmpty() {
+        expectThrows(PiescriptParsingException.class, () -> parse("query ``"));
     }
 
     // ──── Error cases ────

@@ -942,6 +942,8 @@ fresh Metas.
 - The annotation-as-TypeScheme approach is standard in bidirectional type checkers (Dunfield &
   Krishnaswami 2013, GHC's OutsideIn(X)).
 
+**Ref**: [System F Core IR session](8f5cc3a8-4c26-4f71-8fb0-1ea3c17f527b)
+
 ---
 
 ## D-035: Core IR is System F — Explicit `CoreTypeAbs` and `CoreTypeApp`
@@ -1021,7 +1023,8 @@ nested `CoreTypeApp` nodes using those same fresh metas.
   specialization and monomorphization as future optimizations.
 
 **Ref**: Dunfield & Krishnaswami 2013 (bidirectional HM elaborating to System F),
-GHC Core (System FC with explicit type abstractions and applications)
+GHC Core (System FC with explicit type abstractions and applications),
+[System F Core IR session](8f5cc3a8-4c26-4f71-8fb0-1ea3c17f527b)
 
 ---
 
@@ -1078,6 +1081,9 @@ checking is not just a label — it provides concrete benefits (better error mes
 ∀-handling, cleaner let-binding flow). The current synthesis-only approach is Algorithm J with
 deferred solving, not bidirectional HM.
 
+**Ref**: [Bidirectional elaborator session](3308f68e-e239-4a60-912c-47cfba6eabcc),
+[Bidir refinements & D-038](303bcf3e-9eef-4719-a47d-24c1ff27a675)
+
 ---
 
 ## D-037: Environment-Carrying Instantiation — Future Enhancement
@@ -1115,6 +1121,8 @@ requires cooperation from all readers.
 correct and the type bodies are small in practice. Revisit when type complexity grows or
 instantiation becomes a measurable cost.
 
+**Ref**: [Bidirectional elaborator session](3308f68e-e239-4a60-912c-47cfba6eabcc)
+
 ---
 
 ## D-038: `MonoType` → `Type` with `Forall` Variant
@@ -1151,3 +1159,5 @@ constraints `∀a. C a => τ`), so it should not be removed.
 **Decision**: Planned. Polytype ascription tests are skipped (`@AwaitsFix`) until this is
 implemented. The annotated-let path (`let f : a -> a = ...`) works because the scheme is
 constructed directly from the annotation, bypassing `generalize`.
+
+**Ref**: [Bidir refinements & D-038](303bcf3e-9eef-4719-a47d-24c1ff27a675)

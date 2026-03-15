@@ -233,6 +233,14 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
     T visitVariable(PiescriptAntlrParser.VariableContext ctx);
 
     /**
+     * Visit a parse tree produced by the {@code QueryExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitQueryExpr(PiescriptAntlrParser.QueryExprContext ctx);
+
+    /**
      * Visit a parse tree produced by the {@code Projection}
      * labeled alternative in {@link PiescriptAntlrParser#primary}.
      * @param ctx the parse tree
@@ -398,16 +406,32 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
     T visitFunctionType(PiescriptAntlrParser.FunctionTypeContext ctx);
 
     /**
-     * Visit a parse tree produced by the {@code TypeAtom}
+     * Visit a parse tree produced by the {@code TypeNonArrow}
      * labeled alternative in {@link PiescriptAntlrParser#type}.
      * @param ctx the parse tree
      * @return the visitor result
      */
-    T visitTypeAtom(PiescriptAntlrParser.TypeAtomContext ctx);
+    T visitTypeNonArrow(PiescriptAntlrParser.TypeNonArrowContext ctx);
+
+    /**
+     * Visit a parse tree produced by the {@code TypeAppPassthrough}
+     * labeled alternative in {@link PiescriptAntlrParser#typeApp}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitTypeAppPassthrough(PiescriptAntlrParser.TypeAppPassthroughContext ctx);
+
+    /**
+     * Visit a parse tree produced by the {@code TypeApplication}
+     * labeled alternative in {@link PiescriptAntlrParser#typeApp}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitTypeApplication(PiescriptAntlrParser.TypeApplicationContext ctx);
 
     /**
      * Visit a parse tree produced by the {@code TypeCon}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      * @return the visitor result
      */
@@ -415,7 +439,7 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
 
     /**
      * Visit a parse tree produced by the {@code TypeVar}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      * @return the visitor result
      */
@@ -423,7 +447,7 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
 
     /**
      * Visit a parse tree produced by the {@code RecordType}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      * @return the visitor result
      */
@@ -431,7 +455,7 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
 
     /**
      * Visit a parse tree produced by the {@code ParenType}
-     * labeled alternative in {@link PiescriptAntlrParser#typePrimary}.
+     * labeled alternative in {@link PiescriptAntlrParser#typeAtom}.
      * @param ctx the parse tree
      * @return the visitor result
      */

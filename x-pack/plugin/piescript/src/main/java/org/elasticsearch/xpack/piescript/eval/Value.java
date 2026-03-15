@@ -9,6 +9,7 @@ package org.elasticsearch.xpack.piescript.eval;
 
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,4 +42,17 @@ public sealed interface Value {
      * when applied, the argument is prepended to produce the body's environment.
      */
     record ClosureVal(CoreExpr body, Value[] env) implements Value {}
+
+    /**
+     * A built-in function, possibly partially applied. Each application via
+     * {@code CoreApp} adds an argument; once the arity is reached the built-in
+     * executes. The {@code name} identifies which built-in to dispatch to.
+     *
+     * <p>Future work: unify built-in and closure application under a single
+     * callable protocol so that {@code CoreApp} evaluation does not need to
+     * branch on value variant. This would allow built-ins to be represented
+     * as regular closures over synthetic Core IR bodies, eliminating the
+     * special case in the evaluator.
+     */
+    record BuiltinVal(String name, int arity, List<Value> partialArgs) implements Value {}
 }

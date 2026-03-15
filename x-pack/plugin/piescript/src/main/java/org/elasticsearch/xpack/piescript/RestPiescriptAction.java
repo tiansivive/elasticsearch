@@ -8,7 +8,6 @@
 package org.elasticsearch.xpack.piescript;
 
 import org.elasticsearch.client.internal.node.NodeClient;
-import org.elasticsearch.core.Releasable;
 import org.elasticsearch.rest.BaseRestHandler;
 import org.elasticsearch.rest.RestRequest;
 import org.elasticsearch.rest.action.RestChunkedToXContentListener;
@@ -38,12 +37,7 @@ public class RestPiescriptAction extends BaseRestHandler {
             program = parseProgram(parser);
         }
         PiescriptRequest piescriptRequest = new PiescriptRequest(program);
-        return channel -> client.execute(PiescriptAction.INSTANCE, piescriptRequest, new RestChunkedToXContentListener<>(channel) {
-            @Override
-            protected Releasable releasableFromResponse(PiescriptResponse response) {
-                return response;
-            }
-        });
+        return channel -> client.execute(PiescriptAction.INSTANCE, piescriptRequest, new RestChunkedToXContentListener<>(channel));
     }
 
     private static String parseProgram(XContentParser parser) throws IOException {
