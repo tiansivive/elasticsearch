@@ -13,80 +13,149 @@ import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.xcontent.ChunkedToXContentObject;
 import org.elasticsearch.core.Nullable;
-import org.elasticsearch.core.Releasable;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
-import org.elasticsearch.xpack.esql.action.EsqlQueryResponse;
 import org.elasticsearch.xpack.piescript.eval.Value;
 
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Response from the piescript eval endpoint. Wraps either an expression
- * evaluation result ({@link Value} + type string) or an {@link EsqlQueryResponse}
- * from the query passthrough path (D-023).
+ * Response from the piescript eval and dev endpoints.
+ *
+ * <p>In normal mode, carries a {@link Value} and its type string.
+ * In dev mode, carries the full pipeline debug output (tree, core IR,
+ * constraints, zonker, diagnostics) with graceful error reporting at
+ * each stage.
+ *
+ * <p>TODO: merge {@code /_piescript/eval} and {@code /_piescript/dev}
+ * into a single endpoint with {@code ?dev} query parameter.
  */
-public class PiescriptResponse extends ActionResponse implements ChunkedToXContentObject, Releasable {
-
-    private static final byte EXPRESSION_RESULT = 0;
-    private static final byte QUERY_RESULT = 1;
+public class PiescriptResponse extends ActionResponse implements ChunkedToXContentObject {
 
     @Nullable
     private final Value value;
     @Nullable
     private final String typeString;
     @Nullable
-    private final EsqlQueryResponse esqlResponse;
+    private final DevInfo devInfo;
+
+    /**
+     * Debug information collected during the piescript pipeline.
+     * Each field is nullable — a null value means that stage was not reached
+     * (e.g. if parsing failed, only {@code parseError} is populated).
+     */
+    public record DevInfo(
+        @Nullable String tree,
+        @Nullable String core,
+        @Nullable String coreRaw,
+        @Nullable String type,
+        @Nullable String constraints,
+        @Nullable String zonker,
+        List<String> diagnostics,
+        @Nullable String eval,
+        @Nullable String evalError,
+        @Nullable String parseError,
+        @Nullable String typeError
+    ) {}
 
     private PiescriptResponse(Value value, String typeString) {
         this.value = value;
         this.typeString = typeString;
-        this.esqlResponse = null;
+        this.devInfo = null;
     }
 
-    private PiescriptResponse(EsqlQueryResponse esqlResponse) {
+    private PiescriptResponse(DevInfo devInfo) {
         this.value = null;
         this.typeString = null;
-        this.esqlResponse = esqlResponse;
+        this.devInfo = devInfo;
     }
 
     public static PiescriptResponse fromValue(Value value, String typeString) {
         return new PiescriptResponse(value, typeString);
     }
 
-    public static PiescriptResponse fromEsqlResponse(EsqlQueryResponse esqlResponse) {
-        return new PiescriptResponse(esqlResponse);
+    public static PiescriptResponse fromDev(DevInfo devInfo) {
+        return new PiescriptResponse(devInfo);
     }
 
+    // ── Serialization ──
+
+    private static final byte EVAL_RESULT = 0;
+    private static final byte DEV_RESULT = 1;
+
     public PiescriptResponse(StreamInput in) throws IOException {
-        byte discriminator = in.readByte();
-        if (discriminator == EXPRESSION_RESULT) {
+        byte tag = in.readByte();
+        if (tag == EVAL_RESULT) {
             this.typeString = in.readString();
             this.value = readValue(in);
-            this.esqlResponse = null;
+            this.devInfo = null;
         } else {
-            throw new UnsupportedOperationException("query result deserialization from stream not supported in Phase 1c");
+            this.value = null;
+            this.typeString = null;
+            this.devInfo = new DevInfo(
+                in.readOptionalString(),
+                in.readOptionalString(),
+                in.readOptionalString(),
+                in.readOptionalString(),
+                in.readOptionalString(),
+                in.readOptionalString(),
+                in.readStringCollectionAsList(),
+                in.readOptionalString(),
+                in.readOptionalString(),
+                in.readOptionalString(),
+                in.readOptionalString()
+            );
         }
     }
 
     @Override
     public void writeTo(StreamOutput out) throws IOException {
-        if (esqlResponse != null) {
-            out.writeByte(QUERY_RESULT);
-            esqlResponse.writeTo(out);
+        if (devInfo != null) {
+            out.writeByte(DEV_RESULT);
+            out.writeOptionalString(devInfo.tree);
+            out.writeOptionalString(devInfo.core);
+            out.writeOptionalString(devInfo.coreRaw);
+            out.writeOptionalString(devInfo.type);
+            out.writeOptionalString(devInfo.constraints);
+            out.writeOptionalString(devInfo.zonker);
+            out.writeStringCollection(devInfo.diagnostics);
+            out.writeOptionalString(devInfo.eval);
+            out.writeOptionalString(devInfo.evalError);
+            out.writeOptionalString(devInfo.parseError);
+            out.writeOptionalString(devInfo.typeError);
         } else {
-            out.writeByte(EXPRESSION_RESULT);
+            out.writeByte(EVAL_RESULT);
             out.writeString(typeString);
             writeValue(out, value);
         }
     }
 
+    // ── XContent rendering ──
+
     @Override
     public Iterator<? extends ToXContent> toXContentChunked(ToXContent.Params params) {
-        if (esqlResponse != null) {
-            return esqlResponse.toXContentChunked(params);
+        if (devInfo != null) {
+            return Iterators.single((builder, p) -> {
+                builder.startObject();
+                writeOptionalField(builder, "tree", devInfo.tree);
+                writeOptionalField(builder, "parse_error", devInfo.parseError);
+                writeOptionalField(builder, "core", devInfo.core);
+                writeOptionalField(builder, "core_raw", devInfo.coreRaw);
+                writeOptionalField(builder, "type", devInfo.type);
+                writeOptionalField(builder, "constraints", devInfo.constraints);
+                writeOptionalField(builder, "zonker", devInfo.zonker);
+                if (devInfo.diagnostics.isEmpty() == false) {
+                    builder.field("diagnostics", devInfo.diagnostics);
+                }
+                writeOptionalField(builder, "type_error", devInfo.typeError);
+                writeOptionalField(builder, "eval", devInfo.eval);
+                writeOptionalField(builder, "eval_error", devInfo.evalError);
+                builder.endObject();
+                return builder;
+            });
         }
         return Iterators.single((builder, p) -> {
             builder.startObject();
@@ -97,12 +166,13 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
         });
     }
 
-    @Override
-    public void close() {
-        if (esqlResponse != null) {
-            esqlResponse.close();
+    private static void writeOptionalField(XContentBuilder builder, String name, @Nullable String value) throws IOException {
+        if (value != null) {
+            builder.field(name, value);
         }
     }
+
+    // ── Value serialization helpers ──
 
     private static void writeValueToXContent(XContentBuilder builder, String fieldName, Value val) throws IOException {
         switch (val) {
@@ -120,6 +190,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
                 builder.endObject();
             }
             case Value.ClosureVal ignored -> builder.field(fieldName, "<function>");
+            case Value.BuiltinVal b -> builder.field(fieldName, "<builtin:" + b.name() + ">");
         }
     }
 
@@ -151,6 +222,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
                 out.writeMap(v.fields(), (o, value) -> writeValue(o, value));
             }
             case Value.ClosureVal ignored -> out.writeByte((byte) 7);
+            case Value.BuiltinVal ignored -> out.writeByte((byte) 8);
         }
     }
 
@@ -165,6 +237,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case 5 -> new Value.NullVal();
             case 6 -> new Value.RecordVal(in.readMap(PiescriptResponse::readValue));
             case 7 -> new Value.ClosureVal(null, null);
+            case 8 -> new Value.BuiltinVal("?", 0, List.of());
             default -> throw new IOException("unknown Value tag: " + tag);
         };
     }

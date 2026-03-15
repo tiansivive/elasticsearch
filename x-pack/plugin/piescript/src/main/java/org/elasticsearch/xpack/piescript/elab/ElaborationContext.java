@@ -12,6 +12,7 @@ import org.elasticsearch.xpack.piescript.types.TypeScheme;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
@@ -21,10 +22,18 @@ import java.util.stream.IntStream;
  * handles scope unwinding, so there is no push/pop and no risk of getting
  * out of sync.
  *
- * <p>The context is a de Bruijn-indexed list of named type schemes. Index 0
- * is the most recently bound variable (head of the list). The context also
- * carries the current binding level (let-nesting depth) used for
- * generalization.
+ * <p>The context has two scoping layers:
+ * <ol>
+ *   <li><b>Local bindings</b> — a de Bruijn-indexed list of named type schemes.
+ *       Index 0 is the most recently bound variable (head of the list).</li>
+ *   <li><b>Module bindings</b> — a name-keyed map of type schemes for free
+ *       variables (built-ins, eventually imports). Module bindings are checked
+ *       only when no local binding matches, so local variables shadow
+ *       module-level names.</li>
+ * </ol>
+ *
+ * <p>The context also carries the current binding level (let-nesting depth)
+ * used for generalization.
  *
  * <p>Usage in a recursive elaborator:
  * <pre>{@code
@@ -50,15 +59,25 @@ import java.util.stream.IntStream;
  */
 public final class ElaborationContext {
 
-    /** Empty context at binding level 0. */
-    public static final ElaborationContext EMPTY = new ElaborationContext(List.of(), 0);
+    /** Empty context at binding level 0 with no module bindings. */
+    public static final ElaborationContext EMPTY = new ElaborationContext(List.of(), Map.of(), 0);
 
     private final List<NamedScheme> bindings;
+    private final Map<String, TypeScheme> module;
     private final int bindingLevel;
 
-    private ElaborationContext(List<NamedScheme> bindings, int bindingLevel) {
+    private ElaborationContext(List<NamedScheme> bindings, Map<String, TypeScheme> module, int bindingLevel) {
         this.bindings = bindings;
+        this.module = module;
         this.bindingLevel = bindingLevel;
+    }
+
+    /**
+     * Create a context pre-populated with module-level bindings (built-ins,
+     * imports, etc.) at binding level 0 with no local bindings.
+     */
+    public static ElaborationContext withModule(Map<String, TypeScheme> module) {
+        return new ElaborationContext(List.of(), module, 0);
     }
 
     /** A binding in the context: surface name paired with its type scheme. */
@@ -69,13 +88,14 @@ public final class ElaborationContext {
 
     /**
      * Return a new context with an additional binding at de Bruijn index 0.
-     * The current bindings shift up by one index. Binding level is preserved.
+     * The current bindings shift up by one index. Binding level and module
+     * are preserved.
      */
     public ElaborationContext bind(String name, TypeScheme scheme) {
         var extended = new ArrayList<NamedScheme>(1 + bindings.size());
         extended.add(new NamedScheme(name, scheme));
         extended.addAll(bindings);
-        return new ElaborationContext(Collections.unmodifiableList(extended), bindingLevel);
+        return new ElaborationContext(Collections.unmodifiableList(extended), module, bindingLevel);
     }
 
     /**
@@ -91,14 +111,24 @@ public final class ElaborationContext {
             .findFirst();
     }
 
+    /**
+     * Look up a name in the module-level bindings (built-ins, imports).
+     * Only consulted when {@link #lookup} finds no local binding.
+     *
+     * @return the type scheme, or empty if the name is not in the module
+     */
+    public Optional<TypeScheme> lookupModule(String name) {
+        return Optional.ofNullable(module.get(name));
+    }
+
     /** Return a new context with binding level incremented (entering a let-RHS). */
     public ElaborationContext enterBindingLevel() {
-        return new ElaborationContext(bindings, bindingLevel + 1);
+        return new ElaborationContext(bindings, module, bindingLevel + 1);
     }
 
     /** Return a new context with binding level decremented (exiting a let-RHS). */
     public ElaborationContext exitBindingLevel() {
-        return new ElaborationContext(bindings, bindingLevel - 1);
+        return new ElaborationContext(bindings, module, bindingLevel - 1);
     }
 
     /** Current binding level (let-nesting depth). */

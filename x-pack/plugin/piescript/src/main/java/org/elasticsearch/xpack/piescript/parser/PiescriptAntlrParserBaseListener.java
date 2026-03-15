@@ -466,6 +466,22 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      * <p>The default implementation does nothing.</p>
      */
     @Override
+    public void enterQueryExpr(PiescriptAntlrParser.QueryExprContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitQueryExpr(PiescriptAntlrParser.QueryExprContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
     public void enterProjection(PiescriptAntlrParser.ProjectionContext ctx) {}
 
     /**
@@ -802,7 +818,7 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      * <p>The default implementation does nothing.</p>
      */
     @Override
-    public void enterTypeAtom(PiescriptAntlrParser.TypeAtomContext ctx) {}
+    public void enterTypeNonArrow(PiescriptAntlrParser.TypeNonArrowContext ctx) {}
 
     /**
      * {@inheritDoc}
@@ -810,7 +826,39 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      * <p>The default implementation does nothing.</p>
      */
     @Override
-    public void exitTypeAtom(PiescriptAntlrParser.TypeAtomContext ctx) {}
+    public void exitTypeNonArrow(PiescriptAntlrParser.TypeNonArrowContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void enterTypeAppPassthrough(PiescriptAntlrParser.TypeAppPassthroughContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitTypeAppPassthrough(PiescriptAntlrParser.TypeAppPassthroughContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void enterTypeApplication(PiescriptAntlrParser.TypeApplicationContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitTypeApplication(PiescriptAntlrParser.TypeApplicationContext ctx) {}
 
     /**
      * {@inheritDoc}

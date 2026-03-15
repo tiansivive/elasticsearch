@@ -45,11 +45,15 @@ public final class ElaborationState {
     private int metaSupply;
     private final Map<Integer, Object> zonker;
     private final List<Constraint> constraints;
+    private Map<String, ResolvedMapping> resolvedMappings;
+    private final List<String> diagnostics;
 
     public ElaborationState() {
         this.metaSupply = 0;
         this.zonker = new HashMap<>();
         this.constraints = new ArrayList<>();
+        this.resolvedMappings = Map.of();
+        this.diagnostics = new ArrayList<>();
     }
 
     // ──── Metavar supply ────
@@ -164,5 +168,39 @@ public final class ElaborationState {
     /** The accumulated constraints, in emission order. */
     public List<Constraint> constraints() {
         return Collections.unmodifiableList(constraints);
+    }
+
+    // ──── Resolved index mappings (Phase 2) ────
+
+    /**
+     * Install the resolved index mappings from the pre-pass. Must be called
+     * before elaboration begins if the program contains query expressions.
+     */
+    public void setResolvedMappings(Map<String, ResolvedMapping> mappings) {
+        this.resolvedMappings = mappings;
+    }
+
+    /**
+     * Look up a resolved mapping by index pattern. Returns {@code null} if
+     * the pattern was not resolved (no query uses it, or the pre-pass was
+     * not run).
+     */
+    public ResolvedMapping resolvedMapping(String indexPattern) {
+        return resolvedMappings.get(indexPattern);
+    }
+
+    // ──── Diagnostics (warnings, conflict reports) ────
+
+    /**
+     * Record a non-fatal diagnostic (e.g., mapping conflict on a field).
+     * Diagnostics do not abort elaboration but are surfaced to the user.
+     */
+    public void addDiagnostic(String message) {
+        diagnostics.add(message);
+    }
+
+    /** The accumulated diagnostics, in emission order. */
+    public List<String> diagnostics() {
+        return Collections.unmodifiableList(diagnostics);
     }
 }

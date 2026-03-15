@@ -9,20 +9,25 @@ package org.elasticsearch.xpack.piescript.eval;
 
 import org.elasticsearch.xpack.piescript.core.CoreApp;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
+import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
+import org.elasticsearch.xpack.piescript.core.CoreQuery;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
 import org.elasticsearch.xpack.piescript.core.CoreUpdate;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
+import org.elasticsearch.xpack.piescript.elab.Prelude;
 import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.Op;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 
 /**
  * Tree-walking evaluator for well-typed Core IR. Uses a de Bruijn environment
@@ -51,16 +56,24 @@ public final class Evaluator {
 
             case CoreVar var -> env[var.index()];
 
+            case CoreFree free -> {
+                var arity = Prelude.ARITY.get(free.name());
+                if (arity == null) {
+                    throw new EvaluationException("unknown built-in: " + free.name());
+                }
+                yield new Value.BuiltinVal(free.name(), arity, List.of());
+            }
+
             case CoreLam lam -> new Value.ClosureVal(lam.body(), env.clone());
 
             case CoreApp app -> {
                 var fn = evaluate(app.fn(), env);
                 var arg = evaluate(app.arg(), env);
-                var closure = switch (fn) {
-                    case Value.ClosureVal c -> c;
-                    default -> throw new AssertionError("type checker bug: expected closure, got " + fn);
+                yield switch (fn) {
+                    case Value.ClosureVal closure -> evaluate(closure.body(), prepend(arg, closure.env()));
+                    case Value.BuiltinVal builtin -> applyBuiltin(builtin, arg);
+                    default -> throw new AssertionError("type checker bug: expected callable, got " + fn);
                 };
-                yield evaluate(closure.body(), prepend(arg, closure.env()));
             }
 
             case CoreLet let -> {
@@ -106,6 +119,8 @@ public final class Evaluator {
             case CoreTypeApp typeApp -> evaluate(typeApp.polyExpr(), env);
 
             case CorePrimOp primOp -> evaluatePrimOp(primOp, env);
+
+            case CoreQuery q -> throw new EvaluationException("query evaluation is not yet supported (Phase 2 — eager evaluation pending)");
         };
     }
 
@@ -191,6 +206,24 @@ public final class Evaluator {
             case Value.BooleanVal v -> v.value();
             case Value.NullVal ignored -> throw new EvaluationException("null value in " + op + " operation");
             default -> throw new AssertionError("type checker bug: expected Boolean for " + op + ", got " + value);
+        };
+    }
+
+    private static Value applyBuiltin(Value.BuiltinVal builtin, Value arg) {
+        var args = new ArrayList<>(builtin.partialArgs());
+        args.add(arg);
+        if (args.size() < builtin.arity()) {
+            return new Value.BuiltinVal(builtin.name(), builtin.arity(), List.copyOf(args));
+        }
+        return executeBuiltin(builtin.name(), args);
+    }
+
+    private static Value executeBuiltin(String name, List<Value> args) {
+        throw switch (name) {
+            case "map", "filter", "reduce" -> new EvaluationException(
+                "built-in '" + name + "' requires Stream evaluation (Phase 2.8 — eager evaluation pending)"
+            );
+            default -> new EvaluationException("unknown built-in: " + name);
         };
     }
 

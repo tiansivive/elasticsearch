@@ -328,6 +328,17 @@ public class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor
      * {@link #visitChildren} on {@code ctx}.</p>
      */
     @Override
+    public T visitQueryExpr(PiescriptAntlrParser.QueryExprContext ctx) {
+        return visitChildren(ctx);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation returns the result of calling
+     * {@link #visitChildren} on {@code ctx}.</p>
+     */
+    @Override
     public T visitProjection(PiescriptAntlrParser.ProjectionContext ctx) {
         return visitChildren(ctx);
     }
@@ -559,7 +570,29 @@ public class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor
      * {@link #visitChildren} on {@code ctx}.</p>
      */
     @Override
-    public T visitTypeAtom(PiescriptAntlrParser.TypeAtomContext ctx) {
+    public T visitTypeNonArrow(PiescriptAntlrParser.TypeNonArrowContext ctx) {
+        return visitChildren(ctx);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation returns the result of calling
+     * {@link #visitChildren} on {@code ctx}.</p>
+     */
+    @Override
+    public T visitTypeAppPassthrough(PiescriptAntlrParser.TypeAppPassthroughContext ctx) {
+        return visitChildren(ctx);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation returns the result of calling
+     * {@link #visitChildren} on {@code ctx}.</p>
+     */
+    @Override
+    public T visitTypeApplication(PiescriptAntlrParser.TypeApplicationContext ctx) {
         return visitChildren(ctx);
     }
 

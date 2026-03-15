@@ -3,6 +3,8 @@
 > **Living doc** — update status markers as work progresses. Add new phases/sub-phases as they are
 > planned.
 
+**Overall design**: [scripting language design](../../.cursor/plans/scripting_language_design_9286506e.plan.md)
+
 ## Status Legend
 
 | Marker | Meaning |
@@ -58,7 +60,7 @@ Establishes the plugin skeleton, build configuration, security integration, and 
 | Java REST integration tests (6 cases) | :white_check_mark: |
 | README with build/test/manual-testing instructions | :white_check_mark: |
 
-**Ref**: [Phase 0 scaffold discussion](b0ac3e4f-db5e-4a03-85ec-a3016912512c)
+**Ref**: [Phase 0 plan](../../.cursor/plans/phase0_plugin_scaffold.plan.md), [scaffold discussion](b0ac3e4f-db5e-4a03-85ec-a3016912512c)
 
 ---
 
@@ -79,7 +81,7 @@ Lexer and parser that produce a CST from piescript source text.
 | Dev endpoint `POST /_piescript/dev` (CST inspection) | :white_check_mark: |
 | Error reporting with source locations | :white_check_mark: |
 
-**Ref**: [Phase 1a parser implementation](3cd2a822-792c-4179-a00e-0ba98b875f52)
+**Ref**: [Phase 1 plan](../../.cursor/plans/phase1_expression_language.plan.md), [parser implementation](3cd2a822-792c-4179-a00e-0ba98b875f52)
 
 ### Phase 1b — Type Checker :white_check_mark:
 
@@ -101,7 +103,10 @@ Bidirectional Hindley-Milner type inference with zonker-based elaboration.
 | Elaborator tests | :white_check_mark: |
 | Dev endpoint wired to elaborator (`CorePrinter`, tree + core + type) | :white_check_mark: |
 
-**Ref**: [Phase 1b implementation](36ef4cb3-4c3b-439e-a83a-aae069ca551c)
+**Ref**: [Phase 1 plan](../../.cursor/plans/phase1_expression_language.plan.md), [1b implementation](36ef4cb3-4c3b-439e-a83a-aae069ca551c),
+[System F Core IR](8f5cc3a8-4c26-4f71-8fb0-1ea3c17f527b),
+[bidirectional elaborator](3308f68e-e239-4a60-912c-47cfba6eabcc),
+[bidir refinements & D-038](303bcf3e-9eef-4719-a47d-24c1ff27a675)
 
 ### Phase 1c — Evaluator + Wiring :white_check_mark:
 
@@ -118,7 +123,7 @@ Tree-walking interpreter and end-to-end pipeline integration.
 | Dev endpoint with eval stage | :white_check_mark: |
 | Deferred elaborator tests (occurs check, cross-type arithmetic, lambda mismatch) | :white_check_mark: |
 
-**Ref**: [Phase 1c plan](../../.cursor/plans/phase_1c_evaluator_wiring_7ec117b6.plan.md)
+**Ref**: [Phase 1 plan](../../.cursor/plans/phase1_expression_language.plan.md)
 
 ### Phase 1d — Open Rows & Row Polymorphism :white_check_mark:
 
@@ -214,7 +219,9 @@ or when downstream work requires them.
 | `DIRECT_EXECUTOR_SERVICE` | D-004 | Parse, elaborate, evaluate all run synchronously on the calling thread. Needs a dedicated thread pool when computation becomes heavier. |
 | `KeywordVal` uses `String`, not `BytesRef` | D-026 | Reverse conversion needed when piescript values flow into ESQL query parameters (Phase 2+). |
 | No backwards-compatibility versioning | — | `PiescriptRequest`/`PiescriptResponse` do not use `TransportVersion` checks. |
-| No semicolon handling in queries | — | `extractEsqlQuery()` splits on last `;`. Temporary — the `query ... ;` syntax is a Phase 0 artifact. |
+| Double `EsqlBodyParser.parse()` call | T2.6 | Index pattern extracted once in `IndexResolutionPrePass.collectQueries()` and again in `Queries.query()`. Consequence of opaque `ESQL_BODY` token approach. Goes away when ANTLR grammar structurally captures the `FROM` clause. |
+| Opaque `ESQL_BODY` lexer token | T2.1 | ESQL body captured as backtick-delimited raw text (`` query `FROM ...` ``); index pattern extracted via Java string parsing. Future: parse `FROM <pattern>` structurally in the ANTLR grammar. |
+| Merge `/_piescript/eval` and `/_piescript/dev` | T2.9 | Both REST handlers dispatch to `TransportPiescriptAction` with a `dev` flag. Future: single `/_piescript/eval?dev` endpoint, eliminating `RestPiescriptDevAction`. |
 
 ---
 
@@ -226,12 +233,19 @@ open-row unification infrastructure from Phase 1d.
 
 | Task | Status |
 |------|--------|
-| Concrete-row constraint processing (cross-index conflict detection) | :memo: |
-| Index resolution pre-pass (`IndexResolver` integration) | :memo: |
-| `query` expression typing (returns `Stream (Record ρ)`) | :memo: |
+| ANTLR grammar — `queryExpr` production with `ESQL_MODE` lexer mode | :white_check_mark: |
+| `CoreQuery` variant in `CoreExpr` sealed hierarchy | :white_check_mark: |
+| `Stream` type constructor, `DataTypeMapping` utility | :white_check_mark: |
+| Index resolution pre-pass (`IndexResolver` integration, `ResolvedMapping`) | :white_check_mark: |
+| Concrete-row constraint processing (cross-index conflict detection via `InvalidMappedField`) | :white_check_mark: |
+| Query expression typing (`QueryExpr` → `CoreQuery` with `Stream { ... }`) | :white_check_mark: |
 | `map`/`filter` as built-in typed functions | :memo: |
-| DataType → TCon mapping table | :memo: |
-| Integration tests (index conflicts, unmapped fields, polymorphic propagation) | :memo: |
+| Eager evaluation (fire `EsqlQueryAction`, convert rows to `RecordVal`s) | :memo: |
+| Transport pipeline refactor (remove passthrough, unified dev/eval pipeline) | :white_check_mark: |
+| Integration tests (index conflicts, unmapped fields, eager eval end-to-end) | :memo: |
+| Documentation updates | :memo: |
+
+**Ref**: [Phase 2 plan](../../.cursor/plans/phase2_implementation.plan.md), [Phase 2 row types (original)](../../.cursor/plans/phase2_row_types.plan.md)
 
 ---
 
@@ -277,6 +291,8 @@ full data pipelines as piescript programs.
   executor — transforms that compile to ESQL expressions run on data nodes, vectorized, parallel
   across shards
 
+**Ref**: [Phase 3 plan](../../.cursor/plans/phase3_stream_runtime.plan.md)
+
 ---
 
 ## Phase 4 — Process Primitives & Plan Composition :memo:
@@ -298,6 +314,8 @@ concurrently as independent plan branches. First real use of π-calculus foundat
 - `par` builds plan nodes, not fires async queries (D-012)
 - Channels are implicit plan graph edges (v0); explicit channels are future work
 - Join calculus informs primitive selection (D-015)
+
+**Ref**: [Phase 4 plan](../../.cursor/plans/phase4_process_primitives.plan.md)
 
 ---
 

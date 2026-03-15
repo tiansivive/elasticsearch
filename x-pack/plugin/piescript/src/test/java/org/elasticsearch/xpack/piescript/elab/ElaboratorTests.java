@@ -9,6 +9,9 @@ package org.elasticsearch.xpack.piescript.elab;
 
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.xpack.esql.core.type.DataType;
+import org.elasticsearch.xpack.esql.core.type.EsField;
+import org.elasticsearch.xpack.esql.core.type.InvalidMappedField;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
@@ -16,6 +19,7 @@ import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
+import org.elasticsearch.xpack.piescript.core.CoreQuery;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
@@ -28,6 +32,7 @@ import org.elasticsearch.xpack.piescript.types.Op;
 import org.elasticsearch.xpack.piescript.types.RowType;
 
 import java.util.Map;
+import java.util.Set;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
@@ -691,5 +696,106 @@ public class ElaboratorTests extends ESTestCase {
     public void testLambdaParamTypeVarIsMonomorphic() {
         var result = elaborate("let f = fn (x : Integer) -> fn (y : Integer) -> x + y in f 1 2");
         assertThat(resolveType(result), is(INTEGER));
+    }
+
+    // ──── Query expression typing (Phase 2: T2.5/T2.6) ────
+
+    private CoreExpr elaborateWithMappings(String source, Map<String, ResolvedMapping> mappings) {
+        var parser = new PiescriptParser();
+        var program = parser.parse(source);
+        state.setResolvedMappings(mappings);
+        var elaborator = new Elaborator(state);
+        return elaborator.elaborateProgram(program);
+    }
+
+    private static EsField field(DataType type) {
+        return new EsField("_", type, Map.of(), true, EsField.TimeSeriesFieldType.UNKNOWN);
+    }
+
+    public void testQueryExprProducesCoreQuery() {
+        var mapping = new ResolvedMapping(
+            "logs-*",
+            Map.of("status", field(DataType.INTEGER), "message", field(DataType.KEYWORD)),
+            Set.of()
+        );
+        var result = elaborateWithMappings("query `FROM logs-*`", Map.of("logs-*", mapping));
+        assertThat(result, instanceOf(CoreQuery.class));
+        var query = (CoreQuery) result;
+        assertEquals("logs-*", query.indexPattern());
+        assertEquals("FROM logs-*", query.esqlQuery());
+    }
+
+    public void testQueryExprTypeIsStreamRecord() {
+        var mapping = new ResolvedMapping(
+            "logs-*",
+            Map.of("status", field(DataType.INTEGER), "message", field(DataType.KEYWORD)),
+            Set.of()
+        );
+        var result = elaborateWithMappings("query `FROM logs-*`", Map.of("logs-*", mapping));
+        var type = resolveType(result);
+        assertThat(type, instanceOf(MonoType.AppType.class));
+        var appType = (MonoType.AppType) type;
+        assertEquals(new MonoType.TCon("Stream"), appType.constructor());
+        assertThat(appType.argument(), instanceOf(MonoType.RecordType.class));
+        var recordType = (MonoType.RecordType) appType.argument();
+        assertEquals(INTEGER, recordType.row().fields().get("status"));
+        assertEquals(KEYWORD, recordType.row().fields().get("message"));
+    }
+
+    public void testQueryExprInLetBinding() {
+        var mapping = new ResolvedMapping("logs-*", Map.of("status", field(DataType.LONG)), Set.of());
+        var result = elaborateWithMappings("let docs = query `FROM logs-*`; docs", Map.of("logs-*", mapping));
+        assertThat(result, instanceOf(CoreLet.class));
+        var let = (CoreLet) result;
+        assertThat(let.rhs(), instanceOf(CoreQuery.class));
+        var type = resolveType(let.body());
+        assertThat(type, instanceOf(MonoType.AppType.class));
+    }
+
+    public void testQueryExprSkipsMetaFields() {
+        var mapping = new ResolvedMapping(
+            "logs-*",
+            Map.of("status", field(DataType.INTEGER), "_id", field(DataType.KEYWORD), "_index", field(DataType.KEYWORD)),
+            Set.of()
+        );
+        var result = elaborateWithMappings("query `FROM logs-*`", Map.of("logs-*", mapping));
+        var appType = (MonoType.AppType) resolveType(result);
+        var recordType = (MonoType.RecordType) appType.argument();
+        assertEquals(1, recordType.row().fields().size());
+        assertTrue(recordType.row().fields().containsKey("status"));
+        assertFalse(recordType.row().fields().containsKey("_id"));
+    }
+
+    public void testQueryExprInvalidMappedFieldBecomesUnsupported() {
+        var conflict = new InvalidMappedField("status", Map.of("integer", Set.of("index-1"), "keyword", Set.of("index-2")));
+        var mapping = new ResolvedMapping("logs-*", Map.of("status", conflict, "message", field(DataType.KEYWORD)), Set.of());
+        var result = elaborateWithMappings("query `FROM logs-*`", Map.of("logs-*", mapping));
+        var appType = (MonoType.AppType) resolveType(result);
+        var recordType = (MonoType.RecordType) appType.argument();
+        assertEquals(new MonoType.TCon("Unsupported"), recordType.row().fields().get("status"));
+        assertEquals(KEYWORD, recordType.row().fields().get("message"));
+    }
+
+    public void testQueryExprInvalidMappedFieldEmitsDiagnostic() {
+        var conflict = new InvalidMappedField("status", Map.of("integer", Set.of("index-1"), "keyword", Set.of("index-2")));
+        var mapping = new ResolvedMapping("logs-*", Map.of("status", conflict), Set.of());
+        elaborateWithMappings("query `FROM logs-*`", Map.of("logs-*", mapping));
+        assertThat(state.diagnostics().size(), is(1));
+        assertThat(state.diagnostics().get(0), containsString("status"));
+        assertThat(state.diagnostics().get(0), containsString("logs-*"));
+    }
+
+    public void testQueryExprWithNoMappingThrows() {
+        var e = expectThrows(ElaborationException.class, () -> elaborateWithMappings("query `FROM nonexistent-*`", Map.of()));
+        assertThat(e.getMessage(), containsString("no resolved mapping"));
+        assertThat(e.getMessage(), containsString("nonexistent-*"));
+    }
+
+    public void testQueryExprWithEsqlPipes() {
+        var mapping = new ResolvedMapping("logs-*", Map.of("status", field(DataType.INTEGER)), Set.of());
+        var result = elaborateWithMappings("query `FROM logs-* | WHERE status >= 500 | LIMIT 10`", Map.of("logs-*", mapping));
+        assertThat(result, instanceOf(CoreQuery.class));
+        var query = (CoreQuery) result;
+        assertEquals("FROM logs-* | WHERE status >= 500 | LIMIT 10", query.esqlQuery());
     }
 }
