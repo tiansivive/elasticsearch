@@ -44,6 +44,20 @@ public sealed interface Value {
     record ClosureVal(CoreExpr body, Value[] env) implements Value {}
 
     /**
+     * A materialized stream of values. Produced by evaluating a {@code CoreQuery}
+     * (via {@code EsqlQueryAction}), where each element is a {@code RecordVal}
+     * corresponding to a row. After transforms ({@code map}, {@code filter}),
+     * elements may be any {@code Value} type.
+     *
+     * <p>This is an eager, fully-materialized representation. In Block A the
+     * evaluator becomes async (CPS / ActionListener-based) and streams may be
+     * delivered via channels, but the representation remains a materialized list.
+     * Block D may introduce a lowering IR where streams are described rather than
+     * materialized. See D-040.
+     */
+    record StreamVal(List<Value> elements) implements Value {}
+
+    /**
      * A built-in function, possibly partially applied. Each application via
      * {@code CoreApp} adds an argument; once the arity is reached the built-in
      * executes. The {@code name} identifies which built-in to dispatch to.

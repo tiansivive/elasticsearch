@@ -7,6 +7,10 @@
 
 package org.elasticsearch.xpack.piescript.eval;
 
+import org.elasticsearch.client.internal.Client;
+import org.elasticsearch.core.Nullable;
+import org.elasticsearch.xpack.esql.action.EsqlQueryAction;
+import org.elasticsearch.xpack.esql.action.EsqlQueryRequest;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreFree;
@@ -46,11 +50,24 @@ public final class Evaluator {
 
     private static final Value[] EMPTY_ENV = new Value[0];
 
+    @Nullable
+    private final Client client;
+
+    /** For pure-expression evaluation (unit tests, no query support). */
+    public Evaluator() {
+        this.client = null;
+    }
+
+    /** For full evaluation including query execution via {@code EsqlQueryAction}. */
+    public Evaluator(Client client) {
+        this.client = client;
+    }
+
     public Value evaluate(CoreExpr expr) {
         return evaluate(expr, EMPTY_ENV);
     }
 
-    private Value evaluate(CoreExpr expr, Value[] env) {
+    Value evaluate(CoreExpr expr, Value[] env) {
         return switch (expr) {
             case CoreLit lit -> litToValue(lit.value());
 
@@ -120,7 +137,15 @@ public final class Evaluator {
 
             case CorePrimOp primOp -> evaluatePrimOp(primOp, env);
 
-            case CoreQuery q -> throw new EvaluationException("query evaluation is not yet supported (Phase 2 — eager evaluation pending)");
+            case CoreQuery q -> {
+                if (client == null) {
+                    throw new EvaluationException("query evaluation requires a client — use Evaluator(Client) constructor");
+                }
+                var request = EsqlQueryRequest.syncEsqlQueryRequest(q.esqlQuery());
+                try (var response = client.execute(EsqlQueryAction.INSTANCE, request).actionGet()) {
+                    yield EsqlValueConverter.convertResponse(response);
+                }
+            }
         };
     }
 
@@ -209,7 +234,20 @@ public final class Evaluator {
         };
     }
 
-    private static Value applyBuiltin(Value.BuiltinVal builtin, Value arg) {
+    /**
+     * Apply a callable value (closure or built-in) to a single argument.
+     * Used by built-in implementations ({@code map}, {@code filter}, {@code reduce})
+     * to apply user-provided callbacks to stream elements.
+     */
+    private Value applyFunction(Value fn, Value arg) {
+        return switch (fn) {
+            case Value.ClosureVal closure -> evaluate(closure.body(), prepend(arg, closure.env()));
+            case Value.BuiltinVal builtin -> applyBuiltin(builtin, arg);
+            default -> throw new AssertionError("type checker bug: expected callable, got " + fn);
+        };
+    }
+
+    private Value applyBuiltin(Value.BuiltinVal builtin, Value arg) {
         var args = new ArrayList<>(builtin.partialArgs());
         args.add(arg);
         if (args.size() < builtin.arity()) {
@@ -218,12 +256,46 @@ public final class Evaluator {
         return executeBuiltin(builtin.name(), args);
     }
 
-    private static Value executeBuiltin(String name, List<Value> args) {
-        throw switch (name) {
-            case "map", "filter", "reduce" -> new EvaluationException(
-                "built-in '" + name + "' requires Stream evaluation (Phase 2.8 — eager evaluation pending)"
-            );
-            default -> new EvaluationException("unknown built-in: " + name);
+    private Value executeBuiltin(String name, List<Value> args) {
+        return switch (name) {
+            case "map" -> {
+                var fn = args.get(0);
+                var stream = requireStream(args.get(1), name);
+                var results = new ArrayList<Value>();
+                for (var element : stream.elements()) {
+                    results.add(applyFunction(fn, element));
+                }
+                yield new Value.StreamVal(results);
+            }
+            case "filter" -> {
+                var fn = args.get(0);
+                var stream = requireStream(args.get(1), name);
+                var results = new ArrayList<Value>();
+                for (var element : stream.elements()) {
+                    var result = applyFunction(fn, element);
+                    if (result instanceof Value.BooleanVal(var b) && b) {
+                        results.add(element);
+                    }
+                }
+                yield new Value.StreamVal(results);
+            }
+            case "reduce" -> {
+                var fn = args.get(0);
+                var acc = args.get(1);
+                var stream = requireStream(args.get(2), name);
+                for (var element : stream.elements()) {
+                    acc = applyFunction(applyFunction(fn, acc), element);
+                }
+                yield acc;
+            }
+            default -> throw new EvaluationException("unknown built-in: " + name);
+        };
+    }
+
+    private static Value.StreamVal requireStream(Value value, String builtinName) {
+        return switch (value) {
+            case Value.StreamVal s -> s;
+            default -> throw new AssertionError("type checker bug: expected Stream for " + builtinName + ", got " + value);
         };
     }
 

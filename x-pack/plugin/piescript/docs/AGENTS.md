@@ -6,20 +6,20 @@
 ## What is Piescript?
 
 Piescript is a **typed functional language for distributed computation** in Elasticsearch. It uses
-π-calculus process primitives to orchestrate data pipelines that run where the data lives. Pure
-functional expressions (lambdas, let-bindings, records) evaluate locally; process primitives
-(queries, parallel composition, stream transforms) produce a **plan graph** that is optimized and
-dispatched by the executor. User-defined functions travel to data nodes as closures — safe because
-the language is pure and referentially transparent.
+Join Calculus primitives (`spawn`, `join`, channels) to coordinate asynchronous data pipelines
+that run where the data lives. Pure functional expressions (lambdas, let-bindings, records)
+evaluate locally; coordination primitives (`spawn` launches async work, `join` synchronizes on
+channels) orchestrate concurrent execution. User-defined functions travel to data nodes as
+closures — safe because the language is pure and referentially transparent.
 
 ## Quick Orientation
 
 | Doc | What it covers |
 |-----|---------------|
-| [vision.md](vision.md) | Long-term goals, distributed computation model, design philosophy, non-goals |
-| [roadmap.md](roadmap.md) | Phased development plan with status markers |
+| [vision.md](vision.md) | Long-term goals, Join Calculus coordination model, design philosophy, non-goals |
+| [roadmap.md](roadmap.md) | Block-based development plan with status markers (Blocks A–E replace old Phases 3–5) |
 | [current-state.md](current-state.md) | What works **right now**, known limitations, immediate next steps |
-| [architecture.md](architecture.md) | System design, two-layer IR, plan graph, evaluator/planner split |
+| [architecture.md](architecture.md) | System design, Core IR, async evaluator, channel-based coordination |
 | [project-structure.md](project-structure.md) | File layout and what each module/file does |
 | [decisions.md](decisions.md) | Key architectural decisions and their rationale |
 | [references.md](references.md) | π-calculus papers, textbooks, implemented languages, and theory |
@@ -55,19 +55,17 @@ the language is pure and referentially transparent.
 - **Type safety**: The language uses Hindley-Milner type inference with bidirectional checking.
   Types are inferred, not annotated. The type system is a core differentiator — do not compromise it
   for convenience.
-- **Two-layer IR**: Core IR is split into `CoreExpr` (functional, evaluated directly) and
-  `CoreProcess` (process effects, build plan graph nodes). Effects do not leak into the functional
-  layer. See D-013.
-- **Plan graph architecture**: Process primitives produce plan graph nodes, not runtime effects.
-  The plan graph is optimized and then dispatched by the executor. This is the foundation for
-  distributed execution. See D-012.
+- **Join Calculus coordination model**: `spawn` (async computation → channel), `join`
+  (synchronize on channels). Replaces the old plan graph / `par` architecture. See D-040.
+- **Single-hierarchy Core IR**: `CoreExpr` includes coordination nodes (`CoreSpawn`, `CoreJoin`)
+  alongside functional nodes. No separate `CoreProcess` hierarchy. D-013 is superseded by D-040.
 - **Purity enables distribution**: The language is pure and referentially transparent. Closures can
   be shipped to remote nodes because captured values are immutable. See D-014.
-- **Combinators are prelude built-ins**: `map`, `filter`, `fold` are normal polymorphic functions,
-  not Core IR nodes. Their runtime implementations construct plan graph nodes. This prepares for
-  typeclasses (`map` → `Functor.fmap`). See D-016.
-- **Streams are unrestricted**: Using a stream twice creates fan-out in the plan graph DAG. No
-  linearity needed for streams. Linearity is for channel endpoints (Phase 6+). See D-017, D-018.
+- **Combinators are prelude built-ins**: `map`, `filter`, `reduce` are normal polymorphic functions,
+  not Core IR nodes. They operate over materialized `StreamVal`. This prepares for typeclasses
+  (`map` → `Functor.fmap`). See D-016.
+- **Channels backed by ES infrastructure**: `SubscribableListener<Value>` for single-value channels,
+  `GroupedActionListener` for n-ary join synchronization. See D-040.
 
 ## Coding Guidelines
 
@@ -152,3 +150,8 @@ Prior design discussions are preserved in agent transcripts:
 - **Bidir refinements & D-038**: `303bcf3e-9eef-4719-a47d-24c1ff27a675` — test fixes, polytype
   ascription bug discovery (CoreTypeAbs cannot express its own type), MonoType→Type with Forall
   variant decision (D-038), TypeScheme retained for future qualified types.
+- **Join Calculus redesign**: `f54fd3b6-dcf8-4af9-9af0-6a33818de6ef` — critical re-evaluation of
+  Phase 3 plan graph architecture. Analysis of Join Calculus (Fournet & Gonthier) and π-calculus
+  (Sangiorgi). Redesign: `spawn`/`join`/channels replace `par`/plan graph. Mapping to ES
+  infrastructure (`SubscribableListener`, `GroupedActionListener`, `threadPool.executor(GENERIC)`).
+  Multi-value channels, ESQL Exchange analysis. New Block-based phasing (A–E). D-040 decision.

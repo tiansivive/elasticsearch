@@ -1,16 +1,11 @@
 # Vision
 
 > **Living doc** — revisit when the project's direction shifts or new insights emerge.
->
-> **Revised**: 2026-03-16. The execution model has been redesigned around the Join Calculus
-> (Fournet & Gonthier). The previous plan-graph / free-monad-over-π-effects architecture is
-> archived in `docs/archive/vision.pre-join-calculus.md`. See D-040 for the decision record.
 
 ## One-Liner
 
 Piescript is a **typed functional language for distributed computation** in Elasticsearch, using
-Join Calculus primitives (`spawn`, `join`, channels) to coordinate asynchronous data pipelines
-that run where the data lives.
+π-calculus process primitives to orchestrate data pipelines that run where the data lives.
 
 ## Why Piescript Exists
 
@@ -51,7 +46,9 @@ aggregate the results, write to index C — they chain multiple features togethe
 failure modes, no shared type checking, and no unified debugging story.
 
 Piescript can subsume all of these. Every feature in the table above is a specific instantiation of
-the same pattern: query → compute → output. A programming language expresses this natively.
+the same pattern: query → compute → output. A programming language expresses this natively. The plan
+graph architecture means the same program can be executed in different contexts (batch, ingest-time,
+query-time, triggered) by different executors, without changing the program itself.
 
 ## The Distributed Computation Model
 
@@ -60,58 +57,21 @@ Piescript's core insight is the separation of two concerns:
 1. **Pure functional expressions** — let-bindings, lambdas, application, records, pattern matching.
    These evaluate locally, on whichever node runs them. They produce values.
 
-2. **Coordination primitives** — `spawn` (launch asynchronous computation, producing a channel),
-   `join` (synchronize on one or more channels, react when results arrive), and channels (typed
-   conduits for asynchronous results). These orchestrate distributed work.
+2. **Process primitives** — queries, parallel composition, channels, stream combinators. These
+   describe distributed work. They are not executed directly by the evaluator; instead, they produce
+   a **plan graph** that describes what computation happens where.
 
-The coordination layer is based on the **Join Calculus** (Fournet & Gonthier, 2000), a variant of
-the π-calculus designed specifically for distributed implementation. The key properties:
+The plan graph is the bridge between the language and distributed execution. It is a reification of
+the program's effectful structure — a free monad over π-calculus operations. The executor interprets
+this plan, dispatching computation to the nodes that hold the relevant data.
 
-- **Local synchronization**: a join body fires only when all required channels have delivered their
-  values. Synchronization is local — no distributed consensus needed at the primitive level.
-- **Asynchronous by construction**: `spawn` launches work without blocking. The spawning
-  computation continues immediately. Results arrive on channels.
-- **Reaction rules**: `join` patterns are reaction rules — "when channel A has a value AND channel
-  B has a value, fire this body." This naturally expresses multi-way synchronization (e.g.,
-  "proceed when both query A and query B complete").
-
-**The rule:** pure code evaluates; coordination primitives orchestrate; the runtime dispatches.
+**The rule:** pure code evaluates; process code describes; the executor runs the descriptions.
 
 This separation works because the language is **pure and referentially transparent**. The only
-effects are coordination effects (`spawn`, `join`, channel communication). Since pure expressions
-have no side effects, they can be safely evaluated on any node, and closures can be shipped to
-remote nodes without changing semantics.
-
-### The Free Monad Perspective
-
-The coordination primitives form an **algebraic effect signature**, and the evaluator is an
-**effect handler**. Formally, the evaluator is a partial evaluator: it reduces pure expressions
-to values, and gets stuck on coordination effects. The stuck residual — a tree of irreducible
-`spawn`/`join`/`query` operations with attached values and closures — is a **free monad** over
-the Join Calculus effect signature.
-
-This free monad is piescript's **lowering IR**. In the initial implementation (Block A), the
-evaluator eagerly interprets coordination effects via ActionListener callbacks — no explicit free
-monad is constructed. When optimization is introduced (Block D), the evaluator splits into a
-partial evaluator (producing the free monad residual) and a runtime interpreter (executing the
-optimized residual). The free monad structure enables inspection and transformation before
-execution: push-down of lambdas into ESQL queries, combinator fusion, dead-branch elimination.
-See [architecture.md](architecture.md) for the full pipeline.
-
-### Why Join Calculus, Not Raw π-Calculus
-
-The full π-calculus includes constructs (like input-guarded choice: `c₁?x.P + c₂?y.Q`) that are
-notoriously difficult to implement in distributed systems — they require atomic coordination across
-multiple nodes. The Join Calculus restricts the π-calculus to primitives that have efficient
-distributed implementations while preserving full expressiveness:
-
-- No input-guarded choice (replaced by join patterns with local synchronization)
-- Messages travel to a destination and interact only after arrival
-- All synchronization is local to a single node
-
-This is precisely what Elasticsearch needs: coordination that can be implemented efficiently using
-existing transport and thread-pool infrastructure, without requiring new distributed consensus
-protocols.
+effects are π-calculus effects (query execution, channel communication, parallel composition). Since
+pure expressions have no side effects, the evaluator can safely reduce them locally and defer all
+effectful operations to the plan graph. This is analogous to Haskell's IO monad boundary — but
+instead of arbitrary IO, piescript's effects are precisely the π-calculus primitives.
 
 ### Code Mobility
 
@@ -121,6 +81,10 @@ holding `logs-*` shards. In a pure language, this is straightforward:
 - **Closed lambdas** (no free variables) are self-contained code — serialize and ship anywhere.
 - **Closures** (lambdas with captured variables) carry their captured environment. Since the
   language is pure, the captured values are immutable — clone and ship the `(code, env)` pair.
+
+This is similar to delimited continuations: the process primitives are the delimiters, and the
+plan graph is the reified continuation tree. Each π-primitive captures "what happens next" as a
+continuation that can be dispatched to a remote node.
 
 See [references.md](references.md) — Sangiorgi's agent-passing paper shows that code mobility
 reduces to name passing in the π-calculus, requiring no fundamentally new mechanism.
@@ -135,43 +99,42 @@ This keeps the surface syntax lightweight while providing strong safety guarante
 
 ### 2. ESQL is the data layer
 
-Piescript does not reinvent query execution. `query` expressions delegate to ESQL. The language
-adds computation *around* queries — binding results, transforming values, branching on conditions —
-not *inside* them.
+Piescript does not reinvent query execution. `query` expressions compile directly to ESQL requests.
+The language adds computation *around* queries — binding results, transforming values, branching on
+conditions — not *inside* them.
 
 ### 3. Functional by default, distributed by design
 
 Immutable bindings, expressions over statements, pattern matching over if-else chains. Purity is
 not just an aesthetic choice — it is what makes distributed execution safe. Referential transparency
 guarantees that shipping a closure to a remote node produces the same result as evaluating it
-locally. The language's only effects are coordination primitives (`spawn`, `join`, channel
-communication), which are modeled explicitly.
+locally. The language's only effects are π-calculus process primitives (query, par, send, recv),
+which are modeled explicitly and handled by the plan graph executor.
 
 ### 4. Incremental delivery
 
 The language is built in phases, each self-contained and testable. Phase 0 is a passthrough;
-Phase 1 adds the core expression language; Phase 2 adds query typing and evaluation; later phases
-add asynchronous coordination and distributed execution. Early phases execute everything locally
-on the coordinator node; later phases distribute work to data nodes. The key architectural
-abstractions (the functional/coordination boundary, the channel model) are introduced early so
-that the transition from local to distributed execution is incremental, not architectural.
+Phase 1 adds the core expression language; later phases add the plan graph and distributed
+execution. Early phases execute everything locally on the coordinator node; later phases distribute
+plan fragments to data nodes. The key architectural abstractions (the functional/process boundary,
+the plan graph IR) are introduced early so that the transition from local to distributed execution
+is incremental, not architectural.
 
 ### 5. Elasticsearch-native
 
 Piescript is an x-pack plugin that follows ES conventions for build, test, security, and backwards
 compatibility. It is not a standalone language bolted onto Elasticsearch — it is designed from the
-ground up to integrate deeply. The coordination runtime builds on ES's existing infrastructure:
-`ActionListener` / `SubscribableListener` for asynchronous single-value channels, the transport
-layer for cross-node communication, and ESQL's compute engine for vectorized data processing.
+ground up to integrate deeply. The plan graph executor builds on ES's existing infrastructure:
+ESQL's compute engine for vectorized data processing, the transport layer for cross-node
+communication, and the exchange mechanism for distributed data flow.
 
 ### 6. Grounded in process algebra
 
-The Join Calculus (Fournet & Gonthier) provides the theoretical foundation for piescript's
-coordination primitives. This is not decoration — it gives us a formal framework for reasoning
-about asynchronous coordination, channel communication, and code mobility. The restriction to
-locally-synchronizable primitives guarantees that every coordination pattern in piescript has an
-efficient distributed implementation. See [references.md](references.md) for the full theoretical
-lineage.
+The π-calculus provides the theoretical foundation for piescript's process primitives. This is not
+decoration — it gives us a formal framework for reasoning about parallel composition, channel
+communication, and code mobility. The join calculus variant (Fournet & Gonthier) specifically
+informs which primitives are efficiently implementable in a distributed setting. See
+[references.md](references.md) for the full theoretical lineage.
 
 ## MVP: Unified Data Pipelines
 
@@ -182,11 +145,13 @@ Transforms, enrich policies, and ingest pipeline chains, as a single typed progr
 
 1. **Query data** from one or more indices via ESQL.
 2. **Transform, filter, and aggregate** the results using typed, composable functions.
-3. **Run multiple queries concurrently** via `spawn` + `join` — no sequential blocking.
-4. **Join / enrich** by querying a second index and merging fields — no separate enrich policy
+3. **Join / enrich** by querying a second index and merging fields — no separate enrich policy
    or processor configuration needed.
-5. **Write results** to a target index via `writeTo`.
-6. **Run on a schedule** as an async persistent task within Elasticsearch.
+4. **Write results** to a target index.
+5. **Run on a schedule** as an async persistent task within Elasticsearch.
+6. **Execute distributed** — the plan graph optimizer pushes compatible transforms into the ESQL
+   query (map → EVAL, filter → WHERE, groupBy + fold → STATS), so they run on data nodes via
+   ESQL's existing distributed engine.
 
 ### Why this proves the use case
 
@@ -195,8 +160,10 @@ Transforms, enrich policies, and ingest pipeline chains, as a single typed progr
 - **Type safety**: the entire pipeline — source query, transforms, joins, output — is type-checked
   as one unit. If an enrich join references a field that doesn't exist, the error is caught at
   compile time, not at 3 AM on the 10 millionth document.
-- **Concurrency**: multiple queries execute in parallel via `spawn` + `join`, with the type system
-  ensuring that join bodies receive the correct types from each channel.
+- **Performance**: piescript transforms that compile to ESQL expressions run on data nodes,
+  vectorized, parallel across shards — leveraging ESQL's compute engine rather than pulling data
+  to the coordinator. The plan graph optimizer can fuse adjacent transforms and push computation
+  down, achieving performance that a rigid API configuration cannot match.
 - **Unification**: one program replaces what today requires chaining a Transform, an enrich policy,
   an enrich processor, an ingest pipeline, and the glue between them. One language, one type system,
   one error model, one debugging story.
@@ -206,38 +173,41 @@ Transforms, enrich policies, and ingest pipeline chains, as a single typed progr
 What today requires an enrich policy + enrich processor + ingest pipeline + transform:
 
 ```
-let orders_ch = spawn (query `FROM incoming-orders | WHERE @timestamp > now() - 1h`);
-let customers_ch = spawn (query `FROM customer-database`);
+let orders = query FROM incoming-orders | WHERE @timestamp > now() - 1h;
+let customers = query FROM customer-database;
 
-join (orders_ch orders) & (customers_ch customers) -> {
-  let enriched = orders |> map (fn order ->
-    let customer = customers
-      |> filter (fn c -> c.id == order.customer_id)
-      |> reduce { name: "", tier: "" } (fn _ c -> { name: c.name, tier: c.tier });
-    { order | customer_name: customer.name, tier: customer.tier });
+let enriched = orders |> map (fn order ->
+  let customer = customers
+    |> filter (fn c -> c.id == order.customer_id)
+    |> first;
+  { order | customer_name: customer.name, tier: customer.tier });
 
-  let summary = enriched
-    |> groupBy .tier
-    |> reduce { count: 0, revenue: 0 } (fn acc row ->
-         { count: acc.count + 1, revenue: acc.revenue + row.amount });
+let summary = enriched
+  |> groupBy .tier
+  |> fold { count: 0, revenue: 0 } (fn acc -> fn row ->
+       { count: acc.count + 1, revenue: acc.revenue + row.amount });
 
-  summary |> writeTo "order-summary-by-tier"
-}
+summary |> writeTo "order-summary-by-tier"
 ```
 
-One typed program. Both queries run concurrently. The `join` fires when both complete. The type
+One typed program. The optimizer pushes the filter and field projections into the ESQL queries.
+The join, aggregation, and write-back are plan graph nodes executed by the runtime. The type
 checker verifies field compatibility across the entire pipeline before anything runs.
 
-### MVP scope (mapped to blocks)
+### MVP scope (mapped to phases)
 
-The MVP requires completing these blocks from the [roadmap](roadmap.md):
+The MVP requires completing these phases from the [roadmap](roadmap.md):
 
-- **Block A**: `spawn` + single-value `join` (async coordination) — concurrent query execution
-- **Block B**: Multi-value channels (full Join Calculus runtime) — streaming results
-- **Block C**: `writeTo` sink + scheduler — persistence and scheduled execution
+- **Phase 1e**: Pattern matching (control flow in transforms) — *deferred; not blocking Phases 2–4*
+- **Phase 2**: Index resolution + query typing (typed query results)
+- **Phase 3**: Stream runtime + plan graph + map/filter/fold + ExpressionEvaluator compiler +
+  push-down optimizer + `writeTo` sink primitive + `groupBy` combinator
+- **Parts of Phase 4**: `par` for merging multiple query results
+- **New**: Persistent task wrapper for scheduled async execution
 
-Push-down compilation of piescript transforms into ESQL expressions (Block D) is a post-MVP
-optimization. The MVP achieves correctness and concurrency; performance optimization follows.
+Full distributed execution (Phase 5 — serializing closures and shipping them to data nodes for
+logic that cannot be expressed as ESQL) is a post-MVP enhancement. The MVP achieves distributed
+performance for common cases through push-down into ESQL's engine.
 
 ## What Piescript is Not
 
@@ -247,31 +217,33 @@ optimization. The MVP achieves correctness and concurrency; performance optimiza
   serve different use cases and may coexist.
 - **Not a general-purpose language.** Piescript is purpose-built for distributed data computation
   within Elasticsearch. It deliberately omits arbitrary I/O, mutation, and class definitions. Its
-  only effects are coordination primitives.
-- **Not just an orchestrator.** While early phases execute locally (coordinator-based), the
-  long-term goal is true distributed execution where user-defined transforms travel to data nodes.
-  The Join Calculus coordination model is designed for this from the start.
+  only effects are π-calculus process primitives.
+- **Not just an orchestrator.** While early phases execute locally (coordinator-based orchestration),
+  the long-term goal is true distributed execution where user-defined transforms travel to data
+  nodes. The plan graph architecture is designed for this from the start.
 
 ## Long-Term Aspirations
 
 These are directional, not committed:
 
-- **Distributed coordination** — `spawn`ed computations dispatched to data nodes, `join` patterns
-  synchronizing results across nodes, leveraging ES's transport layer for cross-node channels.
-- **ESQL Exchange integration** — piescript as a consumer/producer in ESQL's Exchange pipeline for
-  high-throughput streaming data flow.
-- **Push-down compilation** — compiling mobile piescript lambdas into ESQL expressions (map → EVAL,
-  filter → WHERE) for vectorized execution on data nodes. Significant compiler work (closure
-  conversion, lambda lifting, defunctionalization).
+- **Distributed plan execution** — plan graph fragments dispatched to data nodes, transforms
+  co-located with the data they operate on, leveraging ESQL's exchange mechanism for cross-node
+  data flow.
 - **Linearity for channels** — QTT-style multiplicities (0, 1, ω) on bindings. Channel endpoints
   are linear (multiplicity 1), enabling session types with deadlock-freedom guarantees. Most values
   remain unrestricted (ω). See [references.md § Linear Haskell](references.md).
 - **Session types for channels** — type-checked communication protocols on channels, providing
   deadlock-freedom guarantees from the type system (see Wadler's "Propositions as Sessions").
+- **Explicit channels** — user-visible `new`, `send`, `recv` primitives for advanced orchestration
+  patterns (fan-out, dynamic routing, producer-consumer).
 - **Algebraic data types** — user-defined sum and product types for modeling domain concepts.
 - **Pattern matching** — exhaustive, type-safe destructuring as the primary control flow mechanism.
 - **Module system** — named, reusable piescript definitions stored in the cluster (like stored
   scripts, but typed and composable).
+- **Plan optimization** — push-down of compatible piescript transforms into ESQL queries (map
+  becomes EVAL, filter becomes WHERE), dead-code elimination of unused `par` branches, fusion of
+  adjacent stream combinators. Linear closures/continuations (multiplicity 1) can be moved without
+  cloning, avoiding allocation in the executor.
 - **IDE support** — language server protocol for autocompletion, type-on-hover, and error
   highlighting.
 
@@ -317,5 +289,5 @@ inform this design (see [references.md § BEAM / Erlang](references.md)).
 Linearity enables executor optimizations: if a closure or continuation is linear (used exactly
 once), the executor can **move** it rather than clone it — zero-copy transfer between plan nodes,
 no allocation overhead. For large captured environments traveling to remote nodes, this is a
-significant performance win. Similarly, linear channel edges guarantee single-consumer data flow,
-simplifying buffer management.
+significant performance win. Similarly, linear stream edges in the plan graph guarantee
+single-consumer data flow, simplifying buffer management and page lifecycle.

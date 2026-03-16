@@ -65,18 +65,28 @@ doesn't exist yet in Phase 0.
 
 ---
 
-## D-004: Executor — DIRECT_EXECUTOR_SERVICE
+## D-004: Executor — `ThreadPool.Names.GENERIC`
 
-**Phase**: 0 | **Status**: accepted (will be revisited in Phase 1c)
+**Phase**: 0 → 2 | **Status**: accepted (revised in Phase 2)
 
 **Context**: `HandledTransportAction` requires an executor. Options: (a) `DIRECT_EXECUTOR_SERVICE`
 (run on the calling thread), (b) a named thread pool.
 
-**Decision**: `DIRECT_EXECUTOR_SERVICE`.
+**Original decision** (Phase 0): `DIRECT_EXECUTOR_SERVICE`. Phase 0 did no computation — it
+extracted a string and delegated to ESQL, which manages its own threading.
 
-**Rationale**: Phase 0 does no computation — it extracts a string and delegates to ESQL, which
-manages its own threading. Adding a thread-pool hop would add latency for no benefit. When Phase 1c
-adds type checking and evaluation (CPU-bound work), a dedicated thread pool should be introduced.
+**Revised decision** (Phase 2): `threadPool.executor(ThreadPool.Names.GENERIC)`.
+
+**Rationale**: When the evaluator gained synchronous query execution (Phase 2.8), running on the
+transport thread via `DIRECT_EXECUTOR_SERVICE` caused a deadlock: the evaluator called
+`client.execute(EsqlQueryAction).actionGet()`, blocking the transport thread needed to deliver the
+ESQL response. Additionally, the `IndexResolutionPrePass` callback runs on `search_coordination`
+threads — blocking those with `actionGet()` caused the same deadlock. Both `doExecute` (via the
+GENERIC executor) and the resolve callbacks (via `executor.execute(() -> ...)`) now fork to GENERIC
+threads, which are safe to block. This aligns with the Phase 3 vision where the Evaluator becomes
+a pure synchronous engine wrapped by an Executor on its own thread pool.
+
+**Ref**: [Phase 2 eager eval + deadlock fix](303bcf3e-9eef-4719-a47d-24c1ff27a675)
 
 ---
 
@@ -239,7 +249,7 @@ distribution. Copying interfaces would create a maintenance burden and divergenc
 
 ## D-012: Execution Model — Plan Graph, Not Direct Interpretation
 
-**Phase**: 3–4 | **Status**: accepted
+**Phase**: 3–4 | **Status**: superseded by D-040
 
 **Context**: The interpreter walks Core IR. When it encounters process nodes (queries, stream
 combinators, `par` blocks), should it execute them directly (fire queries, iterate over pages,
@@ -269,13 +279,21 @@ dispatched by a separate executor.
 The v0 executor runs everything locally on the coordinator node. Future executors dispatch plan
 fragments to data nodes.
 
+**Superseded by D-040**: The explicit plan graph data structure was replaced by direct
+interpretation via the Join Calculus model. The evaluator interprets coordination effects directly
+via `SubscribableListener`-based channels (Block A). The theoretical free monad perspective is
+preserved: the coordination effects form an algebraic effect signature, and the residual of partial
+evaluation is a free monad over this signature. Block D will introduce a lowering pass that
+materializes this residual for optimization (push-down, fusion) before runtime interpretation.
+See D-040 and [architecture.md § Theoretical Model](architecture.md).
+
 **Ref**: [architecture.md § The Plan Graph](architecture.md), [references.md § Free Monads](references.md)
 
 ---
 
 ## D-013: Two-Layer IR — Functional Expressions and Process Descriptions
 
-**Phase**: 1–3 | **Status**: accepted
+**Phase**: 1–3 | **Status**: superseded by D-040
 
 **Context**: The Core IR needs to represent both pure computation (let-bindings, lambdas, records)
 and effectful operations (queries, parallel composition, stream transforms). Should these be a
@@ -298,6 +316,12 @@ the lambda argument to `MapStream`), but functional nodes never contain process 
 - **Phase 1 designs only `CoreExpr`**. `CoreProcess` is introduced in Phase 3. The separation
   ensures that Phase 1's evaluator does not need modification when process nodes arrive — they
   go to a different handler.
+
+**Superseded by D-040**: The two-layer IR split is no longer planned. `CoreSpawn` and `CoreJoin`
+are added as `CoreExpr` variants, not a separate `CoreProcess` hierarchy. The evaluator handles
+coordination primitives directly via async callbacks, rather than building a separate plan. The
+effect boundary is maintained at the *runtime* level (sync evaluation vs. async channel
+operations), not at the IR level.
 
 **Ref**: [architecture.md § The Two-Layer IR](architecture.md)
 
@@ -338,7 +362,7 @@ execution contexts?
 
 ## D-015: Join Calculus Influence on Primitive Selection
 
-**Phase**: 4+ | **Status**: accepted (informing future design)
+**Phase**: 4+ | **Status**: subsumed by D-040
 
 **Context**: The standard π-calculus includes constructs (like input-guarded choice:
 `c₁?x.P + c₂?y.Q`) that are notoriously difficult to implement in distributed systems. Which
@@ -358,9 +382,9 @@ local synchronization patterns (messages travel to a destination and interact on
   express multi-way synchronization (e.g., "proceed when both query A and query B have results").
 - **Practical validation**: JoCaml demonstrates that join calculus primitives embed naturally in
   an ML-family language with minimal surface syntax disruption.
-- For v0, `par` blocks with independent bindings are the only process primitive. This is a
-  restricted form of join pattern where all branches are independent. Richer join patterns and
-  explicit channels are future work, guided by the join calculus model.
+
+**Subsumed by D-040**: The join calculus is now the primary execution model, not just an influence.
+`spawn` and `join` are first-class primitives; `par` is removed. See D-040 for the full decision.
 
 **Ref**: [references.md § The Join Calculus](references.md),
 [references.md § JoCaml](references.md)
@@ -408,6 +432,11 @@ case "map" -> (Value lambda, Value stream) -> {
 };
 ```
 
+**Implementation note (revised by D-040)**: The plan-graph-based implementation described above
+(constructing `MapPlanNode` etc.) was superseded. Built-ins now operate over materialized
+`StreamVal(List<Value>)` via `applyFunction` callbacks. The core decision — combinators as
+prelude built-ins, not Core IR nodes — is unchanged.
+
 **Ref**: Master plan § 6.1, § 6.2
 
 ---
@@ -448,6 +477,12 @@ techniques (exchange operators, reference-counted pages, buffering).
 **What does need linearity (future):** channel endpoints (session types require single-use per
 protocol step). This is a different concern — channels are communication protocol endpoints,
 not data descriptions. Linearity for channels arrives with session types in Phase 6.
+
+**Implementation note (revised by D-040)**: The plan-graph-based fan-out mechanism described
+above was superseded. Currently `StreamVal` is an immutable `List<Value>` — sharing it is
+trivially safe. The core decision — streams allow multi-use without linearity — is unchanged.
+In Block D's lowering pass, fan-out over described (not materialized) streams will be handled
+by exchange operators or reference counting, as originally envisioned.
 
 ---
 
@@ -1161,3 +1196,151 @@ implemented. The annotated-let path (`let f : a -> a = ...`) works because the s
 constructed directly from the annotation, bypassing `generalize`.
 
 **Ref**: [Bidir refinements & D-038](303bcf3e-9eef-4719-a47d-24c1ff27a675)
+
+---
+
+## D-039: Eager Stream Evaluation — Synchronous Evaluator with Client Injection
+
+**Phase**: 2 | **Status**: accepted
+
+**Context**: Phase 2.8 requires executing ESQL queries from within the evaluator and representing
+the results as piescript values. Key design questions: (1) Where does the query fire? (2) How are
+streams represented? (3) How do built-ins operate over streams?
+
+**Options considered**:
+- (a) Fire queries in the pre-pass, store results in a map, pass to evaluator — breaks alignment
+  with Phase 3 where the executor walks the plan graph and fires queries at evaluation time.
+- (b) Make the evaluator fully asynchronous (CPS) — over-engineering for Phase 2 and
+  counter-productive for Phase 3, where the evaluator's role is pure synchronous expression
+  evaluation.
+- (c) Inject a `Client` into the evaluator; `CoreQuery` fires `EsqlQueryAction` synchronously
+  and converts the response to an eagerly materialized `StreamVal(List<Value>)`. Built-ins
+  (`map`, `filter`, `reduce`) operate over the materialized list via `applyFunction` callbacks.
+
+**Decision**: Option (c).
+
+**Rationale**: The evaluator stays synchronous, which matches its Phase 3 role as a pure expression
+engine. The `CoreQuery` logic will move to the `Executor` in Phase 3 — the evaluator itself won't
+need to change. `StreamVal` uses `List<Value>` (not `List<RecordVal>`) because `map` can transform
+records into scalars. `EsqlValueConverter` bridges ESQL's Java types to piescript `Value`s via
+`instanceof` dispatch. The deadlock from synchronous query execution on transport/coordination
+threads is resolved by running on `ThreadPool.Names.GENERIC` (see D-004 revision).
+
+**Trade-offs**: Eager materialization loads all rows into memory. This is acceptable for Phase 2's
+prototype scope. Phase 3 introduces streaming/push-down to ESQL for efficient processing.
+
+**Ref**: [Phase 2 eager eval session](303bcf3e-9eef-4719-a47d-24c1ff27a675)
+
+---
+
+## D-040: Join Calculus Execution Model — `spawn`/`join` Replace Plan Graph + `par`
+
+**Phase**: Block A | **Status**: accepted
+
+**Context**: The original plan (D-012, D-013, D-015) called for a plan graph architecture where
+process nodes (`CoreProcess`) produce a DAG of distributed operations (a free monad over π-calculus
+effects), which is optimized and dispatched by a separate executor. `par` blocks were the initial
+concurrency primitive (Phase 4), with richer join patterns deferred to Phase 6+.
+
+After completing Phase 2 (eager evaluation with materialized streams), a critical re-evaluation
+found that:
+
+1. The plan graph's optimization benefits (push-down into ESQL, combinator fusion) require
+   significant compiler engineering (closure conversion, lambda lifting, defunctionalization)
+   that is not immediately justified. Simple cases map to ESQL, but complex lambdas (recursion,
+   HOFs, closures, sub-queries) do not.
+2. The plan graph's distributed execution benefits are not realized until a distributed executor
+   exists (originally Phase 5). The v0 local executor would run the plan graph on the coordinator
+   anyway — adding an indirection layer with no immediate payoff.
+3. The `par` primitive is a restricted form of join pattern that does not generalize well. It
+   requires a separate `CoreProcess` IR hierarchy, yet delivers only independent concurrent
+   bindings — no multi-way synchronization, no reaction rules, no streaming coordination.
+4. The Join Calculus (Fournet & Gonthier) provides a more fundamental and flexible set of
+   primitives (`spawn`, `join`, channels) that subsume `par` while being efficiently implementable
+   on Elasticsearch's existing `ActionListener` / `SubscribableListener` infrastructure.
+
+**Decision**: Replace the plan graph + `par` architecture with a Join Calculus execution model.
+
+**Primitives**:
+- `spawn expr` — launch `expr` asynchronously, return a channel (`Chan τ`) that will carry the
+  result. Implementation: fork to `threadPool.executor(GENERIC)`, write result to a
+  `SubscribableListener<Value>`.
+- `join (c₁ x₁) & (c₂ x₂) & ... -> body` — synchronize on one or more channels. When all
+  specified channels have delivered values, bind each value to its variable and evaluate `body`.
+  Implementation: compose `SubscribableListener` callbacks; for n-ary joins, use
+  `GroupedActionListener` to collect all results before firing.
+- `Chan τ` — a typed channel. Block A: single-value (future-like), backed by
+  `SubscribableListener<Value>`. Block B: extended to multi-value with `newchan`, `send`, and a
+  lightweight concurrent queue implementation.
+
+**IR representation**: `CoreSpawn` and `CoreJoin` are added as `CoreExpr` variants, not a
+separate `CoreProcess` hierarchy. The two-layer IR split (D-013) is no longer needed — the effect
+boundary is maintained at the runtime level (sync vs. async evaluation), not the IR level.
+
+**Evaluator model**: The evaluator becomes asynchronous (CPS / ActionListener-based). When it
+encounters `CoreSpawn`, it creates a `SubscribableListener`, forks the computation, and returns
+a `SpawnVal`. When it encounters `CoreJoin`, it registers callbacks on the channels.
+`TransportPiescriptAction` wires the final result to the transport `ActionListener`.
+
+**What is preserved**:
+- D-005 (HM type system) — unchanged
+- D-006 (de Bruijn indices) — unchanged
+- D-014 (traveling closures) — concept preserved; implementation deferred to distributed execution
+- D-016 (combinators as prelude built-ins) — unchanged; `map`/`filter`/`reduce` remain eager
+  built-ins over materialized `StreamVal`
+- D-017 (stream fan-out) — concept preserved for future streaming channels
+- D-018 (linearity for channels) — still the plan for Phase 6
+
+**What is superseded**:
+- D-012 (plan graph, not direct interpretation) — replaced by direct interpretation with async
+  channels
+- D-013 (two-layer IR) — `CoreSpawn`/`CoreJoin` are `CoreExpr` nodes
+- D-015 (join calculus as future influence) — join calculus is now the primary model, not just
+  an influence
+- Old Phase 3 (stream runtime + plan graph) — replaced by Block A
+- Old Phase 4 (`par` blocks) — replaced by Block A (`spawn` + `join` subsume `par`)
+- Old Phase 5 (distributed executor) — subsumed by Blocks D + E (push-down compilation + Exchange
+  integration) with distribution achieved incrementally through ES infrastructure
+
+**What is deferred (not removed)**:
+- Push-down compilation (piescript → ESQL expressions) — Block D, significant compiler work
+- Exchange integration (streaming Pages) — Block E
+- Distributed dispatch (ship closures to data nodes) — achievable incrementally via transport
+  layer, does not require a plan graph
+
+**The free monad is preserved, not eliminated.** The Join Calculus effects (`spawn`, `join`,
+`query`, `newchan`, `send`) form an algebraic effect signature. The evaluator is an effect handler.
+The free monad arises naturally as the **residual of partial evaluation**: the evaluator reduces
+pure expressions to values, and gets stuck on coordination effects. The stuck residual is
+`Free JoinF Value` — a free monad over the Join Calculus effect signature. In Block A, the
+evaluator eagerly interprets this residual (continuation monad / CPS via ActionListener callbacks).
+In Block D, the evaluator splits into a partial evaluator (producing the residual) and a runtime
+interpreter (executing the optimized residual), with an optimization pass in between. This is
+piescript's lowering pass. See [architecture.md § Theoretical Model](architecture.md).
+
+**Phased implementation**:
+- **Block A**: `spawn` + single-value `join`. Channels are `SubscribableListener<Value>`. Queries
+  complete fully before delivering results. Evaluator becomes async.
+- **Block B**: Multi-value channels. `newchan`, `send` primitives. Lightweight concurrent queue.
+  Join automaton for pattern matching over streaming values.
+- **Block C**: `writeTo` sink + scheduler. Persistence and scheduled execution.
+- **Block D**: Push-down compilation. Core IR → ESQL text compiler. Mobility analysis.
+- **Block E**: Exchange integration. Piescript in ESQL's streaming pipeline.
+
+**Rationale**:
+- The Join Calculus primitives map directly to ES infrastructure (`SubscribableListener` for
+  single-value channels, `GroupedActionListener` for n-ary synchronization,
+  `threadPool.executor(GENERIC)` for spawn). No new distributed infrastructure is needed for v0.
+- The evaluator-as-interpreter model is simpler than evaluator + planner + executor. The plan
+  graph indirection provided optimization hooks that require significant compiler work to exploit
+  — work that is better scoped as a dedicated Block (D) rather than a prerequisite for basic
+  concurrency.
+- `spawn` + `join` are strictly more expressive than `par`: any `par` block can be expressed as
+  spawns + a join, but joins also support multi-way synchronization, streaming coordination, and
+  reaction rules that `par` cannot express.
+- The theoretical foundation (Join Calculus) guarantees that all coordination patterns have
+  efficient distributed implementations, future-proofing the design for cross-node execution.
+
+**Ref**: [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
+[references.md § Join Calculus](references.md),
+[references.md § Sangiorgi (agent-passing)](references.md)
