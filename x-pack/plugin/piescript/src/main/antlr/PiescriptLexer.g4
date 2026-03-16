@@ -19,6 +19,8 @@ FALSE     : 'false';
 NULL      : 'null';
 MATCH     : 'match';
 QUERY     : 'query' -> pushMode(ESQL_MODE);
+SPAWN     : 'spawn';
+WHEN      : 'when';
 PAR       : 'par';
 DO        : 'do';
 UNDERSCORE: '_';
@@ -47,6 +49,7 @@ COMMA     : ',';
 COLON     : ':';
 SEMICOLON : ';';
 ASSIGN    : '=';
+AMP       : '&';
 BAR       : '|';
 
 // ──── Brackets ────

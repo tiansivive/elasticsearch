@@ -7,6 +7,8 @@
 
 package org.elasticsearch.xpack.piescript.eval;
 
+import org.elasticsearch.action.support.PlainActionFuture;
+import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.test.ESTestCase;
 import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
@@ -25,6 +27,9 @@ import org.elasticsearch.xpack.piescript.types.Op;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.containsString;
@@ -39,7 +44,9 @@ public class EvaluatorTests extends ESTestCase {
         var state = new ElaborationState();
         var elaborator = new Elaborator(state);
         var coreExpr = elaborator.elaborateProgram(program);
-        return new Evaluator().evaluate(coreExpr);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(null, EsExecutors.DIRECT_EXECUTOR_SERVICE).evaluate(coreExpr, future);
+        return future.actionGet();
     }
 
     // ──── Literals ────
@@ -365,7 +372,9 @@ public class EvaluatorTests extends ESTestCase {
      * Variable at de Bruijn index 0 = env[0], etc.
      */
     private Value evaluateWithEnv(CoreExpr expr, Value... env) {
-        return new Evaluator().evaluate(expr, env);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(null, EsExecutors.DIRECT_EXECUTOR_SERVICE).evaluate(expr, env, future);
+        return future.actionGet();
     }
 
     public void testMapProjectField() {
@@ -537,9 +546,96 @@ public class EvaluatorTests extends ESTestCase {
         assertThat(((Value.StreamVal) result).elements().size(), is(0));
     }
 
+    // ──── Spawn / When (Block A) ────
+
+    /**
+     * Evaluate a piescript program using a real thread pool executor.
+     * Required for spawn tests where the forked computation must run on a
+     * separate thread to exercise the async path.
+     */
+    private Value evaluateAsync(String source) throws Exception {
+        var parser = new PiescriptParser();
+        var program = parser.parse(source);
+        var state = new ElaborationState();
+        var elaborator = new Elaborator(state);
+        var coreExpr = elaborator.elaborateProgram(program);
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            var future = new PlainActionFuture<Value>();
+            new Evaluator(null, pool).evaluate(coreExpr, future);
+            return future.actionGet(5, TimeUnit.SECONDS);
+        } finally {
+            pool.shutdown();
+        }
+    }
+
+    public void testSpawnAndWhenPureValue() {
+        assertThat(evaluate("let ch = spawn 42 in when (ch x) -> x"), is(new Value.IntegerVal(42)));
+    }
+
+    public void testSpawnAndWhenWithComputation() {
+        assertThat(evaluate("let ch = spawn (1 + 2) in when (ch x) -> x + 10"), is(new Value.IntegerVal(13)));
+    }
+
+    public void testSpawnAndWhenBoolean() {
+        assertThat(evaluate("let ch = spawn true in when (ch b) -> b"), is(new Value.BooleanVal(true)));
+    }
+
+    public void testSpawnAndWhenString() {
+        assertThat(evaluate("let ch = spawn \"hello\" in when (ch s) -> s"), is(new Value.KeywordVal("hello")));
+    }
+
+    public void testSpawnAndWhenRecord() {
+        var result = evaluate("let ch = spawn { x: 1, y: 2 } in when (ch r) -> r.x + r.y");
+        assertThat(result, is(new Value.IntegerVal(3)));
+    }
+
+    public void testWhenMultipleBindings() {
+        var result = evaluate("let a = spawn 10 in let b = spawn 20 in when (a x) & (b y) -> x + y");
+        assertThat(result, is(new Value.IntegerVal(30)));
+    }
+
+    public void testWhenThreeBindings() {
+        var result = evaluate("let a = spawn 1 in let b = spawn 2 in let c = spawn 3 in when (a x) & (b y) & (c z) -> x + y + z");
+        assertThat(result, is(new Value.IntegerVal(6)));
+    }
+
+    public void testWhenMultipleBindingsProducesRecord() {
+        var result = evaluate(
+            "let a = spawn 42 in let b = spawn \"hello\" in when (a num) & (b greeting) -> { n: num, g: greeting }"
+        );
+        assertThat(result, instanceOf(Value.RecordVal.class));
+        var fields = ((Value.RecordVal) result).fields();
+        assertThat(fields.get("n"), is(new Value.IntegerVal(42)));
+        assertThat(fields.get("g"), is(new Value.KeywordVal("hello")));
+    }
+
+    public void testSpawnNestedInWhenBody() {
+        var result = evaluate(
+            "let ch1 = spawn 10 in when (ch1 x) -> let ch2 = spawn (x + 5) in when (ch2 y) -> y"
+        );
+        assertThat(result, is(new Value.IntegerVal(15)));
+    }
+
+    public void testSpawnAndWhenAsyncWithThreadPool() throws Exception {
+        assertThat(evaluateAsync("let ch = spawn 42 in when (ch x) -> x + 1"), is(new Value.IntegerVal(43)));
+    }
+
+    public void testMultiChannelWhenAsyncWithThreadPool() throws Exception {
+        var result = evaluateAsync("let a = spawn 10 in let b = spawn 20 in when (a x) & (b y) -> x + y");
+        assertThat(result, is(new Value.IntegerVal(30)));
+    }
+
+    public void testSpawnWithLambdaBody() {
+        var result = evaluate("let ch = spawn (let f = fn x -> x * 2 in f 21) in when (ch x) -> x");
+        assertThat(result, is(new Value.IntegerVal(42)));
+    }
+
     public void testQueryWithoutClientThrows() {
         var query = new org.elasticsearch.xpack.piescript.core.CoreQuery(SRC, "FROM test", "test", INT);
-        var ex = expectThrows(EvaluationException.class, () -> new Evaluator().evaluate(query));
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(null, EsExecutors.DIRECT_EXECUTOR_SERVICE).evaluate(query, future);
+        var ex = expectThrows(EvaluationException.class, future::actionGet);
         assertThat(ex.getMessage(), containsString("requires a client"));
     }
 }

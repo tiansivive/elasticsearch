@@ -7,6 +7,7 @@
 
 package org.elasticsearch.xpack.piescript.eval;
 
+import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 
 import java.util.List;
@@ -69,4 +70,11 @@ public sealed interface Value {
      * special case in the evaluator.
      */
     record BuiltinVal(String name, int arity, List<Value> partialArgs) implements Value {}
+
+    /**
+     * A channel carrying a single async result. Wraps a {@link SubscribableListener}
+     * that completes when the spawned computation finishes. Produced by evaluating
+     * {@code CoreSpawn}; consumed by {@code CoreWhen}. See D-040, D-041.
+     */
+    record SpawnVal(SubscribableListener<Value> channel) implements Value {}
 }
