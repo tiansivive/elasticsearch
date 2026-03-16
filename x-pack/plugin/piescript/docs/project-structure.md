@@ -1,6 +1,8 @@
 # Project Structure
 
 > **Living doc** — update whenever files or packages are added/removed/renamed.
+>
+> **Last updated**: 2026-03-16 (Phase 2 complete). **Ref**: [Phase 2 completion](303bcf3e-9eef-4719-a47d-24c1ff27a675)
 
 ## Directory Layout
 
@@ -62,10 +64,16 @@ x-pack/plugin/piescript/
     │       │   ├── Unifier.java                 # Robinson unification
     │       │   ├── Elaborator.java              # Bidirectional type checker + desugarer
     │       │   ├── TypeWalker.java             # Type-level traversal (generalize, instantiate, resolveDeep)
-    │       │   └── ElaborationException.java    # Fail-fast elaboration error
-    │       └── eval/                      # Phase 1c: Evaluation
-    │           ├── Value.java                   # Runtime value sealed interface (8 variants)
+    │       │   ├── ElaborationException.java    # Fail-fast elaboration error
+    │       │   ├── IndexResolutionPrePass.java  # Async index resolution (Phase 2)
+    │       │   ├── ResolvedMapping.java         # Resolved index mapping record (Phase 2)
+    │       │   ├── EsqlBodyParser.java          # Extract index patterns from ESQL body (Phase 2)
+    │       │   ├── DataTypeMapping.java         # ES DataType → piescript MonoType (Phase 2)
+    │       │   └── Polymorphism.java            # Generalization + instantiation helpers (Phase 2)
+    │       └── eval/                      # Phase 1c + Phase 2: Evaluation
+    │           ├── Value.java                   # Runtime value sealed interface (10 variants)
     │           ├── Evaluator.java               # Tree-walking de Bruijn environment machine
+    │           ├── EsqlValueConverter.java      # ESQL response → StreamVal converter
     │           └── EvaluationException.java     # Runtime evaluation error
     ├── test/java/org/elasticsearch/xpack/piescript/
     │   ├── parser/
@@ -80,9 +88,9 @@ x-pack/plugin/piescript/
     │   │   ├── UnifierTests.java           # Unit tests for unification
     │   │   └── ElaboratorTests.java        # Unit tests for elaborator (72 tests)
     │   └── eval/
-    │       └── EvaluatorTests.java        # Unit tests for evaluator (50 tests)
+    │       └── EvaluatorTests.java        # Unit tests for evaluator (59 tests)
     └── javaRestTest/java/org/elasticsearch/xpack/piescript/
-        └── PiescriptIT.java           # Integration tests (12 test methods)
+        └── PiescriptIT.java           # Integration tests (15 test methods)
 ```
 
 ## File Responsibilities
@@ -98,12 +106,12 @@ x-pack/plugin/piescript/
 | File | Purpose |
 |------|---------|
 | `PiescriptAction.java` | Defines the `ActionType` singleton (`indices:data/read/piescript`) with response type `PiescriptResponse`. This is the handle used to dispatch and route the action through the transport layer. |
-| `PiescriptResponse.java` | Response wrapper: holds either a `Value` + type string (expression result) or an `EsqlQueryResponse` (query passthrough). Implements `ChunkedToXContentObject` and `Releasable`. Serializable for transport (D-023). |
+| `PiescriptResponse.java` | Response wrapper: holds a `Value` + type string (expression result), including `StreamVal` serialized as JSON arrays. Implements `ChunkedToXContentObject` and `Releasable`. Serializable for transport (D-023). |
 | `PiescriptPlugin.java` | Plugin registration. Implements `ActionPlugin` to register the action handler (`PiescriptAction → TransportPiescriptAction`) and the REST handler (`RestPiescriptAction`). |
 | `PiescriptRequest.java` | Immutable request object carrying the `program` string. Implements `CompositeIndicesRequest` for security delegation. Validates that `program` is non-blank. Serializable for transport. |
 | `RestPiescriptAction.java` | HTTP entry point. Registers `POST /_piescript/eval`, parses the JSON body to extract `program`, and dispatches a `PiescriptRequest` to the transport layer. |
 | `RestPiescriptDevAction.java` | Development endpoint. Registers `POST /_piescript/dev`, runs the full parse → elaborate → evaluate pipeline and returns `tree` (CST), `core` (pretty-printed Core IR), `type` (resolved type), and `eval` (evaluated result). Parse errors return `parse_error`; type errors return `tree` + `type_error`; eval errors return `eval_error`. |
-| `TransportPiescriptAction.java` | Core logic. Dual dispatch: `query ... ;` programs delegate to ESQL passthrough, all other programs go through parse → elaborate → evaluate pipeline. Runs on `DIRECT_EXECUTOR_SERVICE`. |
+| `TransportPiescriptAction.java` | Core logic. Unified pipeline: parse → index resolution pre-pass → elaborate → evaluate. Runs on `ThreadPool.Names.GENERIC` (D-004 revision). Resolve callbacks fork to GENERIC before evaluation to avoid blocking coordination threads. |
 
 ### Source (`src/main`) — Parser (Phase 1a)
 
@@ -132,9 +140,10 @@ x-pack/plugin/piescript/
 
 | File | Purpose |
 |------|---------|
-| `core/CoreExpr.java` | Abstract sealed base class extending `Node<CoreExpr>`. Provides default `writeTo`/`getWriteableName` (throws — Core IR is not serialized). All 9 concrete node types are permitted subclasses. |
+| `core/CoreExpr.java` | Abstract sealed base class extending `Node<CoreExpr>`. Provides default `writeTo`/`getWriteableName` (throws — Core IR is not serialized). All concrete node types are permitted subclasses. |
 | `core/CoreField.java` | Helper record pairing a label with a value expression. Convenience for constructing and inspecting `CoreRecord` and `CoreUpdate` nodes. |
 | `core/CoreVar.java` | Variable reference by de Bruijn index. Leaf node (no children). |
+| `core/CoreFree.java` | Free variable reference (module-level). Carries name and type, no de Bruijn index. Emitted for built-in functions resolved from the module map. |
 | `core/CoreLit.java` | Literal value (`LitVal`). Leaf node (no children). |
 | `core/CoreLam.java` | Lambda abstraction. One child (body). Carries optional debug name and elaborated parameter type. |
 | `core/CoreApp.java` | Function application. Two children (fn, arg). |
@@ -149,20 +158,27 @@ x-pack/plugin/piescript/
 
 | File | Purpose |
 |------|---------|
-| `elab/ElaborationContext.java` | Immutable typing context passed by value through recursive descent. Holds the de Bruijn-indexed list of named type schemes and the binding level. Returns new instances on `bind()`, `enterBindingLevel()`, `exitBindingLevel()` — the call stack handles scope unwinding. `lookup()` returns `Optional<LookupResult>`. |
+| `elab/ElaborationContext.java` | Immutable typing context passed by value through recursive descent. Holds the de Bruijn-indexed list of named type schemes, a module-level free variable map (`Map<String, TypeScheme>`), and the binding level. `lookup()` checks local bindings (returns de Bruijn index); `lookupModule()` checks module bindings (returns type scheme only). Local variables shadow module-level names. `withModule()` factory creates a context with pre-populated module bindings. |
+| `elab/Prelude.java` | Built-in function definitions: type schemes and arities for `map`, `filter`, `reduce`. Exports `MODULE` (the module map) and `ARITY` (name → argument count). Wired into the elaboration context at program start. |
 | `elab/ElaborationState.java` | Mutable global state shared across the elaboration pass. Holds only the metavariable supply (monotonic counter) and the zonker (meta ID → solution map with chain resolution). `freshType(bindingLevel)` and `freshRow(bindingLevel)` take the binding level from the caller's context. `resolve()` returns `Optional<Object>`. **Phase 1d renames `resolveType` → `zonk` returning `Optional<MonoType>` (D-032), adds `resolveRow(RowType)` for flattening.** |
 | `elab/TypeError.java` | Sealed interface for type errors returned by unification. Variants: `Mismatch` (structural incompatibility), `InfiniteType` (occurs check), `FieldMismatch` (wraps inner error with label), `MissingFields` (field set asymmetry). Not an exception — used as `Optional<TypeError>`. |
 | `elab/Unifier.java` | Static Robinson unification over `MonoType`. Resolves through the zonker, handles `Meta` solving (with occurs check), null-as-bottom (D1.11), and structural matching for `TCon`, `Arrow`, `RecordType` (closed rows), `AppType`. Uses flat `if`-chain early exits + single `switch` expression with `when` guards. Returns `Optional<TypeError>` (empty = success). **Phase 1d rewrites `unifyRows` to Leijen-style open-row decomposition (D-030) and adds `Rigid` handling (D-031).** |
 | `elab/Elaborator.java` | Bidirectional type checker and desugarer. Pattern-matching recursive descent over ANTLR parse tree → Core IR. Single `elaborate` switch dispatches on all CST node types. Handles: let (with generalization), lambda (multi-param desugaring), application, primops (concrete Integer-only typed functions, D-020), records, projection (closed-row direct lookup), update, accessor/update-sugar (lambda desugaring), blocks, ascription, literals, pipe (flipped app), top-level bindings. Phase 1 limitations: no if/then/else, no open rows, no numeric widening. **Phase 1d changes `resolveTypeAnnotation` to return `TypeScheme` (D-034), adds checking rule for universal types, updates accessor/update/projection to use open rows with unification (supersedes D-021).** |
 | `elab/TypeWalker.java` | Static type-level traversal utilities. Generalization (collect unsolved metas at binding level → quantify), instantiation (replace quantified metas with fresh ones), deep resolution (fully resolve all metas in a type), and type walking (substitution). Extracted from `Elaborator` for clarity. Public (`resolveDeep` used by `CorePrinter`). **Phase 1d removes `resolveDeep` (D-032), changes `collectMetas` to return `Map<Integer, Kind>`, and makes `instantiate` kind-aware.** |
 | `elab/ElaborationException.java` | Unchecked exception for fail-fast elaboration errors (D1.14). Carries line/column and optional `TypeError`. Avoids calling `Source` methods to sidestep the `WarningSourceLocation` compile dependency. |
+| `elab/IndexResolutionPrePass.java` | Phase 2 index resolution pre-pass. Walks the CST to collect `QueryExpr` nodes, extracts index patterns via `EsqlBodyParser`, and asynchronously resolves field caps via `IndexResolver`. Produces `Map<String, ResolvedMapping>` for the elaborator. |
+| `elab/ResolvedMapping.java` | Record holding a resolved index pattern's mapping (`EsIndex`) and partially unmapped fields. Consumed by the elaborator to type query expressions. |
+| `elab/EsqlBodyParser.java` | Parses an ESQL body string to extract the index pattern (the `FROM` target). Used by `IndexResolutionPrePass` during query collection. |
+| `elab/DataTypeMapping.java` | Maps ES `DataType` values (from field caps) to piescript `MonoType`. Used when building the row type for a resolved query expression. |
+| `elab/Polymorphism.java` | Extracted generalization and instantiation logic. `generalize` collects unsolved metas and quantifies them with `CoreTypeAbs` wrappers. `instantiateAndWrap` replaces quantified rigids with fresh metas and wraps with `CoreTypeApp`. |
 
 ### Source (`src/main`) — Evaluation (Phase 1c)
 
 | File | Purpose |
 |------|---------|
-| `eval/Value.java` | Sealed interface for runtime values. 8 variants: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)` (D-026), `BooleanVal`, `NullVal`, `RecordVal(Map<String, Value>)`, `ClosureVal(CoreExpr body, Value[] env)`. |
-| `eval/Evaluator.java` | Tree-walking de Bruijn environment machine. Evaluates all 9 `CoreExpr` variants. `CoreLit` converts `BytesRef` to `String` at the boundary. `CorePrimOp` dispatches arithmetic (integer-only, D-020), comparison, and boolean operations. Pattern matches on `Value` variants with `AssertionError` for invariant violations (D-025). `EvaluationException` for null-in-arithmetic (D-027) and division by zero. |
+| `eval/Value.java` | Sealed interface for runtime values. 10 variants: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)` (D-026), `BooleanVal`, `NullVal`, `RecordVal(Map<String, Value>)`, `StreamVal(List<Value>)`, `ClosureVal(CoreExpr body, Value[] env)`, `BuiltinVal(name, arity, partialArgs)`. `StreamVal` is the eagerly materialized stream (Phase 2). `BuiltinVal` supports curried partial application for built-in functions. |
+| `eval/Evaluator.java` | Tree-walking de Bruijn environment machine. Takes optional `Client` for query execution. Evaluates all `CoreExpr` variants. `CoreQuery` fires `EsqlQueryAction` synchronously and converts to `StreamVal` via `EsqlValueConverter`. `CoreFree` produces `BuiltinVal`; `CoreApp` dispatches to closures or built-in partial application. Built-ins `map`/`filter`/`reduce` operate over `StreamVal` via `applyFunction`. `CoreLit` converts `BytesRef` to `String` at the boundary. `CorePrimOp` dispatches arithmetic (integer-only, D-020), comparison, and boolean operations. |
+| `eval/EsqlValueConverter.java` | Converts `EsqlQueryResponse` to `StreamVal`. Each row becomes a `RecordVal` (column names as field keys). Cell conversion uses `instanceof` dispatch (`Integer`, `Long`, `Double`, `String`, `Boolean`, `null`, multi-value first-element). |
 | `eval/EvaluationException.java` | Unchecked runtime error for user-observable evaluation failures (null in arithmetic, division by zero). |
 
 ### Tests (`src/test`) — Unit Tests
@@ -176,13 +192,13 @@ x-pack/plugin/piescript/
 | `elab/ElaborationStateTests.java` | Unit tests for the mutable state. Tests fresh meta allocation with explicit binding levels, zonker solve/resolve/chain resolution, `resolveType`, and an integrated let-polymorphism workflow exercising both context and state together. |
 | `elab/UnifierTests.java` | Unit tests for unification. Covers: identical types, meta solving (left/right/meta-meta/transitive/conflict), occurs check (direct/nested), null-as-bottom (with TCon/Arrow/Meta), arrow matching (success/param mismatch/result mismatch/with metas), record matching (success/missing/extra/field type mismatch/with metas/empty), AppType, and cross-form mismatches. |
 | `elab/ElaboratorTests.java` | Unit tests for the elaborator (72 tests). Covers: literals (int, long, decimal, string, escapes, boolean, null), let-bindings (basic, annotated, nested, shadowing, top-level, multiple), lambdas (identity, typed, multi-param), application (direct, type inference), let-polymorphism, all arithmetic/comparison/boolean operators, unary ops (negation, not), records (empty, literal, projection, update, field addition), pipe operator, accessor sugar, update sugar, blocks (let stmts, expr stmts, multi), parentheses, type ascription, de Bruijn indices, error cases (unbound variable, type mismatch, non-function application, duplicate field, projection on non-record, missing field, annotation mismatch, unknown type, if/then/else unsupported, update on non-record), and deferred tests (occurs check, cross-type arithmetic, lambda type mismatch). |
-| `eval/EvaluatorTests.java` | Unit tests for the evaluator (50 tests). Covers: literals (int, long, double, string, boolean, null), arithmetic (+, -, *, /, %), comparisons (<, >, <=, >=, ==, !=), boolean ops (&&, \|\|, !), unary negation, let-bindings (basic, expression, nested, shadowing, top-level), lambdas (identity, increment, multi-param, returns closure), let-polymorphism, records (empty, literal, projection, update, add field), pipe operator, blocks, closures (curried, capture), accessor sugar, nested record projection, error cases (division by zero, modulo by zero, null in arithmetic), and complex expressions. |
+| `eval/EvaluatorTests.java` | Unit tests for the evaluator (59 tests). Covers: literals (int, long, double, string, boolean, null), arithmetic (+, -, *, /, %), comparisons (<, >, <=, >=, ==, !=), boolean ops (&&, \|\|, !), unary negation, let-bindings (basic, expression, nested, shadowing, top-level), lambdas (identity, increment, multi-param, returns closure), let-polymorphism, records (empty, literal, projection, update, add field), pipe operator, blocks, closures (curried, capture), accessor sugar, nested record projection, error cases (division by zero, modulo by zero, null in arithmetic), complex expressions, and stream built-ins (`map` projection/transform, `filter` predicate/keep-all/remove-all, `reduce` sum/empty, empty stream, query-without-client). |
 
 ### Tests (`src/javaRestTest`) — Integration Tests
 
 | File | Purpose |
 |------|---------|
-| `PiescriptIT.java` | Java REST integration test suite. Spins up a single-node cluster with trial license, security disabled, ML disabled. Tests: query passthrough (basic, filtered, invalid ESQL), expression evaluation (arithmetic, records, lambdas, booleans), error handling (empty program, missing field, type error, parse error, malformed input). |
+| `PiescriptIT.java` | Java REST integration test suite (15 tests). Spins up a single-node cluster with trial license, security disabled, ML disabled. Tests: query type-checking (dev endpoint), eager evaluation (stream results, map projection, filter predicate, reduce sum), expression evaluation (arithmetic, records, lambdas, booleans), error handling (empty program, missing field, type error, parse error, malformed input). |
 
 ## Packages
 

@@ -2,11 +2,6 @@
 
 > **Living doc** — update status markers as work progresses. Add new phases/sub-phases as they are
 > planned.
->
-> **Revised**: 2026-03-16. Phases 3–5 have been replaced by Blocks A–E based on the Join Calculus
-> model (D-040). The previous phase-based roadmap is archived in
-> `docs/archive/roadmap.pre-join-calculus.md`. Old plan files (`phase3_stream_runtime.plan.md`,
-> `phase4_process_primitives.plan.md`) are archived in `docs/archive/`.
 
 **Overall design**: [scripting language design](../../.cursor/plans/scripting_language_design_9286506e.plan.md)
 
@@ -28,24 +23,23 @@
 The MVP target is a piescript program that replaces the combination of ES Transforms, enrich
 policies, enrich processors, and ingest pipeline chains with a single typed program. The MVP
 demonstrates expressiveness (arbitrary user-defined logic), type safety (compile-time field and type
-checking across the entire pipeline), concurrency (parallel queries via `spawn` + `join`), and
+checking across the entire pipeline), performance (push-down into ESQL's distributed engine), and
 unification (one language replacing multiple chained features).
 
-**MVP scope** — the following must be complete:
+**MVP scope** — the following phases must be complete:
 
-| Block | What it contributes to the MVP | Status |
+| Phase | What it contributes to the MVP | Status |
 |-------|-------------------------------|--------|
-| Phase 1e | Pattern matching — control flow in transforms | Deferred — not blocking Blocks A+ |
+| Phase 1e | Pattern matching — control flow in transforms | Deferred — not blocking Phase 2+ |
 | Phase 2 | Index resolution — typed query results, field-level type checking, eager evaluation | :white_check_mark: |
-| Block A | `spawn` + single-value `join` — concurrent multi-query coordination | :memo: |
-| Block B | Multi-value channels — full Join Calculus runtime | :memo: |
-| Block C | `writeTo` sink + scheduler — persistence and scheduled execution | :memo: |
+| Phase 3 | Stream runtime + plan graph + combinators + push-down optimizer + `writeTo` + `groupBy` | :memo: |
+| Phase 4 (partial) | `par` — merging results from multiple queries | :memo: |
+| New: Scheduler | Persistent task wrapper for scheduled async execution | :memo: |
 
 **Post-MVP enhancements** (not required for the MVP demonstration):
 
-- Block D: Push-down compilation (piescript lambdas → ESQL expressions)
-- Block E: Exchange integration (streaming performance via ESQL's compute engine)
-- Phase 6: QTT multiplicities, session types, explicit user-facing channels
+- Phase 5: Full distributed executor (serialize closures, ship to data nodes)
+- Phase 6: QTT multiplicities, channels, session types
 - Phase 7: Module system (stored programs with imports)
 - Phase 8: IDE tooling
 
@@ -193,8 +187,8 @@ Dev endpoint now exposes `core_raw`, `constraints`, and `zonker` for debugging.
 
 Pattern matching as the primary control-flow mechanism. `if/then/else` desugars to `match`.
 Postponed from original Phase 1d position — row polymorphism was more pressing (D-029).
-**Deferred again**: not blocking the MVP-critical path (Blocks A–C). Will be picked up when
-control flow is needed by downstream work, or opportunistically between blocks.
+**Deferred again**: not blocking the MVP-critical path (Phases 2–4). Will be picked up when
+control flow is needed by downstream work, or opportunistically between phases.
 
 | Task | Status |
 |------|--------|
@@ -210,7 +204,7 @@ control flow is needed by downstream work, or opportunistically between blocks.
 ### Phase 1 — Outstanding Tech Debt
 
 Consolidated list of known deviations, limitations, and deferred work from Phase 1. These are
-tracked here for visibility; they do not block Block A. Items may be addressed opportunistically
+tracked here for visibility; they do not block Phase 2. Items may be addressed opportunistically
 or when downstream work requires them.
 
 | Item | Ref | Notes |
@@ -219,7 +213,7 @@ or when downstream work requires them.
 | `zonkOrKeep` returns meta-on-miss instead of `Optional` | D-032 | D-032 specifies an `Optional`-returning `zonk` API. Current implementation preserves old semantics. |
 | Bidirectional checking mode partially implemented | D-036 | Elaborator has `elaborate` (synthesis) and `check` modes, but polytype ascription at expression level does not work correctly (see D-038). |
 | `MonoType` cannot represent polytypes (`∀a. τ`) | D-038 | `CoreTypeAbs.type()` returns body monotype with bare rigids. Fix: rename `MonoType` → `Type`, add `Forall` variant. Related tests are `@AwaitsFix`. |
-| Pattern matching deferred (Phase 1e) | D-010, D-029 | `match` expressions, exhaustiveness checking, `if/then/else` as sugar — all deferred. Not blocking Blocks A+. |
+| Pattern matching deferred (Phase 1e) | D-010, D-029 | `match` expressions, exhaustiveness checking, `if/then/else` as sugar — all deferred. Not blocking Phase 2+. |
 | Integer-only arithmetic | D-020 | `Long` and `Double` literals exist but cannot participate in arithmetic. Requires coercion rules or type classes. |
 | Null semantics unsound | D-007 | `Null` unifies with any type. Proper `Option` type requires ADTs (Phase 1e+). |
 | `DIRECT_EXECUTOR_SERVICE` | D-004 | Parse, elaborate, evaluate all run synchronously on the calling thread. Needs a dedicated thread pool when computation becomes heavier. |
@@ -256,148 +250,104 @@ open-row unification infrastructure from Phase 1d.
 
 ---
 
-## Block A — `spawn` + Single-Value `join` (Async Coordination) :memo:
+## Phase 3 — Stream Runtime & Plan Graph :memo:
 
-> Replaces the old Phase 3 (plan graph) and Phase 4 (`par` blocks). See D-040.
+Introduces the plan graph architecture — the centerpiece that enables distributed execution. The
+evaluator builds plan graph nodes for process-level operations; the v0 executor runs them locally.
+Stream combinators (`map`, `filter`, `fold`, `groupBy`) are prelude built-in functions that
+construct plan graph nodes when applied to streams. The push-down optimizer compiles compatible
+transforms into ESQL expressions (map → EVAL, filter → WHERE, groupBy + fold → STATS), so they
+run on data nodes via ESQL's distributed engine. The `writeTo` sink primitive writes stream results
+to a target index via the bulk API.
 
-Introduces asynchronous coordination via the Join Calculus model. `spawn` launches a computation
-asynchronously and returns a channel. `join` synchronizes on one or more channels — the join body
-fires when all specified channels have delivered their values. This is the core concurrency
-primitive that replaces the old `par` block.
-
-**Implementation strategy**: Leverage Elasticsearch's existing async infrastructure. A channel is
-a `SubscribableListener<Value>` (single-completion future). `spawn` runs the body on
-`threadPool.executor(GENERIC)` and writes the result to the channel. `join` uses
-`SubscribableListener.andThen` (unary) or composes multiple channels via `GroupedActionListener`
-(n-ary) to fire the join body when all channels complete.
-
-**Key requirement**: The evaluator must become asynchronous (CPS / `ActionListener`-based). When
-the evaluator encounters `spawn`, it creates a `SubscribableListener`, forks the spawned
-computation, and continues. When it encounters `join`, it registers callbacks on the channels.
-`TransportPiescriptAction.doExecute` will wire the final result to the transport `ActionListener`.
+**This phase is the core of the MVP.** It delivers the stream runtime, plan graph, combinators,
+push-down optimization for distributed performance, and write-back — the pieces needed to express
+full data pipelines as piescript programs.
 
 | Task | Status |
 |------|--------|
-| `Chan τ` type constructor in the type system | :memo: |
-| `CoreSpawn` and `CoreJoin` variants in `CoreExpr` sealed hierarchy | :memo: |
-| `spawn` and `join` in ANTLR grammar | :memo: |
-| `SpawnVal(SubscribableListener<Value>)` in `Value` hierarchy | :memo: |
-| Async evaluator refactor (CPS / ActionListener-based evaluation) | :memo: |
-| `spawn` evaluation: fork to GENERIC thread pool, return `SpawnVal` | :memo: |
-| Unary `join`: single channel synchronization | :memo: |
-| N-ary `join`: multi-channel synchronization via `GroupedActionListener` | :memo: |
-| `TransportPiescriptAction` async wiring (ActionListener pipeline) | :memo: |
-| Error propagation through channels (spawn failure → channel failure) | :memo: |
-| Unit tests (spawn/join semantics, concurrent queries, error propagation) | :memo: |
-| Integration tests (concurrent ESQL queries via spawn + join) | :memo: |
+| `CoreProcess` IR layer (`Query`, `WriteTo` — combinators are built-ins) | :memo: |
+| Plan graph IR (free monad over π effects) | :memo: |
+| Evaluator/planner split (functional → evaluate, process → plan) | :memo: |
+| Prelude built-in functions: `map`, `filter`, `fold` (D-016) | :memo: |
+| `groupBy` combinator (grouping semantics for aggregation) | :memo: |
+| `writeTo` sink primitive (write stream results to an index via bulk API) | :memo: |
+| Mobility check (can this lambda travel?) | :memo: |
+| Core IR to ExpressionEvaluator compiler (fast path) | :memo: |
+| Push-down optimizer (map → EVAL, filter → WHERE, groupBy + fold → STATS) | :memo: |
+| v0 local executor (runs plan on coordinator) | :memo: |
+| Query delegation to ESQL | :memo: |
+| Result serialization for streams | :memo: |
+| Integration tests (stream fan-out, push-down, write-back) | :memo: |
 
 **Key architectural decisions:**
+- Plan graph, not direct interpretation (D-012)
+- Two-layer IR: `CoreExpr` / `CoreProcess` (D-013)
+- Closures as traveling code (D-014)
+- Stream combinators as prelude built-ins, not Core IR nodes (D-016)
+- Stream fan-out via DAG, streams are unrestricted (D-017)
+- Mobility check = "can this code be compiled to ExpressionEvaluator?" (v0), "can it be serialized
+  and shipped?" (future)
+- Push-down into ESQL provides distributed execution for the MVP without a custom distributed
+  executor — transforms that compile to ESQL expressions run on data nodes, vectorized, parallel
+  across shards
 
-- Join Calculus model replaces plan graph (D-040)
-- Channels are `SubscribableListener<Value>` — single-value, future-like (Block A)
-- `spawn` + `join` replace `par` as the coordination primitives (D-040)
-- The evaluator is the interpreter; no separate planner/executor split needed (D-040)
-- Stream combinators (`map`, `filter`, `reduce`) remain as eager built-ins over materialized
-  `StreamVal` for now (no change from Phase 2)
-
-**What carries forward from old plans:**
-
-- D-005 (HM type system), D-006 (de Bruijn), D-014 (traveling closures), D-016 (combinators as
-  prelude built-ins) — all still apply unchanged
-- Mobility check concept — deferred to Block D (push-down compilation)
-
-**What is superseded:**
-
-- D-012 (plan graph, not direct interpretation) — superseded by D-040. The evaluator now interprets
-  directly with async coordination via channels.
-- D-013 (two-layer IR: CoreExpr / CoreProcess) — superseded by D-040. `spawn` and `join` are
-  `CoreExpr` nodes, not a separate `CoreProcess` hierarchy.
-- D-015 (join calculus informing future design) — subsumed: join calculus is now the primary model,
-  not just an influence.
+**Ref**: [Phase 3 plan](../../.cursor/plans/phase3_stream_runtime.plan.md)
 
 ---
 
-## Block B — Multi-Value Channels (Full Join Calculus) :memo:
+## Phase 4 — Process Primitives & Plan Composition :memo:
 
-> Extends Block A with streaming channels and explicit send/receive.
-
-Block A's channels carry a single value (the final result of a `spawn`ed computation). Block B
-introduces multi-value channels that carry streams of messages, enabling:
-
-- **Fold-as-join**: aggregate results incrementally as values arrive on a channel.
-- **Streaming intermediate results**: one computation produces values over time, another consumes
-  them concurrently.
-- **General event handling**: react to sequences of events, not just single completions.
-
-**Implementation strategy**: Introduce a lightweight piescript-native multi-value channel
-(`Queue<Value>` + notification mechanism), distinct from ESQL's `Exchange`. The join automaton
-matches patterns over these channels — firing the join body each time the pattern is satisfied.
+Extends the plan graph with parallel composition (`par` blocks). Multiple queries dispatch
+concurrently as independent plan branches. First real use of π-calculus foundations.
 
 | Task | Status |
 |------|--------|
-| `newchan` and `send` primitives (Core IR + grammar) | :memo: |
-| Multi-value channel implementation (concurrent queue + notification) | :memo: |
-| Join automaton for pattern matching over multi-value channels | :memo: |
-| Join semantics: `&` (all channels) and `|` (any channel — if feasible) | :memo: |
-| Channel completion / close semantics | :memo: |
-| Backpressure mechanism (optional, may defer) | :memo: |
-| Unit and integration tests | :memo: |
+| `Par` in `CoreProcess` IR | :memo: |
+| `par` in ANTLR grammar | :memo: |
+| `Par` typing rule (concurrent let, independent bindings) | :memo: |
+| `ParPlanNode` in plan graph | :memo: |
+| Plan optimizer: dead-branch elimination, push-down into branches | :memo: |
+| Async execution of parallel branches (ActionListeners) | :memo: |
+| Integration tests | :memo: |
+
+**Key architectural decisions:**
+- `par` builds plan nodes, not fires async queries (D-012)
+- Channels are implicit plan graph edges (v0); explicit channels are future work
+- Join calculus informs primitive selection (D-015)
+
+**Ref**: [Phase 4 plan](../../.cursor/plans/phase4_process_primitives.plan.md)
 
 ---
 
-## Block C — `writeTo` Sink + Scheduler :memo:
+## Phase 4b — Scheduler & Async Execution :memo:
 
-Adds persistence and scheduled execution. `writeTo` writes stream results to a target index
-(via the Bulk API). The scheduler runs piescript programs as persistent tasks on a configurable
-schedule — the "Transform replacement" use case.
+Scheduled, persistent execution of piescript programs within Elasticsearch. A stored piescript
+program runs as a persistent task on a configurable schedule, enabling batch data pipelines
+(the "transform" use case). Leverages ES's existing persistent task infrastructure.
 
 | Task | Status |
 |------|--------|
-| `writeTo` sink primitive (Core IR + grammar + typing) | :memo: |
-| Bulk API integration (batch writes from stream results) | :memo: |
 | Stored program representation (simple precursor to Phase 7 module system) | :memo: |
 | Persistent task implementation for piescript execution | :memo: |
 | REST API for creating/managing scheduled piescript jobs | :memo: |
 | Status/progress reporting via the tasks API | :memo: |
 | Checkpointing for incremental/resumable execution | :memo: |
-| Integration tests (scheduled execution, write-back, failure recovery) | :memo: |
+| Integration tests (scheduled execution, failure recovery) | :memo: |
 
 ---
 
-## Block D — Push-Down Compilation (Optimization) :thought_balloon:
+## Phase 5 — Distributed Executor :thought_balloon:
 
-Optimizes performance by compiling mobile piescript lambdas into ESQL expressions. A `map` with
-a simple field projection becomes an ESQL `EVAL` clause; a `filter` with a simple predicate
-becomes a `WHERE` clause. This is significant compiler work — not a simple string concatenation.
+The plan graph executor dispatches plan fragments to data nodes. Transforms co-located with data.
+Channels between nodes implemented as Exchange operators. This is where piescript becomes a truly
+distributed computation language.
 
-**Complexity**: Requires closure conversion, lambda lifting, and a mobility analysis to determine
-which lambdas can be expressed in ESQL's expression language. Recursion, higher-order functions,
-closures over complex values, and sub-queries all present challenges. Semantic divergence (piescript
-vs. ESQL behavior for the same operation) must be carefully managed.
-
-| Task | Status |
-|------|--------|
-| Mobility analysis (which lambdas are ESQL-expressible?) | :thought_balloon: |
-| Core IR → ESQL text compiler backend | :thought_balloon: |
-| Closure conversion / lambda lifting for mobile closures | :thought_balloon: |
-| Push-down optimization pass (rewrite queries with fused transforms) | :thought_balloon: |
-| `groupBy` + `reduce` → ESQL `STATS` compilation | :thought_balloon: |
-| Semantic equivalence testing (piescript eval vs. ESQL execution) | :thought_balloon: |
-
----
-
-## Block E — Exchange Integration (Streaming Performance) :thought_balloon:
-
-Integrates piescript with ESQL's `Exchange` mechanism for high-throughput, distributed streaming
-data flow. Instead of materializing full query results before processing, piescript operates on
-`Page`s/`Block`s incrementally as they stream through the Exchange pipeline.
-
-| Task | Status |
-|------|--------|
-| Piescript as Exchange consumer (process Pages incrementally) | :thought_balloon: |
-| Piescript as Exchange producer (emit Pages to downstream operators) | :thought_balloon: |
-| `Value` ↔ `Block`/`Page` conversion layer | :thought_balloon: |
-| Cross-node channel implementation via Exchange | :thought_balloon: |
+- Plan fragment serialization (traveling closures over the wire)
+- Placement strategy (co-locate computation with data, leverage ESQL shard routing)
+- Cross-node channels via Exchange mechanism
+- Location-aware plan optimization
+- Fault tolerance for distributed plan execution
 
 ---
 
@@ -407,12 +357,15 @@ data flow. Instead of materializing full query results before processing, piescr
 
 Introduces QTT-style multiplicities {0, 1, ω} on bindings (D-018). Channel endpoints are linear
 (multiplicity 1), enabling session types with deadlock-freedom. Streams and all other values
-remain unrestricted (ω). User-visible channel primitives beyond `spawn`/`join`/`newchan`/`send`.
+remain unrestricted (ω). User-visible channel primitives: `new`, `send`, `recv`.
 
 - QTT multiplicity annotations on function types (`A →_π B`)
 - Usage tracking in the type checker (count how many times each binding is used)
+- `new`/`send`/`recv` as `CoreProcess` nodes with session-typed channels
 - Session types: type-checked communication protocols on channels
 - Deadlock-freedom from the type system (Wadler's Propositions as Sessions)
+- Join patterns (Fournet & Gonthier) for multi-way synchronization
+- Producer-consumer patterns via explicit channels
 - Linear closures as an optimization: move instead of clone (zero-copy)
 
 **Key references:** Linear Haskell (Bernardy et al. 2018), Idris 2 / QTT (Brady 2021).

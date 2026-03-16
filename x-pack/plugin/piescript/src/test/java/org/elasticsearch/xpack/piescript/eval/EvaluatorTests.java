@@ -8,10 +8,22 @@
 package org.elasticsearch.xpack.piescript.eval;
 
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.xpack.esql.core.tree.Source;
+import org.elasticsearch.xpack.piescript.core.CoreApp;
+import org.elasticsearch.xpack.piescript.core.CoreExpr;
+import org.elasticsearch.xpack.piescript.core.CoreFree;
+import org.elasticsearch.xpack.piescript.core.CoreLam;
+import org.elasticsearch.xpack.piescript.core.CorePrimOp;
+import org.elasticsearch.xpack.piescript.core.CoreProject;
+import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.elab.ElaborationState;
 import org.elasticsearch.xpack.piescript.elab.Elaborator;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
+import org.elasticsearch.xpack.piescript.types.MonoType;
+import org.elasticsearch.xpack.piescript.types.Op;
 
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.closeTo;
@@ -322,5 +334,212 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testBlockBodyResult() {
         assertThat(evaluate("{ let x = 10; let y = 20; x + y }"), is(new Value.IntegerVal(30)));
+    }
+
+    // ──── Stream built-ins (Phase 2.8) ────
+    //
+    // These tests construct Core IR directly and inject a StreamVal into the
+    // evaluator environment, bypassing parsing and elaboration. This validates
+    // the built-in map/filter/reduce logic without requiring a real ES client.
+
+    private static final Source SRC = Source.EMPTY;
+    private static final MonoType INT = new MonoType.TCon("Integer");
+    private static final MonoType BOOL = new MonoType.TCon("Boolean");
+
+    private static Value.StreamVal testStream() {
+        var row1 = new Value.RecordVal(linkedMap("name", new Value.KeywordVal("alice"), "age", new Value.IntegerVal(30)));
+        var row2 = new Value.RecordVal(linkedMap("name", new Value.KeywordVal("bob"), "age", new Value.IntegerVal(25)));
+        var row3 = new Value.RecordVal(linkedMap("name", new Value.KeywordVal("carol"), "age", new Value.IntegerVal(35)));
+        return new Value.StreamVal(List.of(row1, row2, row3));
+    }
+
+    private static Map<String, Value> linkedMap(String k1, Value v1, String k2, Value v2) {
+        var map = new LinkedHashMap<String, Value>();
+        map.put(k1, v1);
+        map.put(k2, v2);
+        return map;
+    }
+
+    /**
+     * Evaluate a Core IR expression with a pre-populated environment.
+     * Variable at de Bruijn index 0 = env[0], etc.
+     */
+    private Value evaluateWithEnv(CoreExpr expr, Value... env) {
+        return new Evaluator().evaluate(expr, env);
+    }
+
+    public void testMapProjectField() {
+        // map (fn r -> r.age) stream — extracts .age from each record
+        var stream = testStream();
+        // fn r -> r.age : body is CoreProject(CoreVar(0), "age")
+        var body = new CoreProject(SRC, new CoreVar(SRC, 0, "r", INT), "age", INT);
+        var lambda = new CoreLam(SRC, "r", INT, body, INT);
+        var mapFree = new CoreFree(SRC, "map", INT);
+        // map lambda stream → apply map to lambda, then apply result to stream (var 0)
+        var mapApplied = new CoreApp(SRC, mapFree, lambda, INT);
+        var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, instanceOf(Value.StreamVal.class));
+        var elements = ((Value.StreamVal) result).elements();
+        assertThat(elements.size(), is(3));
+        assertThat(elements.get(0), is(new Value.IntegerVal(30)));
+        assertThat(elements.get(1), is(new Value.IntegerVal(25)));
+        assertThat(elements.get(2), is(new Value.IntegerVal(35)));
+    }
+
+    public void testMapTransformField() {
+        // map (fn r -> r.age + 1) stream — increments .age
+        var stream = testStream();
+        var proj = new CoreProject(SRC, new CoreVar(SRC, 0, "r", INT), "age", INT);
+        var lit1 = new org.elasticsearch.xpack.piescript.core.CoreLit(
+            SRC,
+            new org.elasticsearch.xpack.piescript.types.LitVal.IntegerLit(1),
+            INT
+        );
+        var add = new CorePrimOp(SRC, Op.ADD, List.of(proj, lit1), INT);
+        var lambda = new CoreLam(SRC, "r", INT, add, INT);
+        var mapFree = new CoreFree(SRC, "map", INT);
+        var mapApplied = new CoreApp(SRC, mapFree, lambda, INT);
+        var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, instanceOf(Value.StreamVal.class));
+        var elements = ((Value.StreamVal) result).elements();
+        assertThat(elements.size(), is(3));
+        assertThat(elements.get(0), is(new Value.IntegerVal(31)));
+        assertThat(elements.get(1), is(new Value.IntegerVal(26)));
+        assertThat(elements.get(2), is(new Value.IntegerVal(36)));
+    }
+
+    public void testFilterByPredicate() {
+        // filter (fn r -> r.age > 28) stream — keeps alice(30) and carol(35)
+        var stream = testStream();
+        var proj = new CoreProject(SRC, new CoreVar(SRC, 0, "r", INT), "age", INT);
+        var lit28 = new org.elasticsearch.xpack.piescript.core.CoreLit(
+            SRC,
+            new org.elasticsearch.xpack.piescript.types.LitVal.IntegerLit(28),
+            INT
+        );
+        var gt = new CorePrimOp(SRC, Op.GT, List.of(proj, lit28), BOOL);
+        var lambda = new CoreLam(SRC, "r", INT, gt, INT);
+        var filterFree = new CoreFree(SRC, "filter", INT);
+        var filterApplied = new CoreApp(SRC, filterFree, lambda, INT);
+        var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, instanceOf(Value.StreamVal.class));
+        var elements = ((Value.StreamVal) result).elements();
+        assertThat(elements.size(), is(2));
+        assertThat(((Value.RecordVal) elements.get(0)).fields().get("name"), is(new Value.KeywordVal("alice")));
+        assertThat(((Value.RecordVal) elements.get(1)).fields().get("name"), is(new Value.KeywordVal("carol")));
+    }
+
+    public void testFilterKeepsAll() {
+        // filter (fn r -> true) stream — keeps everything
+        var stream = testStream();
+        var trueBody = new org.elasticsearch.xpack.piescript.core.CoreLit(
+            SRC,
+            new org.elasticsearch.xpack.piescript.types.LitVal.BooleanLit(true),
+            BOOL
+        );
+        var lambda = new CoreLam(SRC, "r", INT, trueBody, INT);
+        var filterFree = new CoreFree(SRC, "filter", INT);
+        var filterApplied = new CoreApp(SRC, filterFree, lambda, INT);
+        var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, instanceOf(Value.StreamVal.class));
+        assertThat(((Value.StreamVal) result).elements().size(), is(3));
+    }
+
+    public void testFilterRemovesAll() {
+        // filter (fn r -> false) stream — removes everything
+        var stream = testStream();
+        var falseBody = new org.elasticsearch.xpack.piescript.core.CoreLit(
+            SRC,
+            new org.elasticsearch.xpack.piescript.types.LitVal.BooleanLit(false),
+            BOOL
+        );
+        var lambda = new CoreLam(SRC, "r", INT, falseBody, INT);
+        var filterFree = new CoreFree(SRC, "filter", INT);
+        var filterApplied = new CoreApp(SRC, filterFree, lambda, INT);
+        var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, instanceOf(Value.StreamVal.class));
+        assertThat(((Value.StreamVal) result).elements().size(), is(0));
+    }
+
+    public void testReduceSumAges() {
+        // reduce (fn acc elem -> acc + elem.age) 0 stream — sums ages: 30+25+35=90
+        var stream = testStream();
+        // fn acc elem -> acc + elem.age
+        // de Bruijn: elem=0, acc=1
+        var accVar = new CoreVar(SRC, 1, "acc", INT);
+        var elemProj = new CoreProject(SRC, new CoreVar(SRC, 0, "elem", INT), "age", INT);
+        var addBody = new CorePrimOp(SRC, Op.ADD, List.of(accVar, elemProj), INT);
+        var innerLam = new CoreLam(SRC, "elem", INT, addBody, INT);
+        var outerLam = new CoreLam(SRC, "acc", INT, innerLam, INT);
+
+        var reduceFree = new CoreFree(SRC, "reduce", INT);
+        var lit0 = new org.elasticsearch.xpack.piescript.core.CoreLit(
+            SRC,
+            new org.elasticsearch.xpack.piescript.types.LitVal.IntegerLit(0),
+            INT
+        );
+        // reduce outerLam 0 stream
+        var reduceF = new CoreApp(SRC, reduceFree, outerLam, INT);
+        var reduceInit = new CoreApp(SRC, reduceF, lit0, INT);
+        var fullExpr = new CoreApp(SRC, reduceInit, new CoreVar(SRC, 0, "stream", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, is(new Value.IntegerVal(90)));
+    }
+
+    public void testReduceEmptyStream() {
+        // reduce (fn acc elem -> acc + 1) 0 emptyStream — returns initial value
+        var emptyStream = new Value.StreamVal(List.of());
+        var accVar = new CoreVar(SRC, 1, "acc", INT);
+        var lit1 = new org.elasticsearch.xpack.piescript.core.CoreLit(
+            SRC,
+            new org.elasticsearch.xpack.piescript.types.LitVal.IntegerLit(1),
+            INT
+        );
+        var addBody = new CorePrimOp(SRC, Op.ADD, List.of(accVar, lit1), INT);
+        var innerLam = new CoreLam(SRC, "elem", INT, addBody, INT);
+        var outerLam = new CoreLam(SRC, "acc", INT, innerLam, INT);
+
+        var reduceFree = new CoreFree(SRC, "reduce", INT);
+        var lit0 = new org.elasticsearch.xpack.piescript.core.CoreLit(
+            SRC,
+            new org.elasticsearch.xpack.piescript.types.LitVal.IntegerLit(0),
+            INT
+        );
+        var reduceF = new CoreApp(SRC, reduceFree, outerLam, INT);
+        var reduceInit = new CoreApp(SRC, reduceF, lit0, INT);
+        var fullExpr = new CoreApp(SRC, reduceInit, new CoreVar(SRC, 0, "stream", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, emptyStream);
+        assertThat(result, is(new Value.IntegerVal(0)));
+    }
+
+    public void testMapOnEmptyStream() {
+        var emptyStream = new Value.StreamVal(List.of());
+        var body = new CoreProject(SRC, new CoreVar(SRC, 0, "r", INT), "age", INT);
+        var lambda = new CoreLam(SRC, "r", INT, body, INT);
+        var mapFree = new CoreFree(SRC, "map", INT);
+        var mapApplied = new CoreApp(SRC, mapFree, lambda, INT);
+        var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, emptyStream);
+        assertThat(result, instanceOf(Value.StreamVal.class));
+        assertThat(((Value.StreamVal) result).elements().size(), is(0));
+    }
+
+    public void testQueryWithoutClientThrows() {
+        var query = new org.elasticsearch.xpack.piescript.core.CoreQuery(SRC, "FROM test", "test", INT);
+        var ex = expectThrows(EvaluationException.class, () -> new Evaluator().evaluate(query));
+        assertThat(ex.getMessage(), containsString("requires a client"));
     }
 }

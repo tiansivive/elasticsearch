@@ -22,9 +22,10 @@ import java.util.Objects;
  * <p>The type is {@code AppType(TCon("Stream"), RecordType(rho))} where
  * {@code rho} is a row derived from the resolved index mapping.
  *
- * <p>This is a pragmatic {@link CoreExpr} variant for Phase 2. It migrates to
- * the {@code CoreProcess} hierarchy in Phase 3 when the two-layer IR split is
- * introduced.
+ * <p>{@code CoreQuery} remains a {@link CoreExpr} variant — the two-layer IR
+ * split ({@code CoreProcess}) was superseded by D-040. Coordination primitives
+ * ({@code CoreSpawn}, {@code CoreJoin}) are added as peer {@code CoreExpr}
+ * variants in Block A.
  */
 public final class CoreQuery extends CoreExpr {
 
