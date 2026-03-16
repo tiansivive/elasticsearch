@@ -21,11 +21,14 @@ import org.junit.Before;
 import org.junit.ClassRule;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.instanceOf;
 
 @ThreadLeakFilters(filters = TestClustersThreadFilter.class)
 public class PiescriptIT extends ESRestTestCase {
@@ -65,6 +68,35 @@ public class PiescriptIT extends ESRestTestCase {
             {"message":"error","status":503}
             """);
         assertOK(adminClient().performRequest(bulk));
+
+        if (indexExists("piescript-typed") == false) {
+            Request createTyped = new Request("PUT", "/piescript-typed");
+            createTyped.setJsonEntity("""
+                {
+                  "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+                  "mappings": {
+                    "properties": {
+                      "name":   {"type": "keyword"},
+                      "age":    {"type": "integer"},
+                      "active": {"type": "boolean"}
+                    }
+                  }
+                }
+                """);
+            assertOK(adminClient().performRequest(createTyped));
+
+            Request bulkTyped = new Request("POST", "/piescript-typed/_bulk");
+            bulkTyped.addParameter("refresh", "true");
+            bulkTyped.setJsonEntity("""
+                {"index":{}}
+                {"name":"alice","age":30,"active":true}
+                {"index":{}}
+                {"name":"bob","age":25,"active":false}
+                {"index":{}}
+                {"name":"carol","age":35,"active":true}
+                """);
+            assertOK(adminClient().performRequest(bulkTyped));
+        }
     }
 
     public void testQueryTypechecking() throws IOException {
@@ -78,7 +110,7 @@ public class PiescriptIT extends ESRestTestCase {
         assertThat(type, containsString("Stream"));
         assertThat(type, containsString("message"));
         assertThat(type, containsString("status"));
-        assertThat(responseMap.containsKey("eval_error"), equalTo(true));
+        assertThat(responseMap.containsKey("eval"), equalTo(true));
     }
 
     public void testQueryTypecheckingWithFilter() throws IOException {
@@ -89,14 +121,67 @@ public class PiescriptIT extends ESRestTestCase {
         Map<String, Object> responseMap = entityAsMap(response);
         String type = (String) responseMap.get("type");
         assertThat(type, containsString("Stream"));
-        assertThat(responseMap.containsKey("eval_error"), equalTo(true));
+        assertThat(responseMap.containsKey("eval"), equalTo(true));
     }
 
-    public void testQueryEvalThroughPipeline() throws IOException {
-        Request request = piescriptRequest("query `FROM piescript-test | SORT status ASC | LIMIT 10`");
-        ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
-        assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
-        assertThat(e.getMessage(), containsString("query evaluation is not yet supported"));
+    // ──── Eager query evaluation (Phase 2.8) ────
+
+    public void testQueryEvalReturnsStream() throws IOException {
+        Request request = piescriptRequest("query `FROM piescript-typed | SORT name ASC | LIMIT 10`");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        String type = (String) responseMap.get("type");
+        assertThat(type, containsString("Stream"));
+        Object result = responseMap.get("result");
+        assertThat(result, instanceOf(List.class));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) result;
+        assertThat(rows, hasSize(3));
+        assertThat(rows.get(0).get("name"), equalTo("alice"));
+        assertThat(rows.get(1).get("name"), equalTo("bob"));
+        assertThat(rows.get(2).get("name"), equalTo("carol"));
+    }
+
+    public void testQueryEvalMapProjectField() throws IOException {
+        Request request = piescriptRequest("query `FROM piescript-typed | SORT name ASC | LIMIT 10` |> map (fn r -> r.name)");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        Object result = responseMap.get("result");
+        assertThat(result, instanceOf(List.class));
+        @SuppressWarnings("unchecked")
+        List<Object> elements = (List<Object>) result;
+        assertThat(elements, hasSize(3));
+        assertThat(elements.get(0), equalTo("alice"));
+        assertThat(elements.get(1), equalTo("bob"));
+        assertThat(elements.get(2), equalTo("carol"));
+    }
+
+    public void testQueryEvalFilterByPredicate() throws IOException {
+        Request request = piescriptRequest("query `FROM piescript-typed | SORT name ASC | LIMIT 10` |> filter (fn r -> r.active)");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        Object result = responseMap.get("result");
+        assertThat(result, instanceOf(List.class));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) result;
+        assertThat(rows, hasSize(2));
+        assertThat(rows.get(0).get("name"), equalTo("alice"));
+        assertThat(rows.get(1).get("name"), equalTo("carol"));
+    }
+
+    public void testQueryEvalReduceSumAges() throws IOException {
+        Request request = piescriptRequest("query `FROM piescript-typed | SORT name ASC | LIMIT 10` |> reduce (fn acc r -> acc + r.age) 0");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("result"), equalTo(90));
     }
 
     public void testEmptyProgram() throws IOException {

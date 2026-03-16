@@ -66,7 +66,7 @@ public final class CorePrinter {
             sb.append('?').append(entry.getKey()).append(" |=> ");
             switch (entry.getValue()) {
                 case MonoType mono -> sb.append(writeType(mono));
-                case RowType row -> sb.append(writeRow(row));
+                case RowType row -> sb.append(writeRowFragment(row));
                 default -> sb.append(entry.getValue());
             }
             sb.append('\n');
@@ -201,6 +201,24 @@ public final class CorePrinter {
             case ROW -> String.valueOf((char) ('r' + (id % 3)));
             case TYPE -> String.valueOf((char) ('a' + (id % 26)));
         };
+    }
+
+    /**
+     * Print a row fragment as a zonker solution. Uses parentheses to
+     * distinguish from full record types: {@code ( score: Double )} vs
+     * {@code { score: Double }}.
+     */
+    private static String writeRowFragment(RowType row) {
+        var fields = row.fields()
+            .entrySet()
+            .stream()
+            .map(e -> e.getKey() + ": " + writeType(e.getValue()))
+            .collect(Collectors.joining(", "));
+        if (row.rowVar().isEmpty()) {
+            return "( " + fields + " )";
+        }
+        var tail = row.rowVar().get();
+        return "( " + fields + " | ?" + tail.id() + " )";
     }
 
     private static String writeRow(RowType row) {

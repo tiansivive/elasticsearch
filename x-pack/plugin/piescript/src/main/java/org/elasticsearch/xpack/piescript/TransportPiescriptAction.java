@@ -11,9 +11,9 @@ import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.internal.Client;
-import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.tasks.Task;
+import org.elasticsearch.threadpool.ThreadPool;
 import org.elasticsearch.transport.TransportService;
 import org.elasticsearch.xpack.piescript.core.CorePrinter;
 import org.elasticsearch.xpack.piescript.elab.ElaborationException;
@@ -29,16 +29,21 @@ import org.elasticsearch.xpack.piescript.parser.PiescriptParsingException;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 
 public class TransportPiescriptAction extends HandledTransportAction<PiescriptRequest, PiescriptResponse> {
 
     private final PiescriptParser parser = new PiescriptParser();
     private final IndexResolutionPrePass indexResolutionPrePass;
+    private final Client client;
+    private final Executor executor;
 
     @Inject
-    public TransportPiescriptAction(TransportService transportService, ActionFilters actionFilters, Client client) {
-        super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, EsExecutors.DIRECT_EXECUTOR_SERVICE);
+    public TransportPiescriptAction(TransportService transportService, ActionFilters actionFilters, Client client, ThreadPool threadPool) {
+        super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, threadPool.executor(ThreadPool.Names.GENERIC));
         this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService);
+        this.client = client;
+        this.executor = threadPool.executor(ThreadPool.Names.GENERIC);
     }
 
     @Override
@@ -62,7 +67,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
                 elaborateAndEvaluate(cst, null, listener);
             } else {
                 indexResolutionPrePass.resolve(queries, listener.delegateFailureAndWrap((l, resolvedMappings) -> {
-                    elaborateAndEvaluate(cst, resolvedMappings, l);
+                    executor.execute(() -> elaborateAndEvaluate(cst, resolvedMappings, l));
                 }));
             }
         } catch (Exception e) {
@@ -82,7 +87,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             }
             var elaborator = new Elaborator(state);
             var coreExpr = elaborator.elaborateProgram(cst);
-            var evaluator = new Evaluator();
+            var evaluator = new Evaluator(client);
             var value = evaluator.evaluate(coreExpr);
             var type = CorePrinter.printType(coreExpr.type(), state);
             listener.onResponse(PiescriptResponse.fromValue(value, type));
@@ -110,7 +115,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
                 elaborateAndEvaluateDev(cst, treeString, null, listener);
             } else {
                 indexResolutionPrePass.resolve(queries, ActionListener.wrap(resolvedMappings -> {
-                    elaborateAndEvaluateDev(cst, treeString, resolvedMappings, listener);
+                    executor.execute(() -> elaborateAndEvaluateDev(cst, treeString, resolvedMappings, listener));
                 }, e -> { listener.onResponse(devTypeError(treeString, "index resolution failed: " + e.getMessage())); }));
             }
         } catch (Exception e) {
@@ -142,7 +147,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             String eval = null;
             String evalError = null;
             try {
-                var evaluator = new Evaluator();
+                var evaluator = new Evaluator(client);
                 var value = evaluator.evaluate(coreExpr);
                 eval = value.toString();
             } catch (EvaluationException e) {

@@ -1,13 +1,21 @@
 # Architecture
 
 > **Living doc** — update when adding components, changing data flow, or making structural decisions.
+>
+> **Revised**: 2026-03-16. The execution model has been redesigned around the Join Calculus (D-040).
+> The plan graph / two-layer IR / optimizer / executor architecture is archived in
+> `docs/archive/architecture.pre-join-calculus.md`.
 
 ## System Overview
 
 Piescript is an Elasticsearch x-pack plugin that adds a typed functional scripting language on top of
-ESQL. The current architecture (Phase 0) is a thin passthrough layer: programs are received via
-REST, validated, and forwarded to the ESQL engine. Future phases will insert parsing, type checking,
-and elaboration stages between REST intake and ESQL execution.
+ESQL. The current architecture (through Phase 2) has a synchronous compilation and evaluation
+pipeline: programs are received via REST, parsed, type-checked against index mappings, and evaluated
+by a tree-walking interpreter that fires ESQL queries synchronously and operates over materialized
+stream results.
+
+Block A extends this with asynchronous coordination via Join Calculus primitives (`spawn`, `join`,
+channels), enabling concurrent query execution and multi-way synchronization.
 
 ```
 Client
@@ -16,13 +24,29 @@ Client
 RestPiescriptAction          ← REST layer: parses JSON body, extracts "program" field
   │
   ▼
-TransportPiescriptAction     ← Transport layer: validates program structure, delegates to ESQL
+TransportPiescriptAction     ← Transport layer: orchestrates pipeline on GENERIC thread pool
+  │
+  ├─► Parser (ANTLR)         ← Phase 1a: source text → CST
+  │     │
+  │     ▼
+  │   Index Resolution        ← Phase 2: resolve index patterns via Field Capabilities
+  │     │
+  │     ▼
+  │   Elaborator              ← Phase 1b+: bidirectional HM inference → Core IR
+  │     │
+  │     ▼
+  │   Evaluator               ← Phase 1c+: tree-walking interpreter with async coordination
+  │     │
+  │     ├─► Pure result       ← No spawn/join: synchronous evaluation, return value directly
+  │     │
+  │     └─► Async result      ← Has spawn/join: coordinate via channels, wire to ActionListener
+  │           │
+  │           ├─► ESQL Engine ← CoreQuery fires EsqlQueryAction (sync in v0, async in Block A)
+  │           │
+  │           └─► Channel ops ← spawn → fork to GENERIC, join → register SubscribableListener callbacks
   │
   ▼
-ESQL Engine                  ← Executes the query, returns EsqlQueryResponse
-  │
-  ▼
-Client (columnar JSON)
+Client (JSON response)
 ```
 
 ## Components
@@ -37,10 +61,9 @@ Client (columnar JSON)
 
 ### Action Definition — `PiescriptAction`
 
-- `ActionType<EsqlQueryResponse>` registered under `indices:data/read/piescript`.
+- `ActionType<PiescriptResponse>` registered under `indices:data/read/piescript`.
 - The `indices:data/read/` prefix integrates with ES security privilege resolution: users with
   index-level read access can run piescript programs that touch those indices.
-- Response type is `EsqlQueryResponse` directly (no piescript-specific wrapper yet).
 
 ### Request — `PiescriptRequest`
 
@@ -52,11 +75,12 @@ Client (columnar JSON)
 
 ### Transport Layer — `TransportPiescriptAction`
 
-- `HandledTransportAction` running on `DIRECT_EXECUTOR_SERVICE` (no thread-pool hop — the ESQL
-  engine manages its own threading).
-- `extractEsqlQuery()`: strips the `query ... ;` wrapper and passes the inner ESQL string to
-  `EsqlQueryRequest.syncEsqlQueryRequest()`.
-- Error handling: malformed programs fail fast with `IllegalArgumentException` before reaching ESQL.
+- `HandledTransportAction` running on `threadPool.executor(ThreadPool.Names.GENERIC)` (D-004
+  revision). Resolve callbacks also fork to GENERIC to avoid blocking coordination threads.
+- Orchestrates the full pipeline: parse → index resolution → elaborate → evaluate.
+- Wires the final evaluation result to the transport `ActionListener`. In Block A, the evaluator
+  itself becomes async, so the transport action registers an `ActionListener<Value>` that the
+  evaluator completes when done (including after async `join` resolution).
 
 ### Plugin Registration — `PiescriptPlugin`
 
@@ -76,172 +100,211 @@ Piescript reuses ESQL's authorization model:
 3. At runtime, the `CompositeIndicesRequest` marker means index resolution is deferred to the ESQL
    engine, which performs its own authorization checks on the resolved indices.
 
-## Future Architecture (Phase 1+)
+## Core IR
 
-### Compilation Pipeline
+The Core IR is a single `CoreExpr` sealed hierarchy — there is no separate `CoreProcess` layer.
+Coordination primitives (`CoreSpawn`, `CoreJoin`) are `CoreExpr` variants alongside functional
+nodes. This simplifies the IR and the evaluator: all nodes are evaluated by the same tree-walking
+interpreter, with the runtime distinction being synchronous (pure functional) vs. asynchronous
+(coordination) evaluation.
 
-The planned architecture inserts a compilation pipeline between REST intake and execution:
+### Functional Nodes (existing)
+
+- `CoreVar`, `CoreFree`, `CoreLit`, `CoreLam`, `CoreApp`, `CoreLet`, `CoreRecord`, `CoreProject`,
+  `CoreUpdate`, `CorePrimOp`, `CoreTypeAbs`, `CoreTypeApp`, `CoreQuery`
+- Evaluated synchronously by the tree-walking interpreter.
+- `CoreQuery` fires an ESQL query and returns a `StreamVal`.
+
+### Coordination Nodes (Block A)
+
+- `CoreSpawn(CoreExpr body)` — launch `body` asynchronously, return a channel.
+  - Type: `τ → Chan τ` (where `τ` is the type of `body`).
+  - Evaluation: create a `SubscribableListener<Value>`, fork `body` evaluation to
+    `threadPool.executor(GENERIC)`, return `SpawnVal(listener)`.
+
+- `CoreJoin(List<JoinBinding> channels, CoreExpr body)` — synchronize on channels, then evaluate
+  `body` with bound values.
+  - Each `JoinBinding` specifies a channel expression and a variable binding.
+  - Type: the body's type, with channel value types bound to the variables.
+  - Evaluation: register callbacks on each channel's `SubscribableListener`. When all channels
+    complete, bind the received values and evaluate `body`. For n-ary joins, use
+    `GroupedActionListener` to collect all results before firing.
+
+### Prelude Built-ins
+
+`map`, `filter`, `reduce` are prelude built-in functions (D-016), not Core IR nodes. They are
+typed as normal polymorphic functions and operate over materialized `StreamVal(List<Value>)` via
+`applyFunction` callbacks. This keeps the IR uniform and enables a clean path to typeclasses.
+
+Adding new combinators (`take`, `zip`, `groupBy`, `partition`, etc.) means adding prelude
+functions, not extending the Core IR grammar.
+
+## The Evaluator
+
+The evaluator is a tree-walking de Bruijn environment machine. It handles all `CoreExpr` variants:
+
+- **Functional nodes**: evaluated synchronously. `CoreVar` looks up the de Bruijn environment.
+  `CoreApp` applies a closure. `CoreLet` extends the environment. `CoreQuery` fires an ESQL query
+  synchronously and returns a `StreamVal`.
+
+- **Coordination nodes (Block A)**: evaluated asynchronously via `ActionListener` callbacks.
+  `CoreSpawn` forks computation and returns a `SpawnVal` (wrapping a `SubscribableListener`).
+  `CoreJoin` registers callbacks on channels and continues evaluation in the callback when all
+  channels complete.
+
+### Async Evaluation Model (Block A)
+
+The evaluator transitions from a synchronous `Value evaluate(CoreExpr, Env)` to an
+asynchronous model where the result is delivered via `ActionListener<Value>`. For programs
+without `spawn`/`join`, the evaluator completes synchronously on the calling thread (the
+common case). When coordination primitives are encountered, the evaluator suspends the current
+computation and resumes it in a callback when channels deliver their values.
+
+This is a continuation-passing style (CPS) transformation of the evaluator, where
+`SubscribableListener` callbacks serve as continuations. The ES infrastructure provides the
+scheduling: `SubscribableListener.andThen` chains async operations, and
+`threadPool.executor(GENERIC)` provides safe threads for spawned computations.
+
+## Runtime Values
+
+`Value` is a sealed interface with variants:
+
+| Variant | Description |
+|---------|-------------|
+| `IntegerVal` | Integer value |
+| `LongVal` | Long value |
+| `DoubleVal` | Double value |
+| `KeywordVal(String)` | String/keyword value |
+| `BooleanVal` | Boolean value |
+| `NullVal` | Null value |
+| `RecordVal` | Record with named fields |
+| `StreamVal(List<Value>)` | Eagerly materialized stream of values |
+| `ClosureVal` | Lambda closure (code + captured environment) |
+| `BuiltinVal` | Curried built-in function (name, arity, partial args) |
+| `SpawnVal(SubscribableListener<Value>)` | Channel carrying an async result (Block A) |
+
+## ES Infrastructure Mapping
+
+The Join Calculus model maps directly to Elasticsearch's existing async infrastructure:
+
+| Piescript Concept | ES Infrastructure | Notes |
+|------------------|-------------------|-------|
+| Single-value channel (`Chan τ`) | `SubscribableListener<Value>` | Single-completion future; other listeners subscribe for the result |
+| `spawn` (fork computation) | `threadPool.executor(GENERIC).execute(...)` | Safe to block; used for query execution |
+| Unary `join` | `SubscribableListener.andThen(...)` | Chain a callback when the channel completes |
+| N-ary `join` | `GroupedActionListener` + `SubscribableListener` | Collect N results, then fire the join body |
+| Error propagation | `ActionListener.onFailure(Exception)` | `SubscribableListener` propagates failures to all subscribers |
+| Query execution | `client.execute(EsqlQueryAction, request, listener)` | Async in Block A (listener-based), sync in Phase 2 |
+
+### Future: Multi-Value Channels (Block B)
+
+Block A's `SubscribableListener` is inherently single-value (one completion). Block B introduces
+multi-value channels for streaming results:
+
+- **Implementation**: lightweight piescript-native concurrent queue (`Queue<Value>` +
+  notification mechanism), not ESQL's `Exchange` (which operates on `Page`/`Block`, a different
+  abstraction level).
+- **Join automaton**: pattern matching over multi-value channels, firing the join body each time
+  the pattern is satisfied.
+- **Primitives**: `newchan` (create a multi-value channel), `send` (send a value on a channel).
+
+### Future: Exchange Integration (Block E)
+
+For high-throughput streaming, piescript can participate in ESQL's Exchange pipeline:
+
+- ESQL's `Exchange` is a multi-value, streaming, concurrent FIFO of `Page`s across threads/nodes.
+- `ExchangeService` registers transport handlers for cross-node streaming.
+- Piescript could operate on `Page`s/`Block`s directly (or convert to `Value`s incrementally),
+  becoming a consumer/producer in ESQL's distributed streaming pipeline.
+
+This is a performance optimization for Block E, not required for correctness.
+
+## Theoretical Model: Free Monad over Join Calculus Effects
+
+The Join Calculus coordination primitives (`spawn`, `join`, `query`, `newchan`, `send`) form an
+**algebraic effect signature**. The evaluator is an **effect handler** that interprets these
+effects. This is the free monad perspective — and it still applies, even though the implementation
+uses direct CPS interpretation rather than an explicit plan graph.
+
+The key insight is that the free monad arises naturally as the **residual of partial evaluation**:
+
+1. **Partial evaluation**: the evaluator reduces pure expressions (let-bindings, lambdas,
+   application, arithmetic, records) to values. Coordination expressions (`spawn`, `join`, `query`)
+   are **stuck** — they cannot be reduced further without performing actual effects.
+
+2. **The residual is the free monad**: what remains after partial evaluation is a tree of
+   irreducible coordination operations, each carrying the values and closures produced by step 1.
+   This is `Free JoinF Value` — a free monad over the Join Calculus effect signature.
+
+3. **Optimization**: the free monad structure can be inspected and transformed before execution.
+   Push-down (fuse lambdas into ESQL queries), combinator fusion, dead-branch elimination — all
+   operate on this structure.
+
+4. **Runtime interpretation**: the actual execution (SubscribableListener callbacks, thread pool
+   forks, ESQL query dispatch) interprets the optimized free monad.
 
 ```
-Client
-  │
-  ▼
-RestPiescriptAction
-  │
-  ▼
-TransportPiescriptAction
-  │
-  ├─► Lexer/Parser        ← Phase 1a: ANTLR grammar → CST → AST
-  │     │
-  │     ▼
-  │   Type Checker         ← Phase 1b: bidirectional HM inference, zonker-based elaboration
-  │     │
-  │     ▼
-  │   Core IR              ← Phase 1c: elaborated, fully-typed intermediate representation
-  │     │                     (two layers: CoreExpr for functional, CoreProcess for effects)
-  │     ▼
-  │   Evaluator / Planner  ← Evaluates functional nodes, builds plan graph for process nodes
-  │     │
-  │     ├─► Pure result    ← Program has no process nodes: return value directly
-  │     │
-  │     └─► Plan Graph     ← Program has process nodes: plan describes distributed work
-  │           │
-  │           ▼
-  │         Optimizer      ← Push-down, dead-code elimination, fusion
-  │           │
-  │           ▼
-  │         Executor       ← Dispatches plan to ESQL / compute engine / remote nodes
-  │
-  ▼
-ESQL Engine / Compute Engine / Remote Nodes
-  │
-  ▼
-Client
+CoreExpr (System F + coordination primitives)
+    │
+    ▼  partial evaluation / constant folding
+    │
+Free JoinF (residual: coordination skeleton with attached values/closures)
+    │
+    ▼  optimization (push-down into ESQL, fusion, etc.)  ← Block D
+    │
+Optimized Free JoinF
+    │
+    ▼  runtime interpretation (SubscribableListener, GENERIC thread pool, ESQL engine)
+    │
+Result
 ```
 
-Key design choices for the pipeline:
+This is piescript's **lowering pass**, analogous to GHC's Core → STG → Cmm pipeline or ESQL's
+Logical Plan → Physical Plan → Operator Pipeline.
 
-- **De Bruijn indices** for variable binding (no alpha-renaming needed).
-- **Zonker-based elaboration**: unification writes solutions to a `Map<Integer, Object>` (the
-  zonker). The elaborator never substitutes into the term tree. There is no zonking pass — the
-  zonker is carried as a lookup table throughout the pipeline (elaboration, evaluation, lowering).
-  Metavars in types are resolved by chain-following lookup when encountered. See D1.7 in the
-  Phase 1 plan.
-- **Core IR only extends `Node`** (ES AST infrastructure). Types, values, and other structures use
-  plain records/sealed interfaces. `Node<T>` provides `Source` for error locations and
-  `transformDown`/`transformUp` for the optimizer (Phase 2+). The elaborator and evaluator are
-  hand-written recursive descent — they do not use `Node<T>` traversal methods.
-- **Null semantics (v0)**: `Null` unifies with any type (behaves like `Any`). Will be refined in
-  later phases with proper option types.
+### Block A: No Lowering Pass
 
-### The Two-Layer IR
+In Block A, the evaluator eagerly interprets everything — including coordination primitives —
+in one step. There is no explicit free monad data structure. The evaluator goes directly from
+`CoreExpr` to runtime effects via ActionListener callbacks (a continuation monad, not a free
+monad). This is correct and simple for the initial implementation.
 
-The Core IR is partitioned into two sealed hierarchies:
+### Block D: Lowering Pass Introduced
 
-- **`CoreExpr`** — functional expressions: `Var`, `Lit`, `Lam`, `App`, `Let`, `PrimOp`, `Record`,
-  `Project`, `Update`, `Match`. These evaluate to values. The tree-walking evaluator handles them
-  directly.
+When Block D (push-down compilation) is implemented, the evaluator splits into two phases:
 
-- **`CoreProcess`** — process descriptions: `Query`, `Par`, and (future) `Send`, `Recv`, `New`.
-  These describe distributed effects with dedicated surface syntax. When the evaluator encounters
-  them, it builds plan graph nodes instead of executing directly.
+1. **Partial evaluator**: reduces pure code, gets stuck on coordination effects, produces the
+   free monad residual. This is the lowering pass.
+2. **Optimizer**: inspects the free monad structure, compiles mobile lambdas into ESQL expressions,
+   fuses combinators.
+3. **Runtime interpreter**: the SubscribableListener/thread pool machinery from Block A, now
+   interpreting the optimized free monad rather than the raw Core IR.
 
-Note: `map`, `filter`, `fold` are **not** `CoreProcess` nodes. They are prelude built-in
-functions whose runtime implementations construct plan graph nodes when applied to `StreamVal`s.
-The Core IR for `stream |> map f` is `CoreApp(CoreApp(CoreVar("map"), f), stream)` — standard
-function application. This keeps the IR uniform and enables a clean path to typeclasses
-(`map` → `Functor.fmap`). See D-016 in [decisions.md](decisions.md).
+The runtime interpreter from Block A becomes the backend for the free monad interpreter in Block D.
+Nothing is thrown away — the lowering pass is an additive change.
 
-This separation mirrors the fundamental distinction in the π-calculus between expressions (which
-compute values) and processes (which perform communication). It is also analogous to the pure/IO
-boundary in Haskell — `CoreExpr` is the pure layer, `CoreProcess` is the effectful layer. See
-[vision.md](vision.md) for the conceptual model.
+The single-value → multi-value channel transition (Block A → B) is orthogonal to this. Whether
+`JoinF` includes `Spawn`/`Join` (Block A) or also `NewChan`/`Send` (Block B) doesn't change the
+architecture. Both are constructors in the effect signature; the partial evaluator still reduces
+pure code; the residual still contains stuck effects; the optimizer still inspects the structure.
 
-The boundary between the two layers is the most important seam in the architecture. Process nodes
-may contain functional subexpressions (e.g., the ESQL string in `Query`), but functional nodes
-never contain process nodes. Effects do not leak inward.
+## Traveling Code (Code Mobility)
 
-### The Plan Graph
-
-When a program contains process nodes, evaluation produces a **plan graph** — a DAG of distributed
-operations. The plan graph is a free monad over π-calculus effects:
-
-```
-data PiF next
-  = Query String (Stream -> next)           -- CoreProcess node
-  | Par [(Name, PiF next)] next             -- CoreProcess node
-  | MapPlan (a -> b) (Stream a) next        -- from built-in `map`
-  | FilterPlan (a -> Bool) (Stream a) next  -- from built-in `filter`
-  | FoldPlan (b -> a -> b) b (Stream a) next -- from built-in `fold`
-  | Send Channel Value next                 -- future CoreProcess node
-  | Recv Channel (Value -> next)            -- future CoreProcess node
-```
-
-Plan nodes come from two sources: `CoreProcess` IR nodes (Query, Par) produce plan nodes directly
-during evaluation. Built-in prelude functions (map, filter, fold) produce plan nodes when applied
-to `StreamVal` values at runtime. Both paths produce the same plan graph IR. See D-016.
-
-Each plan node carries:
-- **Typed edges** (channels) — data flows between nodes along these edges.
-- **Code** (optional) — a `CoreExpr` subtree (lambda/closure) to be executed at the plan node's
-  location. The code is already type-checked and elaborated; it travels with the plan node.
-- **Captured environment** — for closures, the `(code, env)` pair where `env` is a snapshot of
-  captured bindings. Since the language is pure, captured values are immutable and safe to clone.
-
-The plan graph is a **DAG, not a tree**. A `StreamVal` wraps a plan node description; using a
-stream twice creates fan-out — two downstream nodes referencing the same source. No query is
-re-executed. The executor handles fan-out via Exchange operators and reference-counted pages.
-See D-017 in [decisions.md](decisions.md).
-
-The plan graph is built by the evaluator (not a separate compilation pass). The evaluator walks
-the Core IR, evaluates functional nodes eagerly, and suspends at process nodes — constructing plan
-fragments and wiring them together. Built-in functions participate in the same process: when `map`
-is applied to a `StreamVal`, it constructs a new plan node referencing the source. This is
-analogous to how delimited continuations reify the "rest of the computation" at each effect
-boundary.
-
-### The Optimizer
-
-The optimizer transforms the plan graph before execution:
-
-- **Push-down**: a `MapPlanNode` with a simple lambda (field projection, arithmetic) can be fused
-  into the upstream `QueryPlanNode` as an ESQL `EVAL` clause. A `FilterPlanNode` with a simple
-  predicate becomes a `WHERE` clause. The "simplicity check" is really a **mobility check**: can
-  this code be expressed in the target execution context (ESQL evaluators, compute operators)?
-- **Dead-code elimination**: `Par` branches whose bindings are never referenced in the
-  continuation are removed. Fan-out edges with unreachable consumers are pruned.
-- **Fusion**: adjacent `MapPlanNode`s are fused into a single node with a composed lambda.
-
-### The Executor
-
-The executor interprets the optimized plan graph:
-
-- **v0 (local)**: all plan nodes execute on the coordinator node. `Query` nodes fire
-  `EsqlQueryRequest` via the node client. `Par` nodes spawn concurrent async queries
-  (ActionListeners) and join. Stream combinators apply transforms locally (via ExpressionEvaluators
-  for simple lambdas, via the tree-walking interpreter for complex ones).
-- **Future (distributed)**: plan fragments are dispatched to data nodes. `Query` + downstream
-  transforms are co-located with the shards they read. Channels between plan nodes on different
-  nodes are implemented as Exchange operators. The executor leverages ESQL's existing shard
-  routing, transport layer, and exchange mechanism.
-
-The executor is behind an interface, so the transition from local to distributed execution is a
-swap of the executor implementation, not an architectural change.
-
-### Traveling Code (Code Mobility)
-
-Lambdas and closures attached to plan nodes are "traveling code" — they move to wherever the plan
-executor dispatches the node. In the π-calculus, this is process passing (higher-order π). In
-practice:
+Lambdas and closures attached to `spawn` expressions are "traveling code" — they can move to
+wherever the computation is dispatched. In the π-calculus, this is process passing (higher-order
+π). In practice:
 
 - **Closed lambdas** (no free variables): serialize the `CoreExpr` subtree.
 - **Closures** (captured environment): serialize `(CoreExpr, Map<Name, Value>)`. The language's
   purity guarantees that cloning the captured environment is safe — no aliasing or mutation hazards.
-- **Mobility check**: some lambdas cannot travel (they capture non-serializable values like stream
-  handles). The optimizer flags these and keeps them on the coordinator. For v0, all values are
-  simple (integers, strings, booleans, records) and trivially serializable. Future phases with
-  streams-as-values or channel references will need linear/affine types to prevent non-serializable
-  captures.
+- **Mobility check**: some lambdas cannot travel (they capture non-serializable values like
+  channel references). For Block A, all values are simple (integers, strings, booleans, records,
+  streams) and trivially serializable. Future phases with channel references will need
+  linear/affine types to prevent non-serializable captures.
+
+For Block A (local execution), traveling code is a conceptual model — closures don't actually
+travel over the wire. For distributed execution (future), closures will be serialized and shipped
+to data nodes via the transport layer.
 
 See [references.md](references.md) — Sangiorgi's agent-passing paper for the theory,
 Nomadic Pict for a practical implementation of code mobility in a typed language.

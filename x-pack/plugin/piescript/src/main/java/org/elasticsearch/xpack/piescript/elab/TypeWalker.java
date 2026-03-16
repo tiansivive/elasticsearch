@@ -36,11 +36,12 @@ public final class TypeWalker {
             case MonoType.Rigid r -> r;
             case MonoType.Arrow(var param, var result) -> new MonoType.Arrow(resolveDeep(param, state), resolveDeep(result, state));
             case MonoType.RecordType(var row) -> {
+                var flattened = state.resolveRow(row);
                 var newFields = new LinkedHashMap<String, MonoType>();
-                for (var entry : row.fields().entrySet()) {
+                for (var entry : flattened.fields().entrySet()) {
                     newFields.put(entry.getKey(), resolveDeep(entry.getValue(), state));
                 }
-                yield new MonoType.RecordType(new RowType(newFields, row.rowVar()));
+                yield new MonoType.RecordType(new RowType(newFields, flattened.rowVar()));
             }
             case MonoType.AppType(var ctor, var arg) -> new MonoType.AppType(resolveDeep(ctor, state), resolveDeep(arg, state));
         };

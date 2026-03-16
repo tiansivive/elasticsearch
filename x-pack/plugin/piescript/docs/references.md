@@ -106,8 +106,21 @@ to a destination and interact only after arrival), and multi-way join patterns. 
 restrict process primitives to ones that have efficient distributed implementations while
 maintaining full π-calculus expressiveness.
 
+This is the **primary theoretical foundation** for piescript's coordination model (D-040). The
+`spawn`/`join`/channel primitives are directly derived from the join calculus's asynchronous
+message-passing and reaction rules.
+
 - [Springer](https://link.springer.com/chapter/10.1007/3-540-45699-6_6)
 - [Microsoft Research](https://www.microsoft.com/en-us/research/publication/join-calculus-language-distributed-mobile-programming/)
+
+### Fournet & Gonthier — *The Join Calculus: A Language for Distributed Mobile Programming* (Tutorial, 2000)
+
+The tutorial version of the join calculus paper, providing a more accessible introduction with
+examples of encoding functions, mutable state, and concurrent data structures using join
+patterns. Covers the core calculus, surface code, and operational semantics. Directly informed
+the piescript redesign from plan-graph architecture to join-calculus primitives.
+
+- [Microsoft Research (PDF)](https://www.microsoft.com/en-us/research/wp-content/uploads/2017/01/join-tutorial.pdf)
 
 ## Implemented Languages (π-calculus in Practice)
 
@@ -170,34 +183,37 @@ passing. Piescript and BEAM solve related problems from opposite starting points
 
 - **Erlang is process-centric** (you design process topology, messages find their way).
   **Piescript is data-centric** (you write transforms, the runtime places computation).
-- **Erlang processes are stateful, long-lived actors.** Piescript processes are stateless,
-  ephemeral plan graph fragments.
+- **Erlang processes are stateful, long-lived actors.** Piescript computations are stateless
+  and ephemeral — `spawn` forks a computation that completes once and writes to a channel.
 - **Erlang is first-order π-calculus** (pids travel, processes stay put). **Piescript is
   higher-order π-calculus** (closures/code travel to data nodes).
-- **Erlang effects are immediately executed** (spawn, send). **Piescript effects are described
-  as data** (the plan graph / free monad), inspectable and optimizable before execution.
+- **Erlang effects are immediately executed** (spawn, send). **Piescript effects can be
+  described as data** (the free monad residual from partial evaluation — see
+  [architecture.md § Theoretical Model](architecture.md)), inspectable and optimizable before
+  execution (Block D).
 
 ### What piescript can learn from BEAM
 
 - **Distribution transparency**: `Pid ! Message` works identically for local and remote pids.
-  Piescript's plan graph should provide similar transparency — the user writes transforms without
-  caring whether they run locally or remotely.
+  Piescript's coordination model should provide similar transparency — the user writes transforms
+  without caring whether they run locally or remotely.
 - **Hot code loading**: BEAM upgrades running code without stopping processes. Relevant for a
   future module system — updating stored piescript definitions while queries are in flight.
 - **OTP patterns**: supervisor trees, gen_server, gen_statem encode decades of reliability
   engineering. If piescript gets long-running processes (continuous queries, materialized views),
   OTP-style supervision informs the design.
 - **Preemptive scheduling via reductions**: BEAM counts reductions (function calls, operations)
-  to preempt processes fairly. If piescript's executor runs multiple plan fragments concurrently
+  to preempt processes fairly. If piescript runs multiple spawned computations concurrently
   on a node, a similar fairness mechanism may be needed.
 - **Per-process GC**: BEAM garbage-collects each process independently, avoiding global pauses.
-  Relevant if piescript plan fragments have independent memory lifecycles.
+  Relevant if piescript's spawned computations have independent memory lifecycles.
 
 ### Where piescript is fundamentally different
 
-- **The plan graph is optimizable.** Erlang's runtime executes code as-is. Piescript's plan graph
-  is a data structure that the optimizer transforms before execution (dead-branch elimination,
-  push-down into queries, combinator fusion). This is the free monad advantage.
+- **The coordination IR is optimizable.** Erlang's runtime executes code as-is. Piescript's
+  free monad residual (the output of partial evaluation — see architecture.md) is a data
+  structure that the optimizer transforms before execution (dead-branch elimination, push-down
+  into queries, combinator fusion). This is the free monad advantage (Block D).
 - **Static types.** Erlang is dynamically typed (Dialyzer is opt-in, incomplete). Piescript has
   HM inference with row polymorphism. Future: session types for channel protocols, linear types
   for safe code mobility. Well-typed programs cannot send the wrong type on a channel.
@@ -263,14 +279,15 @@ if piescript ever needs finer-grained usage tracking (e.g., "used at most N time
 |-----------|------------------------------|
 | Milner (textbook) | Core π-calculus intuition: names, channels, mobility |
 | Sangiorgi (agent-passing) | Traveling closures: code mobility reduces to name passing |
-| Fournet & Gonthier (join calculus) | Which process primitives are distributedly implementable |
+| Fournet & Gonthier (join calculus) | **Primary model**: `spawn`/`join`/channels, reaction rules, local synchronization (D-040) |
+| Fournet & Gonthier (join tutorial) | Accessible introduction to join patterns, encoding functions and state |
 | JoCaml | How to embed process primitives in an ML-family language |
 | Leijen (extensible records) | Open-row unification algorithm for row polymorphism (D-030) |
 | Dunfield & Krishnaswami (bidirectional) | Checking rule for universal types, annotation elaboration (D-034) |
 | Honda et al. (session types) | Future: typing channel protocols for safety |
 | Wadler (propositions as sessions) | Future: deadlock-freedom from the type system |
-| Stark & Fiore (free-algebra models) | Plan graph as free monad over Π effects |
-| Wu & Schrijvers (fusion for free) | Plan graph optimization via handler fusion |
+| Stark & Fiore (free-algebra models) | Theoretical basis for algebraic effect interpretation (informational) |
+| Wu & Schrijvers (fusion for free) | Future: optimization via handler fusion (Block D) |
 | BEAM / Erlang | Distribution transparency, OTP supervision, scheduling fairness |
 | Bernardy et al. (Linear Haskell) | Linearity on arrows, backward-compatible, practical (D-018) |
 | Brady (Idris 2 / QTT) | Multiplicity framework {0, 1, ω} for channels and erasure |

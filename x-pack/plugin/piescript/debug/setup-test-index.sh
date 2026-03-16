@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Create a simple test index with explicit mappings and sample docs.
+# Safe to run repeatedly — deletes the old index first.
+
+curl -s -u elastic-admin:elastic-password -X DELETE 'localhost:9200/piescript-test' | jq
 
 curl -s -u elastic-admin:elastic-password -X PUT 'localhost:9200/piescript-test' \
   -H 'Content-Type: application/json' \

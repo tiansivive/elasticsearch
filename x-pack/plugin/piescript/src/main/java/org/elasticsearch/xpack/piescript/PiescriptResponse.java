@@ -189,8 +189,42 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
                 }
                 builder.endObject();
             }
+            case Value.StreamVal s -> {
+                builder.startArray(fieldName);
+                for (var element : s.elements()) {
+                    writeValueAsArrayElement(builder, element);
+                }
+                builder.endArray();
+            }
             case Value.ClosureVal ignored -> builder.field(fieldName, "<function>");
             case Value.BuiltinVal b -> builder.field(fieldName, "<builtin:" + b.name() + ">");
+        }
+    }
+
+    private static void writeValueAsArrayElement(XContentBuilder builder, Value val) throws IOException {
+        switch (val) {
+            case Value.IntegerVal v -> builder.value(v.value());
+            case Value.LongVal v -> builder.value(v.value());
+            case Value.DoubleVal v -> builder.value(v.value());
+            case Value.KeywordVal v -> builder.value(v.value());
+            case Value.BooleanVal v -> builder.value(v.value());
+            case Value.NullVal ignored -> builder.nullValue();
+            case Value.RecordVal v -> {
+                builder.startObject();
+                for (Map.Entry<String, Value> entry : v.fields().entrySet()) {
+                    writeValueToXContent(builder, entry.getKey(), entry.getValue());
+                }
+                builder.endObject();
+            }
+            case Value.StreamVal s -> {
+                builder.startArray();
+                for (var element : s.elements()) {
+                    writeValueAsArrayElement(builder, element);
+                }
+                builder.endArray();
+            }
+            case Value.ClosureVal ignored -> builder.value("<function>");
+            case Value.BuiltinVal b -> builder.value("<builtin:" + b.name() + ">");
         }
     }
 
@@ -221,6 +255,10 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
                 out.writeByte((byte) 6);
                 out.writeMap(v.fields(), (o, value) -> writeValue(o, value));
             }
+            case Value.StreamVal s -> {
+                out.writeByte((byte) 9);
+                out.writeCollection(s.elements(), (o, element) -> writeValue(o, element));
+            }
             case Value.ClosureVal ignored -> out.writeByte((byte) 7);
             case Value.BuiltinVal ignored -> out.writeByte((byte) 8);
         }
@@ -238,6 +276,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case 6 -> new Value.RecordVal(in.readMap(PiescriptResponse::readValue));
             case 7 -> new Value.ClosureVal(null, null);
             case 8 -> new Value.BuiltinVal("?", 0, List.of());
+            case 9 -> new Value.StreamVal(in.readCollectionAsList(PiescriptResponse::readValue));
             default -> throw new IOException("unknown Value tag: " + tag);
         };
     }
