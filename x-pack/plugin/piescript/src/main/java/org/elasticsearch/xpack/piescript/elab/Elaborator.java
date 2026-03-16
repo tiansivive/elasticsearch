@@ -59,6 +59,7 @@ public final class Elaborator {
     static final MonoType NULL_TYPE = new MonoType.TCon("Null");
 
     static final MonoType STREAM = new MonoType.TCon("Stream");
+    static final MonoType CHANNEL = new MonoType.TCon("Channel");
     static final MonoType DATETIME = new MonoType.TCon("DateTime");
     static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
     static final MonoType IP = new MonoType.TCon("Ip");
@@ -85,7 +86,8 @@ public final class Elaborator {
         Map.entry("GeoShape", GEO_SHAPE),
         Map.entry("CartesianShape", CARTESIAN_SHAPE),
         Map.entry("Unsupported", UNSUPPORTED),
-        Map.entry("Stream", STREAM)
+        Map.entry("Stream", STREAM),
+        Map.entry("Channel", CHANNEL)
     );
 
     final ElaborationState state;
@@ -253,6 +255,8 @@ public final class Elaborator {
 
             case PiescriptAntlrParser.IfExprContext e -> throw error(source(e), "if/then/else is not yet supported (Phase 1e)");
             case PiescriptAntlrParser.QueryExprContext q -> Queries.query(this, q, ctx);
+            case PiescriptAntlrParser.SpawnExprContext s -> Spawns.spawn(this, s, ctx);
+            case PiescriptAntlrParser.WhenExprContext w -> Whens.when_(this, w, ctx);
 
             default -> throw new ElaborationException(0, 0, "unexpected parse node: " + node.getClass().getSimpleName());
         };

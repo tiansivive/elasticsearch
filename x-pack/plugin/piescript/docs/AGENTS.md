@@ -6,11 +6,12 @@
 ## What is Piescript?
 
 Piescript is a **typed functional language for distributed computation** in Elasticsearch. It uses
-Join Calculus primitives (`spawn`, `join`, channels) to coordinate asynchronous data pipelines
+Join Calculus primitives (`spawn`, `when`, channels) to coordinate asynchronous data pipelines
 that run where the data lives. Pure functional expressions (lambdas, let-bindings, records)
-evaluate locally; coordination primitives (`spawn` launches async work, `join` synchronizes on
-channels) orchestrate concurrent execution. User-defined functions travel to data nodes as
-closures — safe because the language is pure and referentially transparent.
+evaluate locally; coordination primitives (`spawn` launches async work, `when` synchronizes on
+channels) orchestrate concurrent execution. The surface keyword is `when` (not `join`) to avoid
+collision with SQL/ESQL JOIN terminology — see D-041. User-defined functions travel to data nodes
+as closures — safe because the language is pure and referentially transparent.
 
 ## Quick Orientation
 
@@ -55,9 +56,10 @@ closures — safe because the language is pure and referentially transparent.
 - **Type safety**: The language uses Hindley-Milner type inference with bidirectional checking.
   Types are inferred, not annotated. The type system is a core differentiator — do not compromise it
   for convenience.
-- **Join Calculus coordination model**: `spawn` (async computation → channel), `join`
-  (synchronize on channels). Replaces the old plan graph / `par` architecture. See D-040.
-- **Single-hierarchy Core IR**: `CoreExpr` includes coordination nodes (`CoreSpawn`, `CoreJoin`)
+- **Join Calculus coordination model**: `spawn` (async computation → channel), `when`
+  (synchronize on channels). The keyword is `when` (not `join`) to avoid SQL/ESQL JOIN collision
+  (D-041). Replaces the old plan graph / `par` architecture. See D-040.
+- **Single-hierarchy Core IR**: `CoreExpr` includes coordination nodes (`CoreSpawn`, `CoreWhen`)
   alongside functional nodes. No separate `CoreProcess` hierarchy. D-013 is superseded by D-040.
 - **Purity enables distribution**: The language is pure and referentially transparent. Closures can
   be shipped to remote nodes because captured values are immutable. See D-014.
@@ -65,7 +67,7 @@ closures — safe because the language is pure and referentially transparent.
   not Core IR nodes. They operate over materialized `StreamVal`. This prepares for typeclasses
   (`map` → `Functor.fmap`). See D-016.
 - **Channels backed by ES infrastructure**: `SubscribableListener<Value>` for single-value channels,
-  `GroupedActionListener` for n-ary join synchronization. See D-040.
+  positional collector (`AtomicArray` + `CountDown`) for `when` synchronization. See D-040, D-041.
 
 ## Coding Guidelines
 
@@ -152,6 +154,6 @@ Prior design discussions are preserved in agent transcripts:
   variant decision (D-038), TypeScheme retained for future qualified types.
 - **Join Calculus redesign**: `f54fd3b6-dcf8-4af9-9af0-6a33818de6ef` — critical re-evaluation of
   Phase 3 plan graph architecture. Analysis of Join Calculus (Fournet & Gonthier) and π-calculus
-  (Sangiorgi). Redesign: `spawn`/`join`/channels replace `par`/plan graph. Mapping to ES
-  infrastructure (`SubscribableListener`, `GroupedActionListener`, `threadPool.executor(GENERIC)`).
+  (Sangiorgi). Redesign: `spawn`/`when`/channels replace `par`/plan graph. Mapping to ES
+  infrastructure (`SubscribableListener`, positional collector, `threadPool.executor(GENERIC)`).
   Multi-value channels, ESQL Exchange analysis. New Block-based phasing (A–E). D-040 decision.
