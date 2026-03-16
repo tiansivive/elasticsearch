@@ -5,11 +5,13 @@
 > **Revised**: 2026-03-16. The execution model has been redesigned around the Join Calculus
 > (Fournet & Gonthier). The previous plan-graph / free-monad-over-π-effects architecture is
 > archived in `docs/archive/vision.pre-join-calculus.md`. See D-040 for the decision record.
+>
+> **Ref**: [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef)
 
 ## One-Liner
 
 Piescript is a **typed functional language for distributed computation** in Elasticsearch, using
-Join Calculus primitives (`spawn`, `join`, channels) to coordinate asynchronous data pipelines
+Join Calculus primitives (`spawn`, `when`, channels) to coordinate asynchronous data pipelines
 that run where the data lives.
 
 ## Why Piescript Exists
@@ -61,7 +63,7 @@ Piescript's core insight is the separation of two concerns:
    These evaluate locally, on whichever node runs them. They produce values.
 
 2. **Coordination primitives** — `spawn` (launch asynchronous computation, producing a channel),
-   `join` (synchronize on one or more channels, react when results arrive), and channels (typed
+   `when` (synchronize on one or more channels, react when results arrive), and channels (typed
    conduits for asynchronous results). These orchestrate distributed work.
 
 The coordination layer is based on the **Join Calculus** (Fournet & Gonthier, 2000), a variant of
@@ -71,14 +73,14 @@ the π-calculus designed specifically for distributed implementation. The key pr
   values. Synchronization is local — no distributed consensus needed at the primitive level.
 - **Asynchronous by construction**: `spawn` launches work without blocking. The spawning
   computation continues immediately. Results arrive on channels.
-- **Reaction rules**: `join` patterns are reaction rules — "when channel A has a value AND channel
+- **Reaction rules**: `when` patterns are reaction rules — "when channel A has a value AND channel
   B has a value, fire this body." This naturally expresses multi-way synchronization (e.g.,
   "proceed when both query A and query B complete").
 
 **The rule:** pure code evaluates; coordination primitives orchestrate; the runtime dispatches.
 
 This separation works because the language is **pure and referentially transparent**. The only
-effects are coordination effects (`spawn`, `join`, channel communication). Since pure expressions
+effects are coordination effects (`spawn`, `when`, channel communication). Since pure expressions
 have no side effects, they can be safely evaluated on any node, and closures can be shipped to
 remote nodes without changing semantics.
 
@@ -87,7 +89,7 @@ remote nodes without changing semantics.
 The coordination primitives form an **algebraic effect signature**, and the evaluator is an
 **effect handler**. Formally, the evaluator is a partial evaluator: it reduces pure expressions
 to values, and gets stuck on coordination effects. The stuck residual — a tree of irreducible
-`spawn`/`join`/`query` operations with attached values and closures — is a **free monad** over
+`spawn`/`when`/`query` operations with attached values and closures — is a **free monad** over
 the Join Calculus effect signature.
 
 This free monad is piescript's **lowering IR**. In the initial implementation (Block A), the
@@ -144,7 +146,7 @@ not *inside* them.
 Immutable bindings, expressions over statements, pattern matching over if-else chains. Purity is
 not just an aesthetic choice — it is what makes distributed execution safe. Referential transparency
 guarantees that shipping a closure to a remote node produces the same result as evaluating it
-locally. The language's only effects are coordination primitives (`spawn`, `join`, channel
+locally. The language's only effects are coordination primitives (`spawn`, `when`, channel
 communication), which are modeled explicitly.
 
 ### 4. Incremental delivery
@@ -182,7 +184,7 @@ Transforms, enrich policies, and ingest pipeline chains, as a single typed progr
 
 1. **Query data** from one or more indices via ESQL.
 2. **Transform, filter, and aggregate** the results using typed, composable functions.
-3. **Run multiple queries concurrently** via `spawn` + `join` — no sequential blocking.
+3. **Run multiple queries concurrently** via `spawn` + `when` — no sequential blocking.
 4. **Join / enrich** by querying a second index and merging fields — no separate enrich policy
    or processor configuration needed.
 5. **Write results** to a target index via `writeTo`.
@@ -195,8 +197,8 @@ Transforms, enrich policies, and ingest pipeline chains, as a single typed progr
 - **Type safety**: the entire pipeline — source query, transforms, joins, output — is type-checked
   as one unit. If an enrich join references a field that doesn't exist, the error is caught at
   compile time, not at 3 AM on the 10 millionth document.
-- **Concurrency**: multiple queries execute in parallel via `spawn` + `join`, with the type system
-  ensuring that join bodies receive the correct types from each channel.
+- **Concurrency**: multiple queries execute in parallel via `spawn` + `when`, with the type system
+  ensuring that `when` bodies receive the correct types from each channel.
 - **Unification**: one program replaces what today requires chaining a Transform, an enrich policy,
   an enrich processor, an ingest pipeline, and the glue between them. One language, one type system,
   one error model, one debugging story.
@@ -209,7 +211,7 @@ What today requires an enrich policy + enrich processor + ingest pipeline + tran
 let orders_ch = spawn (query `FROM incoming-orders | WHERE @timestamp > now() - 1h`);
 let customers_ch = spawn (query `FROM customer-database`);
 
-join (orders_ch orders) & (customers_ch customers) -> {
+when (orders_ch orders) & (customers_ch customers) -> {
   let enriched = orders |> map (fn order ->
     let customer = customers
       |> filter (fn c -> c.id == order.customer_id)
@@ -225,14 +227,14 @@ join (orders_ch orders) & (customers_ch customers) -> {
 }
 ```
 
-One typed program. Both queries run concurrently. The `join` fires when both complete. The type
+One typed program. Both queries run concurrently. The `when` fires when both complete. The type
 checker verifies field compatibility across the entire pipeline before anything runs.
 
 ### MVP scope (mapped to blocks)
 
 The MVP requires completing these blocks from the [roadmap](roadmap.md):
 
-- **Block A**: `spawn` + single-value `join` (async coordination) — concurrent query execution
+- **Block A**: `spawn` + single-value `when` (async coordination) — concurrent query execution
 - **Block B**: Multi-value channels (full Join Calculus runtime) — streaming results
 - **Block C**: `writeTo` sink + scheduler — persistence and scheduled execution
 
@@ -256,7 +258,7 @@ optimization. The MVP achieves correctness and concurrency; performance optimiza
 
 These are directional, not committed:
 
-- **Distributed coordination** — `spawn`ed computations dispatched to data nodes, `join` patterns
+- **Distributed coordination** — `spawn`ed computations dispatched to data nodes, `when` patterns
   synchronizing results across nodes, leveraging ES's transport layer for cross-node channels.
 - **ESQL Exchange integration** — piescript as a consumer/producer in ESQL's Exchange pipeline for
   high-throughput streaming data flow.

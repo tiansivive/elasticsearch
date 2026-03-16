@@ -25,7 +25,16 @@ topBinding
 expr
     : LET ident (COLON type)? ASSIGN expr IN expr        # LetExpr
     | FN param+ ARROW expr                               # LambdaExpr
+    | SPAWN expr                                         # SpawnExpr
+    | WHEN whenBinding (AMP whenBinding)* ARROW expr     # WhenExpr
     | pipeExpr                                           # ExprPipe
+    ;
+
+// The channel position accepts a full expr, but in practice channels are always
+// variables (from `let ch = spawn ...`). If parsing ambiguities arise, consider
+// restricting to `ident ident` — which matches the Join Calculus more closely.
+whenBinding
+    : LPAREN expr ident RPAREN
     ;
 
 pipeExpr

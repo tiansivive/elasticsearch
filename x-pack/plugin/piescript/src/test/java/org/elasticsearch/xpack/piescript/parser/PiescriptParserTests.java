@@ -406,6 +406,32 @@ public class PiescriptParserTests extends ESTestCase {
         expectThrows(PiescriptParsingException.class, () -> parse("query ``"));
     }
 
+    // ──── Spawn / When ────
+
+    public void testSpawnLiteral() {
+        assertParses("spawn 42");
+    }
+
+    public void testSpawnExpression() {
+        assertParses("spawn (1 + 2)");
+    }
+
+    public void testSpawnInLet() {
+        assertParses("let ch = spawn 42 in ch");
+    }
+
+    public void testWhenSingleBinding() {
+        assertParses("let ch = spawn 1 in when (ch x) -> x");
+    }
+
+    public void testWhenMultipleBindings() {
+        assertParses("let a = spawn 1 in let b = spawn 2 in when (a x) & (b y) -> x + y");
+    }
+
+    public void testWhenWithBodyExpression() {
+        assertParses("let ch = spawn 42 in when (ch val) -> val + 1");
+    }
+
     // ──── Error cases ────
 
     public void testEmptyProgram() {

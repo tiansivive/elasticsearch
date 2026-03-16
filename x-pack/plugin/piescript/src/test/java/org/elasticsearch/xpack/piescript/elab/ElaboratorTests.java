@@ -698,6 +698,73 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(resolveType(result), is(INTEGER));
     }
 
+    // ──── Spawn / When (Block A) ────
+
+    public void testSpawnProducesChannelType() {
+        var result = elaborate("spawn 42");
+        assertThat(result, instanceOf(org.elasticsearch.xpack.piescript.core.CoreSpawn.class));
+        var type = resolveType(result);
+        assertThat(type, instanceOf(MonoType.AppType.class));
+        var appType = (MonoType.AppType) type;
+        assertEquals(new MonoType.TCon("Channel"), appType.constructor());
+        assertEquals(INTEGER, appType.argument());
+    }
+
+    public void testSpawnExpressionTypeInfersBody() {
+        var result = elaborate("spawn (1 + 2)");
+        var type = resolveType(result);
+        assertThat(type, instanceOf(MonoType.AppType.class));
+        var appType = (MonoType.AppType) type;
+        assertEquals(new MonoType.TCon("Channel"), appType.constructor());
+        assertEquals(INTEGER, appType.argument());
+    }
+
+    public void testSpawnBooleanBody() {
+        var result = elaborate("spawn true");
+        var type = resolveType(result);
+        var appType = (MonoType.AppType) type;
+        assertEquals(new MonoType.TCon("Channel"), appType.constructor());
+        assertEquals(BOOLEAN, appType.argument());
+    }
+
+    public void testWhenUnwrapsChannelType() {
+        var result = elaborate("let ch = spawn 42 in when (ch x) -> x");
+        var type = resolveType(result);
+        assertEquals(INTEGER, type);
+    }
+
+    public void testWhenBodyExpressionType() {
+        var result = elaborate("let ch = spawn 42 in when (ch x) -> x + 1");
+        var type = resolveType(result);
+        assertEquals(INTEGER, type);
+    }
+
+    public void testWhenMultipleBindingsType() {
+        var result = elaborate("let a = spawn 1 in let b = spawn true in when (a x) & (b y) -> x");
+        var type = resolveType(result);
+        assertEquals(INTEGER, type);
+    }
+
+    public void testWhenMultipleBindingsSecondType() {
+        var result = elaborate("let a = spawn 1 in let b = spawn true in when (a x) & (b y) -> y");
+        var type = resolveType(result);
+        assertEquals(BOOLEAN, type);
+    }
+
+    public void testWhenProducesRecord() {
+        var result = elaborate("let a = spawn 1 in let b = spawn true in when (a x) & (b y) -> { num: x, flag: y }");
+        var type = resolveType(result);
+        assertThat(type, instanceOf(MonoType.RecordType.class));
+        var row = ((MonoType.RecordType) type).row();
+        assertEquals(INTEGER, row.fields().get("num"));
+        assertEquals(BOOLEAN, row.fields().get("flag"));
+    }
+
+    public void testWhenChannelTypeMismatchFails() {
+        var e = expectThrows(ElaborationException.class, () -> elaborate("when (42 x) -> x"));
+        assertThat(e.getMessage(), containsString("Channel"));
+    }
+
     // ──── Query expression typing (Phase 2: T2.5/T2.6) ────
 
     private CoreExpr elaborateWithMappings(String source, Map<String, ResolvedMapping> mappings) {

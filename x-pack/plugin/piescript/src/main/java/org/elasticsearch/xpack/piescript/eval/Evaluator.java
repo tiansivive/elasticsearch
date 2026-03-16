@@ -7,12 +7,16 @@
 
 package org.elasticsearch.xpack.piescript.eval;
 
+import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.ActionRunnable;
+import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.xpack.esql.action.EsqlQueryAction;
 import org.elasticsearch.xpack.esql.action.EsqlQueryRequest;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
+import org.elasticsearch.xpack.piescript.core.CoreField;
 import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
@@ -21,30 +25,40 @@ import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreQuery;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
+import org.elasticsearch.xpack.piescript.core.CoreSpawn;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
 import org.elasticsearch.xpack.piescript.core.CoreUpdate;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
+import org.elasticsearch.xpack.piescript.core.CoreWhen;
 import org.elasticsearch.xpack.piescript.elab.Prelude;
 import org.elasticsearch.xpack.piescript.types.LitVal;
-import org.elasticsearch.xpack.piescript.types.Op;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 /**
- * Tree-walking evaluator for well-typed Core IR. Uses a de Bruijn environment
- * machine: the environment is a {@code Value[]} indexed by de Bruijn index,
- * with position 0 being the most recently bound variable (D-024).
+ * Uniformly asynchronous tree-walking evaluator for well-typed Core IR.
+ * Every {@code evaluate} call takes an {@link ActionListener} — for pure
+ * expressions the listener fires immediately on the calling thread; for
+ * coordination primitives ({@code spawn}/{@code when}) and queries the
+ * listener fires asynchronously. See D-041.
+ *
+ * <p>Uses a de Bruijn environment machine: the environment is a {@code Value[]}
+ * indexed by de Bruijn index, with position 0 being the most recently bound
+ * variable (D-024). Environment arrays are immutable by convention — {@code prepend}
+ * always allocates a new array.
  *
  * <p>The evaluator trusts the type checker (D-025): where a specific
  * {@link Value} variant is required (closure for application, record for
  * projection/update), a non-matching value is an internal invariant violation
  * ({@link AssertionError}), not a user error.
  *
- * <p>The only user-observable runtime errors are null in arithmetic (D-027)
- * and division by zero, both reported as {@link EvaluationException}.
+ * <p>Evaluation of individual expression forms is split across handler classes
+ * in the same package: {@link EvalPrimOps}, {@link EvalBuiltins},
+ * {@link EvalCoordination}. This class holds the main dispatch, structural
+ * forms, and shared infrastructure.
  */
 public final class Evaluator {
 
@@ -52,102 +66,136 @@ public final class Evaluator {
 
     @Nullable
     private final Client client;
+    final Executor executor;
 
-    /** For pure-expression evaluation (unit tests, no query support). */
-    public Evaluator() {
-        this.client = null;
-    }
-
-    /** For full evaluation including query execution via {@code EsqlQueryAction}. */
-    public Evaluator(Client client) {
+    public Evaluator(@Nullable Client client, Executor executor) {
         this.client = client;
+        this.executor = executor;
     }
 
-    public Value evaluate(CoreExpr expr) {
-        return evaluate(expr, EMPTY_ENV);
+    public void evaluate(CoreExpr expr, ActionListener<Value> listener) {
+        evaluate(expr, EMPTY_ENV, listener);
     }
 
-    Value evaluate(CoreExpr expr, Value[] env) {
-        return switch (expr) {
-            case CoreLit lit -> litToValue(lit.value());
+    void evaluate(CoreExpr expr, Value[] env, ActionListener<Value> listener) {
+        switch (expr) {
+            case CoreLit lit -> listener.onResponse(litToValue(lit.value()));
 
-            case CoreVar var -> env[var.index()];
+            case CoreVar var -> listener.onResponse(env[var.index()]);
 
             case CoreFree free -> {
                 var arity = Prelude.ARITY.get(free.name());
                 if (arity == null) {
-                    throw new EvaluationException("unknown built-in: " + free.name());
+                    listener.onFailure(new EvaluationException("unknown built-in: " + free.name()));
+                    return;
                 }
-                yield new Value.BuiltinVal(free.name(), arity, List.of());
+                listener.onResponse(new Value.BuiltinVal(free.name(), arity, List.of()));
             }
 
-            case CoreLam lam -> new Value.ClosureVal(lam.body(), env.clone());
+            case CoreLam lam -> listener.onResponse(new Value.ClosureVal(lam.body(), env.clone()));
 
-            case CoreApp app -> {
-                var fn = evaluate(app.fn(), env);
-                var arg = evaluate(app.arg(), env);
-                yield switch (fn) {
-                    case Value.ClosureVal closure -> evaluate(closure.body(), prepend(arg, closure.env()));
-                    case Value.BuiltinVal builtin -> applyBuiltin(builtin, arg);
-                    default -> throw new AssertionError("type checker bug: expected callable, got " + fn);
-                };
-            }
+            case CoreApp app -> evaluate(app.fn(), env, listener.delegateFailureAndWrap((l1, fn) ->
+                evaluate(app.arg(), env, l1.delegateFailureAndWrap((l2, arg) ->
+                    applyFunction(fn, arg, l2)))));
 
-            case CoreLet let -> {
-                var rhs = evaluate(let.rhs(), env);
-                yield evaluate(let.body(), prepend(rhs, env));
-            }
+            case CoreLet let -> evaluate(let.rhs(), env, listener.delegateFailureAndWrap((l, rhsVal) ->
+                evaluate(let.body(), prepend(rhsVal, env), l)));
 
-            case CoreRecord rec -> {
-                var labels = rec.labels();
-                var values = rec.children();
-                var fields = new LinkedHashMap<String, Value>(labels.size());
-                for (int i = 0; i < labels.size(); i++) {
-                    fields.put(labels.get(i), evaluate(values.get(i), env));
-                }
-                yield new Value.RecordVal(fields);
-            }
+            case CoreRecord rec -> evaluateRecord(rec, env, listener);
 
-            case CoreProject proj -> {
-                var record = evaluate(proj.expr(), env);
+            case CoreProject proj -> evaluate(proj.expr(), env, listener.delegateFailureAndWrap((l, record) -> {
                 var recVal = switch (record) {
                     case Value.RecordVal r -> r;
                     default -> throw new AssertionError("type checker bug: expected record, got " + record);
                 };
-                yield recVal.fields().get(proj.label());
-            }
+                l.onResponse(recVal.fields().get(proj.label()));
+            }));
 
-            case CoreUpdate upd -> {
-                var base = evaluate(upd.expr(), env);
+            case CoreUpdate upd -> evaluate(upd.expr(), env, listener.delegateFailureAndWrap((l, base) -> {
                 var baseRec = switch (base) {
                     case Value.RecordVal r -> r;
                     default -> throw new AssertionError("type checker bug: expected record, got " + base);
                 };
-                var newFields = new LinkedHashMap<>(baseRec.fields());
-                var updates = upd.updates();
-                for (var field : updates) {
-                    newFields.put(field.label(), evaluate(field.value(), env));
-                }
-                yield new Value.RecordVal(newFields);
-            }
+                evaluateUpdateFields(upd.updates(), 0, env, new LinkedHashMap<>(baseRec.fields()), l);
+            }));
 
-            case CoreTypeAbs typeAbs -> evaluate(typeAbs.body(), env);
+            case CoreTypeAbs typeAbs -> evaluate(typeAbs.body(), env, listener);
 
-            case CoreTypeApp typeApp -> evaluate(typeApp.polyExpr(), env);
+            case CoreTypeApp typeApp -> evaluate(typeApp.polyExpr(), env, listener);
 
-            case CorePrimOp primOp -> evaluatePrimOp(primOp, env);
+            case CorePrimOp primOp -> EvalPrimOps.evaluate(this, primOp, env, listener);
 
             case CoreQuery q -> {
                 if (client == null) {
-                    throw new EvaluationException("query evaluation requires a client — use Evaluator(Client) constructor");
+                    listener.onFailure(new EvaluationException("query evaluation requires a client"));
+                    return;
                 }
                 var request = EsqlQueryRequest.syncEsqlQueryRequest(q.esqlQuery());
-                try (var response = client.execute(EsqlQueryAction.INSTANCE, request).actionGet()) {
-                    yield EsqlValueConverter.convertResponse(response);
-                }
+                // convertResponse materializes all data before response.close()
+                client.execute(EsqlQueryAction.INSTANCE, request, listener.delegateFailureAndWrap((l, response) -> {
+                    try (response) {
+                        l.onResponse(EsqlValueConverter.convertResponse(response));
+                    }
+                }));
             }
-        };
+
+            case CoreSpawn spawn -> {
+                var channel = new SubscribableListener<Value>();
+                // env is safe to capture: immutable by convention (prepend always allocates a new array)
+                executor.execute(ActionRunnable.wrap(channel, l -> evaluate(spawn.body(), env, l)));
+                listener.onResponse(new Value.SpawnVal(channel));
+            }
+
+            case CoreWhen when -> EvalCoordination.evaluateWhen(this, when, env, listener);
+        }
     }
+
+    // ──── Record construction (sequential field evaluation) ────
+
+    private void evaluateRecord(CoreRecord rec, Value[] env, ActionListener<Value> listener) {
+        var labels = rec.labels();
+        var values = rec.children();
+        var fields = new LinkedHashMap<String, Value>(labels.size());
+        evaluateRecordFields(labels, values, 0, env, fields, listener);
+    }
+
+    private void evaluateRecordFields(
+        List<String> labels,
+        List<CoreExpr> values,
+        int index,
+        Value[] env,
+        LinkedHashMap<String, Value> fields,
+        ActionListener<Value> listener
+    ) {
+        if (index >= labels.size()) {
+            listener.onResponse(new Value.RecordVal(fields));
+            return;
+        }
+        evaluate(values.get(index), env, listener.delegateFailureAndWrap((l, val) -> {
+            fields.put(labels.get(index), val);
+            evaluateRecordFields(labels, values, index + 1, env, fields, l);
+        }));
+    }
+
+    private void evaluateUpdateFields(
+        List<CoreField> updates,
+        int index,
+        Value[] env,
+        LinkedHashMap<String, Value> fields,
+        ActionListener<Value> listener
+    ) {
+        if (index >= updates.size()) {
+            listener.onResponse(new Value.RecordVal(fields));
+            return;
+        }
+        var field = updates.get(index);
+        evaluate(field.value(), env, listener.delegateFailureAndWrap((l, val) -> {
+            fields.put(field.label(), val);
+            evaluateUpdateFields(updates, index + 1, env, fields, l);
+        }));
+    }
+
+    // ──── Literals ────
 
     private static Value litToValue(LitVal lit) {
         return switch (lit) {
@@ -160,146 +208,19 @@ public final class Evaluator {
         };
     }
 
-    private Value evaluatePrimOp(CorePrimOp primOp, Value[] env) {
-        var args = primOp.args();
-        var op = primOp.op();
+    // ──── Function application (shared by CoreApp dispatch and EvalBuiltins) ────
 
-        return switch (op) {
-            case NOT -> {
-                var operand = requireBoolean(evaluate(args.get(0), env), op);
-                yield new Value.BooleanVal(!operand);
-            }
-            case NEG -> {
-                var operand = requireInteger(evaluate(args.get(0), env), op);
-                yield new Value.IntegerVal(-operand);
-            }
-            case ADD, SUB, MUL, DIV, MOD -> {
-                var left = requireInteger(evaluate(args.get(0), env), op);
-                var right = requireInteger(evaluate(args.get(1), env), op);
-                yield new Value.IntegerVal(intArithmetic(op, left, right));
-            }
-            case EQ, NEQ, LT, GT, LTE, GTE -> {
-                var left = requireInteger(evaluate(args.get(0), env), op);
-                var right = requireInteger(evaluate(args.get(1), env), op);
-                yield new Value.BooleanVal(intComparison(op, left, right));
-            }
-            case AND, OR -> {
-                var left = requireBoolean(evaluate(args.get(0), env), op);
-                var right = requireBoolean(evaluate(args.get(1), env), op);
-                yield new Value.BooleanVal(op == Op.AND ? left && right : left || right);
-            }
-        };
-    }
-
-    private static int intArithmetic(Op op, int left, int right) {
-        try {
-            return switch (op) {
-                case ADD -> left + right;
-                case SUB -> left - right;
-                case MUL -> left * right;
-                case DIV -> left / right;
-                case MOD -> left % right;
-                default -> throw new AssertionError("not an arithmetic op: " + op);
-            };
-        } catch (ArithmeticException e) {
-            throw new EvaluationException("division by zero", e);
+    void applyFunction(Value fn, Value arg, ActionListener<Value> listener) {
+        switch (fn) {
+            case Value.ClosureVal closure -> evaluate(closure.body(), prepend(arg, closure.env()), listener);
+            case Value.BuiltinVal builtin -> EvalBuiltins.applyBuiltin(this, builtin, arg, listener);
+            default -> listener.onFailure(new AssertionError("type checker bug: expected callable, got " + fn));
         }
     }
 
-    private static boolean intComparison(Op op, int left, int right) {
-        return switch (op) {
-            case EQ -> left == right;
-            case NEQ -> left != right;
-            case LT -> left < right;
-            case GT -> left > right;
-            case LTE -> left <= right;
-            case GTE -> left >= right;
-            default -> throw new AssertionError("not a comparison op: " + op);
-        };
-    }
+    // ──── Environment ────
 
-    private static int requireInteger(Value value, Op op) {
-        return switch (value) {
-            case Value.IntegerVal v -> v.value();
-            case Value.NullVal ignored -> throw new EvaluationException("null value in " + op + " operation");
-            default -> throw new AssertionError("type checker bug: expected Integer for " + op + ", got " + value);
-        };
-    }
-
-    private static boolean requireBoolean(Value value, Op op) {
-        return switch (value) {
-            case Value.BooleanVal v -> v.value();
-            case Value.NullVal ignored -> throw new EvaluationException("null value in " + op + " operation");
-            default -> throw new AssertionError("type checker bug: expected Boolean for " + op + ", got " + value);
-        };
-    }
-
-    /**
-     * Apply a callable value (closure or built-in) to a single argument.
-     * Used by built-in implementations ({@code map}, {@code filter}, {@code reduce})
-     * to apply user-provided callbacks to stream elements.
-     */
-    private Value applyFunction(Value fn, Value arg) {
-        return switch (fn) {
-            case Value.ClosureVal closure -> evaluate(closure.body(), prepend(arg, closure.env()));
-            case Value.BuiltinVal builtin -> applyBuiltin(builtin, arg);
-            default -> throw new AssertionError("type checker bug: expected callable, got " + fn);
-        };
-    }
-
-    private Value applyBuiltin(Value.BuiltinVal builtin, Value arg) {
-        var args = new ArrayList<>(builtin.partialArgs());
-        args.add(arg);
-        if (args.size() < builtin.arity()) {
-            return new Value.BuiltinVal(builtin.name(), builtin.arity(), List.copyOf(args));
-        }
-        return executeBuiltin(builtin.name(), args);
-    }
-
-    private Value executeBuiltin(String name, List<Value> args) {
-        return switch (name) {
-            case "map" -> {
-                var fn = args.get(0);
-                var stream = requireStream(args.get(1), name);
-                var results = new ArrayList<Value>();
-                for (var element : stream.elements()) {
-                    results.add(applyFunction(fn, element));
-                }
-                yield new Value.StreamVal(results);
-            }
-            case "filter" -> {
-                var fn = args.get(0);
-                var stream = requireStream(args.get(1), name);
-                var results = new ArrayList<Value>();
-                for (var element : stream.elements()) {
-                    var result = applyFunction(fn, element);
-                    if (result instanceof Value.BooleanVal(var b) && b) {
-                        results.add(element);
-                    }
-                }
-                yield new Value.StreamVal(results);
-            }
-            case "reduce" -> {
-                var fn = args.get(0);
-                var acc = args.get(1);
-                var stream = requireStream(args.get(2), name);
-                for (var element : stream.elements()) {
-                    acc = applyFunction(applyFunction(fn, acc), element);
-                }
-                yield acc;
-            }
-            default -> throw new EvaluationException("unknown built-in: " + name);
-        };
-    }
-
-    private static Value.StreamVal requireStream(Value value, String builtinName) {
-        return switch (value) {
-            case Value.StreamVal s -> s;
-            default -> throw new AssertionError("type checker bug: expected Stream for " + builtinName + ", got " + value);
-        };
-    }
-
-    private static Value[] prepend(Value value, Value[] env) {
+    static Value[] prepend(Value value, Value[] env) {
         var newEnv = new Value[env.length + 1];
         newEnv[0] = value;
         System.arraycopy(env, 0, newEnv, 1, env.length);

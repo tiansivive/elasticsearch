@@ -37,7 +37,7 @@ unification (one language replacing multiple chained features).
 |-------|-------------------------------|--------|
 | Phase 1e | Pattern matching — control flow in transforms | Deferred — not blocking Blocks A+ |
 | Phase 2 | Index resolution — typed query results, field-level type checking, eager evaluation | :white_check_mark: |
-| Block A | `spawn` + single-value `join` — concurrent multi-query coordination | :memo: |
+| Block A | `spawn` + single-value `when` — concurrent multi-query coordination | :memo: |
 | Block B | Multi-value channels — full Join Calculus runtime | :memo: |
 | Block C | `writeTo` sink + scheduler — persistence and scheduled execution | :memo: |
 
@@ -256,46 +256,50 @@ open-row unification infrastructure from Phase 1d.
 
 ---
 
-## Block A — `spawn` + Single-Value `join` (Async Coordination) :memo:
+## Block A — `spawn` + Single-Value `when` (Async Coordination) :memo:
 
-> Replaces the old Phase 3 (plan graph) and Phase 4 (`par` blocks). See D-040.
+> Replaces the old Phase 3 (plan graph) and Phase 4 (`par` blocks). See D-040, D-041.
 
 Introduces asynchronous coordination via the Join Calculus model. `spawn` launches a computation
-asynchronously and returns a channel. `join` synchronizes on one or more channels — the join body
-fires when all specified channels have delivered their values. This is the core concurrency
+asynchronously and returns a channel. `when` synchronizes on one or more channels — the `when`
+body fires when all specified channels have delivered their values. This is the core concurrency
 primitive that replaces the old `par` block.
+
+The surface keyword is `when` (not `join`) to avoid collision with SQL/ESQL JOIN terminology.
+See D-041 for rationale.
 
 **Implementation strategy**: Leverage Elasticsearch's existing async infrastructure. A channel is
 a `SubscribableListener<Value>` (single-completion future). `spawn` runs the body on
-`threadPool.executor(GENERIC)` and writes the result to the channel. `join` uses
-`SubscribableListener.andThen` (unary) or composes multiple channels via `GroupedActionListener`
-(n-ary) to fire the join body when all channels complete.
+`threadPool.executor(GENERIC)` and writes the result to the channel. `when` uses a positional
+collector (`AtomicArray<Value>` + `CountDown`) to fire the `when` body when all channels complete,
+preserving binding order for de Bruijn indexing.
 
-**Key requirement**: The evaluator must become asynchronous (CPS / `ActionListener`-based). When
-the evaluator encounters `spawn`, it creates a `SubscribableListener`, forks the spawned
-computation, and continues. When it encounters `join`, it registers callbacks on the channels.
-`TransportPiescriptAction.doExecute` will wire the final result to the transport `ActionListener`.
+**Evaluator model**: Uniformly async — every `evaluate` call takes an `ActionListener<Value>`.
+Pure expressions complete synchronously (callback fires inline). No separate sync/async code
+paths. See D-041.
 
 | Task | Status |
 |------|--------|
-| `Chan τ` type constructor in the type system | :memo: |
-| `CoreSpawn` and `CoreJoin` variants in `CoreExpr` sealed hierarchy | :memo: |
-| `spawn` and `join` in ANTLR grammar | :memo: |
+| `Channel τ` type constructor in the type system | :memo: |
+| `CoreSpawn` and `CoreWhen` variants in `CoreExpr` sealed hierarchy | :memo: |
+| `spawn` and `when` in ANTLR grammar | :memo: |
 | `SpawnVal(SubscribableListener<Value>)` in `Value` hierarchy | :memo: |
-| Async evaluator refactor (CPS / ActionListener-based evaluation) | :memo: |
+| Uniformly async evaluator refactor (CPS / ActionListener-based evaluation) | :memo: |
 | `spawn` evaluation: fork to GENERIC thread pool, return `SpawnVal` | :memo: |
-| Unary `join`: single channel synchronization | :memo: |
-| N-ary `join`: multi-channel synchronization via `GroupedActionListener` | :memo: |
+| `when` synchronization: positional collector for all arities | :memo: |
 | `TransportPiescriptAction` async wiring (ActionListener pipeline) | :memo: |
 | Error propagation through channels (spawn failure → channel failure) | :memo: |
-| Unit tests (spawn/join semantics, concurrent queries, error propagation) | :memo: |
-| Integration tests (concurrent ESQL queries via spawn + join) | :memo: |
+| Unit tests (spawn/when semantics, concurrent queries, error propagation) | :memo: |
+| Integration tests (concurrent ESQL queries via spawn + when) | :memo: |
 
 **Key architectural decisions:**
 
 - Join Calculus model replaces plan graph (D-040)
+- `when` keyword instead of `join` to avoid SQL JOIN collision (D-041)
 - Channels are `SubscribableListener<Value>` — single-value, future-like (Block A)
-- `spawn` + `join` replace `par` as the coordination primitives (D-040)
+- `spawn` + `when` replace `par` as the coordination primitives (D-040)
+- Uniformly async evaluator — no separate sync/async code paths (D-041)
+- Positional collector for `when`, not `GroupedActionListener` (D-041)
 - The evaluator is the interpreter; no separate planner/executor split needed (D-040)
 - Stream combinators (`map`, `filter`, `reduce`) remain as eager built-ins over materialized
   `StreamVal` for now (no change from Phase 2)
@@ -310,10 +314,13 @@ computation, and continues. When it encounters `join`, it registers callbacks on
 
 - D-012 (plan graph, not direct interpretation) — superseded by D-040. The evaluator now interprets
   directly with async coordination via channels.
-- D-013 (two-layer IR: CoreExpr / CoreProcess) — superseded by D-040. `spawn` and `join` are
+- D-013 (two-layer IR: CoreExpr / CoreProcess) — superseded by D-040. `spawn` and `when` are
   `CoreExpr` nodes, not a separate `CoreProcess` hierarchy.
 - D-015 (join calculus informing future design) — subsumed: join calculus is now the primary model,
   not just an influence.
+
+**Ref**: [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
+[Block A plan](../../.cursor/plans/block_a_implementation_2fdbab36.plan.md)
 
 ---
 

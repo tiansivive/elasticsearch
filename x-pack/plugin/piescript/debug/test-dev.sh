@@ -61,6 +61,30 @@ curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev
   -d '{"program": "query `FROM piescript-test` |> map (fn r -> r.name)"}' | jq
 
 echo ""
+echo "=== spawn a pure value ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let ch = spawn 42 in when (ch x) -> x + 1"}' | jq
+
+echo ""
+echo "=== spawn a computation ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let ch = spawn (1 + 2 + 3) in when (ch sum) -> sum * 10"}' | jq
+
+echo ""
+echo "=== spawn a query ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let ch = spawn (query `FROM piescript-test`) in when (ch docs) -> map (fn r -> r.name) docs"}' | jq
+
+echo ""
+echo "=== multi-channel when (two spawned queries) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let a = spawn (query `FROM piescript-test | WHERE active == true`) in let b = spawn (query `FROM piescript-test | WHERE active == false`) in when (a active) & (b inactive) -> { active: map (fn r -> r.name) active, inactive: map (fn r -> r.name) inactive }"}' | jq
+
+echo ""
 echo "=== type error ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \

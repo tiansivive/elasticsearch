@@ -21,7 +21,6 @@ import org.elasticsearch.xpack.piescript.elab.ElaborationState;
 import org.elasticsearch.xpack.piescript.elab.Elaborator;
 import org.elasticsearch.xpack.piescript.elab.IndexResolutionPrePass;
 import org.elasticsearch.xpack.piescript.elab.ResolvedMapping;
-import org.elasticsearch.xpack.piescript.eval.EvaluationException;
 import org.elasticsearch.xpack.piescript.eval.Evaluator;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
@@ -87,10 +86,10 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             }
             var elaborator = new Elaborator(state);
             var coreExpr = elaborator.elaborateProgram(cst);
-            var evaluator = new Evaluator(client);
-            var value = evaluator.evaluate(coreExpr);
             var type = CorePrinter.printType(coreExpr.type(), state);
-            listener.onResponse(PiescriptResponse.fromValue(value, type));
+            var evaluator = new Evaluator(client, executor);
+            evaluator.evaluate(coreExpr, listener.delegateFailureAndWrap((l, value) ->
+                l.onResponse(PiescriptResponse.fromValue(value, type))));
         } catch (Exception e) {
             listener.onFailure(e);
         }
@@ -144,33 +143,17 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             String zonker = CorePrinter.printZonker(state);
             List<String> diagnostics = state.diagnostics();
 
-            String eval = null;
-            String evalError = null;
-            try {
-                var evaluator = new Evaluator(client);
-                var value = evaluator.evaluate(coreExpr);
-                eval = value.toString();
-            } catch (EvaluationException e) {
-                evalError = e.getMessage();
-            }
-
-            listener.onResponse(
-                PiescriptResponse.fromDev(
+            var evaluator = new Evaluator(client, executor);
+            evaluator.evaluate(coreExpr, ActionListener.wrap(
+                value -> listener.onResponse(PiescriptResponse.fromDev(
                     new PiescriptResponse.DevInfo(
-                        treeString,
-                        core,
-                        coreRaw,
-                        type,
-                        constraints,
-                        zonker,
-                        diagnostics,
-                        eval,
-                        evalError,
-                        null,
-                        null
-                    )
-                )
-            );
+                        treeString, core, coreRaw, type, constraints, zonker,
+                        diagnostics, value.toString(), null, null, null))),
+                e -> listener.onResponse(PiescriptResponse.fromDev(
+                    new PiescriptResponse.DevInfo(
+                        treeString, core, coreRaw, type, constraints, zonker,
+                        diagnostics, null, e.getMessage(), null, null)))
+            ));
         } catch (ElaborationException e) {
             listener.onResponse(devTypeError(treeString, e.getMessage()));
         } catch (Exception e) {

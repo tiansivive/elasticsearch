@@ -5,6 +5,8 @@
 > **Revised**: 2026-03-16. The execution model has been redesigned around the Join Calculus (D-040).
 > The plan graph / two-layer IR / optimizer / executor architecture is archived in
 > `docs/archive/architecture.pre-join-calculus.md`.
+>
+> **Ref**: [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef)
 
 ## System Overview
 
@@ -14,8 +16,9 @@ pipeline: programs are received via REST, parsed, type-checked against index map
 by a tree-walking interpreter that fires ESQL queries synchronously and operates over materialized
 stream results.
 
-Block A extends this with asynchronous coordination via Join Calculus primitives (`spawn`, `join`,
-channels), enabling concurrent query execution and multi-way synchronization.
+Block A extends this with asynchronous coordination via Join Calculus primitives (`spawn`, `when`,
+channels), enabling concurrent query execution and multi-way synchronization. The surface keyword
+is `when` (not `join`) to avoid collision with SQL/ESQL JOIN terminology — see D-041.
 
 ```
 Client
@@ -35,15 +38,15 @@ TransportPiescriptAction     ← Transport layer: orchestrates pipeline on GENER
   │   Elaborator              ← Phase 1b+: bidirectional HM inference → Core IR
   │     │
   │     ▼
-  │   Evaluator               ← Phase 1c+: tree-walking interpreter with async coordination
+  │   Evaluator               ← Phase 1c+: uniformly async tree-walking interpreter
   │     │
-  │     ├─► Pure result       ← No spawn/join: synchronous evaluation, return value directly
+  │     ├─► Pure result       ← No spawn/when: callbacks fire synchronously, return value directly
   │     │
-  │     └─► Async result      ← Has spawn/join: coordinate via channels, wire to ActionListener
+  │     └─► Async result      ← Has spawn/when: coordinate via channels, wire to ActionListener
   │           │
-  │           ├─► ESQL Engine ← CoreQuery fires EsqlQueryAction (sync in v0, async in Block A)
+  │           ├─► ESQL Engine ← CoreQuery fires EsqlQueryAction (async via ActionListener)
   │           │
-  │           └─► Channel ops ← spawn → fork to GENERIC, join → register SubscribableListener callbacks
+  │           └─► Channel ops ← spawn → fork to GENERIC, when → positional collector callbacks
   │
   ▼
 Client (JSON response)
@@ -80,7 +83,7 @@ Client (JSON response)
 - Orchestrates the full pipeline: parse → index resolution → elaborate → evaluate.
 - Wires the final evaluation result to the transport `ActionListener`. In Block A, the evaluator
   itself becomes async, so the transport action registers an `ActionListener<Value>` that the
-  evaluator completes when done (including after async `join` resolution).
+  evaluator completes when done (including after async `when` resolution).
 
 ### Plugin Registration — `PiescriptPlugin`
 
@@ -103,32 +106,31 @@ Piescript reuses ESQL's authorization model:
 ## Core IR
 
 The Core IR is a single `CoreExpr` sealed hierarchy — there is no separate `CoreProcess` layer.
-Coordination primitives (`CoreSpawn`, `CoreJoin`) are `CoreExpr` variants alongside functional
-nodes. This simplifies the IR and the evaluator: all nodes are evaluated by the same tree-walking
-interpreter, with the runtime distinction being synchronous (pure functional) vs. asynchronous
-(coordination) evaluation.
+Coordination primitives (`CoreSpawn`, `CoreWhen`) are `CoreExpr` variants alongside functional
+nodes. This simplifies the IR and the evaluator: all nodes are evaluated by the same uniformly
+async tree-walking interpreter (D-041).
 
 ### Functional Nodes (existing)
 
 - `CoreVar`, `CoreFree`, `CoreLit`, `CoreLam`, `CoreApp`, `CoreLet`, `CoreRecord`, `CoreProject`,
   `CoreUpdate`, `CorePrimOp`, `CoreTypeAbs`, `CoreTypeApp`, `CoreQuery`
-- Evaluated synchronously by the tree-walking interpreter.
-- `CoreQuery` fires an ESQL query and returns a `StreamVal`.
+- Callbacks fire synchronously (inline) for pure expressions.
+- `CoreQuery` fires an ESQL query asynchronously and returns a `StreamVal`.
 
 ### Coordination Nodes (Block A)
 
 - `CoreSpawn(CoreExpr body)` — launch `body` asynchronously, return a channel.
-  - Type: `τ → Chan τ` (where `τ` is the type of `body`).
+  - Type: `τ → Channel τ` (where `τ` is the type of `body`).
   - Evaluation: create a `SubscribableListener<Value>`, fork `body` evaluation to
     `threadPool.executor(GENERIC)`, return `SpawnVal(listener)`.
 
-- `CoreJoin(List<JoinBinding> channels, CoreExpr body)` — synchronize on channels, then evaluate
-  `body` with bound values.
-  - Each `JoinBinding` specifies a channel expression and a variable binding.
+- `CoreWhen(List<WhenBinding> channels, CoreExpr body)` — synchronize on channels, then evaluate
+  `body` with bound values. (Surface keyword is `when` — see D-041.)
+  - Each `WhenBinding` specifies a channel expression and a variable binding.
   - Type: the body's type, with channel value types bound to the variables.
-  - Evaluation: register callbacks on each channel's `SubscribableListener`. When all channels
-    complete, bind the received values and evaluate `body`. For n-ary joins, use
-    `GroupedActionListener` to collect all results before firing.
+  - Evaluation: register callbacks on each channel's `SubscribableListener`. Use a positional
+    collector (`AtomicArray<Value>` + `CountDown`) to preserve binding order for de Bruijn
+    indexing. When all channels complete, bind the received values and evaluate `body`.
 
 ### Prelude Built-ins
 
@@ -141,29 +143,32 @@ functions, not extending the Core IR grammar.
 
 ## The Evaluator
 
-The evaluator is a tree-walking de Bruijn environment machine. It handles all `CoreExpr` variants:
+The evaluator is a uniformly async tree-walking de Bruijn environment machine (D-041). Every
+`evaluate` call takes an `ActionListener<Value>`. It handles all `CoreExpr` variants:
 
-- **Functional nodes**: evaluated synchronously. `CoreVar` looks up the de Bruijn environment.
-  `CoreApp` applies a closure. `CoreLet` extends the environment. `CoreQuery` fires an ESQL query
-  synchronously and returns a `StreamVal`.
+- **Functional nodes**: callbacks fire synchronously (inline). `CoreVar` looks up the de Bruijn
+  environment. `CoreApp` applies a closure. `CoreLet` extends the environment. `CoreQuery` fires
+  an ESQL query asynchronously via `ActionListener` and returns a `StreamVal`.
 
 - **Coordination nodes (Block A)**: evaluated asynchronously via `ActionListener` callbacks.
   `CoreSpawn` forks computation and returns a `SpawnVal` (wrapping a `SubscribableListener`).
-  `CoreJoin` registers callbacks on channels and continues evaluation in the callback when all
-  channels complete.
+  `CoreWhen` registers callbacks on channels via a positional collector and continues evaluation
+  in the callback when all channels complete.
 
-### Async Evaluation Model (Block A)
+### Uniformly Async Evaluation Model (D-041)
 
-The evaluator transitions from a synchronous `Value evaluate(CoreExpr, Env)` to an
-asynchronous model where the result is delivered via `ActionListener<Value>`. For programs
-without `spawn`/`join`, the evaluator completes synchronously on the calling thread (the
-common case). When coordination primitives are encountered, the evaluator suspends the current
-computation and resumes it in a callback when channels deliver their values.
+The evaluator is uniformly async: every `evaluate` call takes an `ActionListener<Value>`. There
+are no separate sync/async code paths. For pure expressions (no `spawn`/`when`), callbacks fire
+synchronously on the calling thread — the async API has zero overhead. When coordination
+primitives are encountered, the evaluator suspends the current computation and resumes it in a
+callback when channels deliver their values.
 
 This is a continuation-passing style (CPS) transformation of the evaluator, where
 `SubscribableListener` callbacks serve as continuations. The ES infrastructure provides the
-scheduling: `SubscribableListener.andThen` chains async operations, and
-`threadPool.executor(GENERIC)` provides safe threads for spawned computations.
+scheduling: `SubscribableListener.addListener` subscribes to channel results (firing immediately
+if already complete), and `threadPool.executor(GENERIC)` provides safe threads for spawned
+computations. Built-in functions (`map`, `filter`, `reduce`) use an iterative while-loop pattern
+for stream processing to avoid stack growth from recursive callbacks.
 
 ## Runtime Values
 
@@ -189,12 +194,11 @@ The Join Calculus model maps directly to Elasticsearch's existing async infrastr
 
 | Piescript Concept | ES Infrastructure | Notes |
 |------------------|-------------------|-------|
-| Single-value channel (`Chan τ`) | `SubscribableListener<Value>` | Single-completion future; other listeners subscribe for the result |
+| Single-value channel (`Channel τ`) | `SubscribableListener<Value>` | Single-completion future; other listeners subscribe for the result |
 | `spawn` (fork computation) | `threadPool.executor(GENERIC).execute(...)` | Safe to block; used for query execution |
-| Unary `join` | `SubscribableListener.andThen(...)` | Chain a callback when the channel completes |
-| N-ary `join` | `GroupedActionListener` + `SubscribableListener` | Collect N results, then fire the join body |
+| `when` (channel synchronization) | Positional collector (`AtomicArray` + `CountDown`) | Preserves binding order for de Bruijn indexing; fires when all slots filled |
 | Error propagation | `ActionListener.onFailure(Exception)` | `SubscribableListener` propagates failures to all subscribers |
-| Query execution | `client.execute(EsqlQueryAction, request, listener)` | Async in Block A (listener-based), sync in Phase 2 |
+| Query execution | `client.execute(EsqlQueryAction, request, listener)` | Async via ActionListener |
 
 ### Future: Multi-Value Channels (Block B)
 
@@ -221,7 +225,7 @@ This is a performance optimization for Block E, not required for correctness.
 
 ## Theoretical Model: Free Monad over Join Calculus Effects
 
-The Join Calculus coordination primitives (`spawn`, `join`, `query`, `newchan`, `send`) form an
+The Join Calculus coordination primitives (`spawn`, `when`, `query`, `newchan`, `send`) form an
 **algebraic effect signature**. The evaluator is an **effect handler** that interprets these
 effects. This is the free monad perspective — and it still applies, even though the implementation
 uses direct CPS interpretation rather than an explicit plan graph.
@@ -229,7 +233,7 @@ uses direct CPS interpretation rather than an explicit plan graph.
 The key insight is that the free monad arises naturally as the **residual of partial evaluation**:
 
 1. **Partial evaluation**: the evaluator reduces pure expressions (let-bindings, lambdas,
-   application, arithmetic, records) to values. Coordination expressions (`spawn`, `join`, `query`)
+   application, arithmetic, records) to values. Coordination expressions (`spawn`, `when`, `query`)
    are **stuck** — they cannot be reduced further without performing actual effects.
 
 2. **The residual is the free monad**: what remains after partial evaluation is a tree of

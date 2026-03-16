@@ -168,6 +168,28 @@ public final class CorePrinter {
                 sb.append(state != null ? writeType(TypeWalker.resolveDeep(q.type(), state)) : writeType(q.type()));
                 sb.append(')');
             }
+            case CoreSpawn sp -> {
+                sb.append("(spawn ");
+                writeExpr(sp.body(), state, sb);
+                sb.append(" : ");
+                sb.append(state != null ? writeType(TypeWalker.resolveDeep(sp.type(), state)) : writeType(sp.type()));
+                sb.append(')');
+            }
+            case CoreWhen wh -> {
+                sb.append("(when ");
+                var bindings = wh.bindings();
+                for (int i = 0; i < bindings.size(); i++) {
+                    if (i > 0) sb.append(" & ");
+                    sb.append('(');
+                    writeExpr(bindings.get(i).channel(), state, sb);
+                    sb.append(' ');
+                    sb.append(bindings.get(i).debugName() != null ? bindings.get(i).debugName() : "_");
+                    sb.append(')');
+                }
+                sb.append(" -> ");
+                writeExpr(wh.body(), state, sb);
+                sb.append(')');
+            }
         }
     }
 

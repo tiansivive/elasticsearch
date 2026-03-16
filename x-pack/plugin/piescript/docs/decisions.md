@@ -1262,14 +1262,14 @@ found that:
 **Decision**: Replace the plan graph + `par` architecture with a Join Calculus execution model.
 
 **Primitives**:
-- `spawn expr` — launch `expr` asynchronously, return a channel (`Chan τ`) that will carry the
+- `spawn expr` — launch `expr` asynchronously, return a channel (`Channel τ`) that will carry the
   result. Implementation: fork to `threadPool.executor(GENERIC)`, write result to a
   `SubscribableListener<Value>`.
 - `join (c₁ x₁) & (c₂ x₂) & ... -> body` — synchronize on one or more channels. When all
   specified channels have delivered values, bind each value to its variable and evaluate `body`.
   Implementation: compose `SubscribableListener` callbacks; for n-ary joins, use
   `GroupedActionListener` to collect all results before firing.
-- `Chan τ` — a typed channel. Block A: single-value (future-like), backed by
+- `Channel τ` — a typed channel. Block A: single-value (future-like), backed by
   `SubscribableListener<Value>`. Block B: extended to multi-value with `newchan`, `send`, and a
   lightweight concurrent queue implementation.
 
@@ -1319,8 +1319,8 @@ interpreter (executing the optimized residual), with an optimization pass in bet
 piescript's lowering pass. See [architecture.md § Theoretical Model](architecture.md).
 
 **Phased implementation**:
-- **Block A**: `spawn` + single-value `join`. Channels are `SubscribableListener<Value>`. Queries
-  complete fully before delivering results. Evaluator becomes async.
+- **Block A**: `spawn` + single-value `when` (D-041). Channels are `SubscribableListener<Value>`.
+  Queries complete fully before delivering results. Evaluator becomes uniformly async.
 - **Block B**: Multi-value channels. `newchan`, `send` primitives. Lightweight concurrent queue.
   Join automaton for pattern matching over streaming values.
 - **Block C**: `writeTo` sink + scheduler. Persistence and scheduled execution.
@@ -1329,18 +1329,83 @@ piescript's lowering pass. See [architecture.md § Theoretical Model](architectu
 
 **Rationale**:
 - The Join Calculus primitives map directly to ES infrastructure (`SubscribableListener` for
-  single-value channels, `GroupedActionListener` for n-ary synchronization,
+  single-value channels, positional collector for `when` synchronization (D-041),
   `threadPool.executor(GENERIC)` for spawn). No new distributed infrastructure is needed for v0.
 - The evaluator-as-interpreter model is simpler than evaluator + planner + executor. The plan
   graph indirection provided optimization hooks that require significant compiler work to exploit
   — work that is better scoped as a dedicated Block (D) rather than a prerequisite for basic
   concurrency.
-- `spawn` + `join` are strictly more expressive than `par`: any `par` block can be expressed as
-  spawns + a join, but joins also support multi-way synchronization, streaming coordination, and
-  reaction rules that `par` cannot express.
+- `spawn` + `when` are strictly more expressive than `par`: any `par` block can be expressed as
+  spawns + a `when`, but `when` also supports multi-way synchronization, streaming coordination,
+  and reaction rules that `par` cannot express.
 - The theoretical foundation (Join Calculus) guarantees that all coordination patterns have
   efficient distributed implementations, future-proofing the design for cross-node execution.
 
 **Ref**: [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
 [references.md § Join Calculus](references.md),
 [references.md § Sangiorgi (agent-passing)](references.md)
+
+---
+
+## D-041: Block A Implementation Decisions — `when` Keyword, Uniformly Async Evaluator, Positional Collector
+
+**Phase**: Block A | **Status**: accepted
+
+**Context**: Block A implements the Join Calculus coordination primitives (`spawn`, channel
+synchronization) from D-040. During planning, three design decisions were made that refine or
+deviate from the roadmap's initial description.
+
+### 1. `when` keyword instead of `join`
+
+The surface keyword for channel synchronization is `when`, not `join`.
+
+**Rationale**: In the ES/ESQL ecosystem, "join" universally means data joining — SQL JOIN, enrich
+joins, lookup joins. The MVP example program (vision.md) performs both channel synchronization
+*and* data joining (matching orders to customers). Using `join` for both would be confusing within
+a single program. `when` reads naturally as reactive coordination: "when these channels are ready,
+do this." It matches the mental model of Watcher/alerting users ("when X happens, do Y") without
+any existing ES terminology collision.
+
+The Core IR node is `CoreWhen`, the elaboration helper is `Whens.java`, and the grammar token is
+`WHEN`. The underlying Join Calculus theory is unchanged — `when` is the user-facing name for join
+patterns. Documentation and architecture references to "join patterns" continue to refer to the
+theoretical concept; the keyword is `when`.
+
+**Syntax**:
+
+```
+spawn <expr>
+when (<chanExpr> <var>) & (<chanExpr> <var>) & ... -> <body>
+```
+
+### 2. Uniformly async evaluator
+
+The evaluator uses a single async code path for all programs. Every `evaluate` call takes an
+`ActionListener<Value>`. For pure expressions (no `spawn`/`when`), `listener.onResponse(value)`
+fires immediately on the calling thread — the async signature has zero overhead when callbacks
+complete synchronously.
+
+**Rationale**: The alternative — maintaining separate sync/async evaluator paths — would duplicate
+evaluation logic, require a pre-pass to detect coordination primitives, and fail for the edge case
+where `spawn` is hidden inside a closure that might or might not be called. A uniform signature is
+simpler, consistent with ES's own `ActionListener` conventions throughout the transport layer, and
+degrades naturally to synchronous execution for pure programs.
+
+Built-in functions (`map`, `filter`, `reduce`) use an **iterative while-loop** pattern for stream
+element processing (not recursive callbacks) to avoid stack growth. The behavior is synchronous for
+pure lambda bodies; the async API handles the exotic case of genuinely async lambda bodies (e.g.,
+containing `when`) without special-casing.
+
+### 3. Positional collector for `when` (not `GroupedActionListener`)
+
+`CoreWhen` uses a hand-rolled positional collector (`AtomicArray<Value>` + `CountDown`) instead of
+`GroupedActionListener`.
+
+**Rationale**: `GroupedActionListener` stores results by *arrival order*
+(`pos.incrementAndGet() - 1`), not by binding order. Since `when` bindings map to de Bruijn
+indices, the body must see values at their *declared binding positions* — the first binding at
+the highest index, the last at index 0. Arrival-order storage would corrupt the environment when
+channels complete out of binding order. The positional collector writes each result to a known
+slot index, guaranteeing correct ordering regardless of completion timing.
+
+**Ref**: [Block A plan](../../.cursor/plans/block_a_implementation_2fdbab36.plan.md)

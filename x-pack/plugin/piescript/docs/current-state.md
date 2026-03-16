@@ -64,9 +64,9 @@ consolidated list of Phase 1 items carried forward.
 | Capability | Target Block | Notes |
 |-----------|-------------|-------|
 | Pattern matching | 1e (deferred) | No match expressions (deferred — not blocking Blocks A+; see D-029) |
-| `spawn` / `join` (async coordination) | Block A | No concurrency primitives — queries execute synchronously, sequentially |
-| `Chan τ` type + `SpawnVal` runtime value | Block A | No channel abstraction in type system or runtime |
-| Async evaluator (CPS / ActionListener) | Block A | Evaluator is fully synchronous; must be refactored for async coordination |
+| `spawn` / `when` (async coordination) | Block A | No concurrency primitives — queries execute synchronously, sequentially. Surface keyword is `when` (D-041). |
+| `Channel τ` type + `SpawnVal` runtime value | Block A | No channel abstraction in type system or runtime |
+| Uniformly async evaluator (CPS / ActionListener) | Block A | Evaluator is fully synchronous; will be refactored to uniformly async (D-041) |
 | Multi-value channels | Block B | Block A channels are single-value only |
 | `newchan` / `send` primitives | Block B | No explicit channel creation or message sending |
 | `writeTo` sink primitive | Block C | No mechanism to write stream results to an index |
@@ -130,27 +130,29 @@ These are intentional simplifications that will need attention:
 The end goal for the foundations being built now is the **Unified Data Pipelines MVP**: a piescript
 program that replaces the combination of ES Transforms, enrich policies, enrich processors, and
 ingest pipeline chains with a single typed program — with concurrent query execution via `spawn` +
-`join`. See [vision.md § MVP](vision.md#mvp-unified-data-pipelines) for the full rationale and
+`when`. See [vision.md § MVP](vision.md#mvp-unified-data-pipelines) for the full rationale and
 [roadmap.md § MVP Milestone](roadmap.md#mvp-milestone--unified-data-pipelines) for the block
 mapping.
 
 The current foundation work (type system, Core IR, evaluator) feeds directly into this goal: the
 type checker will verify field compatibility across entire pipelines, the System F Core IR provides
-the typed substrate for coordination primitives, and the Join Calculus model (`spawn`/`join`/
+the typed substrate for coordination primitives, and the Join Calculus model (`spawn`/`when`/
 channels) provides the concurrency primitives for coordinating multiple queries. Push-down
 compilation into ESQL (Block D) is a post-MVP optimization.
 
 ## Immediate Next Steps
 
 Phases 0–2 are complete. Phase 1e (Pattern Matching) is deferred — it is not on the MVP critical
-path. **Block A (`spawn` + single-value `join`) is the next active phase.**
+path. **Block A (`spawn` + single-value `when`) is the next active phase.**
 
 Block A introduces the Join Calculus coordination primitives: `spawn` (async computation returning
-a channel), `join` (synchronization on channels), and `Chan τ` (typed channel). The evaluator must
-be refactored from synchronous to asynchronous (CPS / ActionListener-based). Implementation
-leverages `SubscribableListener<Value>` for channels and `GroupedActionListener` for n-ary joins.
-See [roadmap.md § Block A](roadmap.md#block-a--spawn--single-value-join-async-coordination-memo)
-and D-040 for the full design.
+a channel), `when` (synchronization on channels — keyword chosen to avoid SQL/ESQL JOIN collision,
+see D-041), and `Channel τ` (typed channel). The evaluator becomes uniformly async: every `evaluate`
+call takes an `ActionListener<Value>`, with pure expressions completing synchronously inline
+(D-041). Implementation leverages `SubscribableListener<Value>` for channels and a positional
+collector (`AtomicArray` + `CountDown`) for `when` synchronization.
+See [roadmap.md § Block A](roadmap.md#block-a--spawn--single-value-when-async-coordination-memo)
+and D-040, D-041 for the full design.
 
 Phase 1 tech debt that can be addressed opportunistically:
 
@@ -166,7 +168,7 @@ Review:
 
 - [vision.md](vision.md) for the MVP goal and design philosophy
 - [roadmap.md](roadmap.md) for the updated block breakdown and MVP milestone
-- [decisions.md](decisions.md) for all architectural decisions (D-040 for Join Calculus model)
+- [decisions.md](decisions.md) for all architectural decisions (D-040 for Join Calculus model, D-041 for Block A implementation decisions)
 
 **Ref**: [Phase 2 completion session](303bcf3e-9eef-4719-a47d-24c1ff27a675),
 [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef)
