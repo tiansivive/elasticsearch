@@ -198,6 +198,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             }
             case Value.ClosureVal ignored -> builder.field(fieldName, "<function>");
             case Value.BuiltinVal b -> builder.field(fieldName, "<builtin:" + b.name() + ">");
+            case Value.SpawnVal ignored -> builder.field(fieldName, "<channel>");
         }
     }
 
@@ -225,6 +226,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             }
             case Value.ClosureVal ignored -> builder.value("<function>");
             case Value.BuiltinVal b -> builder.value("<builtin:" + b.name() + ">");
+            case Value.SpawnVal ignored -> builder.value("<channel>");
         }
     }
 
@@ -261,6 +263,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             }
             case Value.ClosureVal ignored -> out.writeByte((byte) 7);
             case Value.BuiltinVal ignored -> out.writeByte((byte) 8);
+            case Value.SpawnVal ignored -> out.writeByte((byte) 10);
         }
     }
 
@@ -277,6 +280,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case 7 -> new Value.ClosureVal(null, null);
             case 8 -> new Value.BuiltinVal("?", 0, List.of());
             case 9 -> new Value.StreamVal(in.readCollectionAsList(PiescriptResponse::readValue));
+            case 10 -> new Value.SpawnVal(null);
             default -> throw new IOException("unknown Value tag: " + tag);
         };
     }

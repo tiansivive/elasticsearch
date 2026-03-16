@@ -120,6 +120,19 @@ if (solution instanceof MonoType.Meta next && ...) return resolve(next.id());
 return Optional.of(solution);
 ```
 
+### Trust framework-managed resource lifecycles
+
+Do not manually close, `decRef`, or wrap in `try-with-resources` any object received inside an
+`ActionListener` callback from `client.execute(...)` or similar transport actions. The ES transport
+framework owns the lifecycle of these responses (via `respondAndRelease`) and releases them after
+your listener returns. Adding your own close is a **double-close** that triggers
+`AssertionError: invalid decRef call: already closed` and kills the JVM.
+
+More generally: if you find yourself writing defensive resource cleanup inside a framework-managed
+async callback, question whether the framework already handles it. A well-designed async API does
+not require callers to manually close resources it delivered — that would be a leaky abstraction.
+If the pattern looks like "wrap in try-with-resources just in case", it's almost certainly wrong.
+
 ### Type safety over `Object`
 
 Prefer sealed interfaces and pattern matching over `Object` casts and `instanceof` chains. When a

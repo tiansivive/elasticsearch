@@ -18,6 +18,10 @@ import java.util.List;
  * {@code reduce}). Stream element iteration is expressed as a {@link SubscribableListener}
  * chain — each element becomes one step in the chain, and the infrastructure handles
  * both synchronous inline completion and genuinely async suspension. See D-041.
+ *
+ * <p>The chain approach allocates O(n) listeners upfront. An iterative while-loop
+ * (ThrottledIterator-style) would achieve O(1) outstanding listeners; worth
+ * revisiting if stream sizes grow large enough for the allocation to matter.
  */
 final class EvalBuiltins {
 

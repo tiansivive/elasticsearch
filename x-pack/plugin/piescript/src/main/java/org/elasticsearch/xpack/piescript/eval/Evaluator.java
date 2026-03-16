@@ -131,12 +131,9 @@ public final class Evaluator {
                     return;
                 }
                 var request = EsqlQueryRequest.syncEsqlQueryRequest(q.esqlQuery());
-                // convertResponse materializes all data before response.close()
-                client.execute(EsqlQueryAction.INSTANCE, request, listener.delegateFailureAndWrap((l, response) -> {
-                    try (response) {
-                        l.onResponse(EsqlValueConverter.convertResponse(response));
-                    }
-                }));
+                client.execute(EsqlQueryAction.INSTANCE, request, listener.delegateFailureAndWrap((l, response) ->
+                    l.onResponse(EsqlValueConverter.convertResponse(response))
+                ));
             }
 
             case CoreSpawn spawn -> {
@@ -214,7 +211,7 @@ public final class Evaluator {
         switch (fn) {
             case Value.ClosureVal closure -> evaluate(closure.body(), prepend(arg, closure.env()), listener);
             case Value.BuiltinVal builtin -> EvalBuiltins.applyBuiltin(this, builtin, arg, listener);
-            default -> listener.onFailure(new AssertionError("type checker bug: expected callable, got " + fn));
+            default -> listener.onFailure(new IllegalStateException("type checker bug: expected callable, got " + fn));
         }
     }
 
