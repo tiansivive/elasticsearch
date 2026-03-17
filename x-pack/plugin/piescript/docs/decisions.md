@@ -1409,3 +1409,111 @@ channels complete out of binding order. The positional collector writes each res
 slot index, guaranteeing correct ordering regardless of completion timing.
 
 **Ref**: [Block A plan](../../.cursor/plans/block_a_implementation_2fdbab36.plan.md)
+
+---
+
+## D-042: Distributed Execution Model — Explicit Control, `spawn!`, Block Restructure
+
+**Phase**: Block B–D | **Status**: accepted
+
+**Context**: After completing Block A (local async coordination), a design discussion examined how
+piescript should approach distributed execution. The original roadmap envisioned deep ESQL
+integration: Block D would compile piescript lambdas into ESQL text, Block E would integrate with
+ESQL's Exchange for streaming. This approach treated piescript as a frontend to ESQL's compute
+engine.
+
+The discussion revealed a fundamental tension: ESQL takes control of distributed execution away
+from the user (it decides where and how to query). Piescript should **expose** that control. The
+user should be able to name nodes, send code to them, and coordinate results explicitly via
+channels. This is precisely what the Join Calculus was designed for (Fournet & Gonthier, Section 5:
+locations, code mobility, message routing to definition sites).
+
+**Decisions**:
+
+### 1. `spawn` is sugar, not a primitive
+
+Following Join Calculus Section 1.3 (asynchronous core), the true primitives are: channel creation,
+`send`, parallel composition, and `when` (join patterns). `spawn body` desugars to:
+`let ch = channel() in fork(send ch body) in ch`. This is not just a theoretical observation — it
+is the design principle that makes distributed execution work: the body of a `spawn` auto-sends
+its result, but distributed code requires explicit `send` to route results back to coordinator-
+owned channels.
+
+### 2. `spawn!` for bare channel creation
+
+`spawn!` creates a channel without executing a body. Mechanically: `new SubscribableListener<>()`
+wrapped in a `SpawnVal`. The user completes it via explicit `send`. This avoids introducing a
+`channel` keyword while acknowledging that channel creation is the real primitive.
+
+Note: `spawn` could also be a builtin function rather than a keyword. Kept as a keyword for now
+for clarity. The eventual clean-up may expose `channel` as the primitive and define `spawn` as
+sugar over it.
+
+### 3. Piescript gives explicit control over distributed computing
+
+ESQL is declarative about data retrieval (user says what, ESQL decides where/how). Piescript is
+explicit about distributed computation: nodes are values, shards are values, the user sends code
+to named nodes and coordinates results via channels. Libraries build higher-level abstractions.
+
+This means:
+- `index_topology "pattern"` returns cluster topology as typed records (nodes, shards)
+- `send node.inbox closure` ships code to a remote node (closure captures channel references)
+- `scan shard` accesses local data on a data node (Lucene queries)
+- The user orchestrates the distributed plan; libraries provide convenience
+
+### 4. Block restructure
+
+The roadmap blocks are restructured around the distributed vertical slice:
+
+| Block | Old | New |
+|-------|-----|-----|
+| B | Multi-value channels | ES topology & node types |
+| C | `writeTo` + scheduler | Cross-node code execution (`send`, `spawn!`, closure serialization) |
+| D | Push-down compilation | Local data access (`scan`) |
+| E | Exchange integration | `writeTo` (stretch goal) |
+
+Old Block B (multi-value channels) is deferred — only relevant for streaming patterns, not the
+distributed vertical slice. Old Block D (push-down to ESQL text) is deprioritized — the typeclass
+approach (see below) is more general. Old Block E (Exchange integration) is reframed: Exchange is
+ES infrastructure that piescript orchestrates explicitly via channels, not infrastructure piescript
+is built on.
+
+### 5. Channel serialization via named registry
+
+Channels are named as `<ownerNodeId>:<channelUuid>`. Each node maintains a
+`ConcurrentHashMap<String, SubscribableListener<Value>>` channel registry. When a remote closure
+does `send ch value`, the runtime sends a transport message to the owner node, which looks up the
+`SubscribableListener` and completes it. This implements the Join Calculus locality property:
+messages travel to their channel's definition site.
+
+### 6. Exchange as explicit orchestration, not hidden optimization
+
+The compute engine (Page/Block/Exchange) is ES infrastructure that piescript **orchestrates via
+channels**, not infrastructure piescript is built on. For scale, the user (or a library) explicitly
+sets up an Exchange via a sequence of channel messages: send closure to data node → data node
+scans and initializes Exchange sink → sends back metadata → coordinator connects Exchange source →
+Pages stream with back-pressure. Piescript doesn't abstract over scale decisions — the user
+chooses when to use simple `Value` messages vs. Exchange streaming.
+
+### 7. The type stack: RawData / Page / Value
+
+Three representations of data, chosen explicitly:
+- `RawData` — description of shard-local data (`scan` returns this). Typeclass instances push
+  operations down (filter → Lucene query). No I/O until materialization.
+- `Page`/`Block` — columnar, batched, ref-counted. What Lucene produces on materialization.
+  Used for Exchange streaming. Not a piescript concern by default.
+- `Stream` of `Value` — what piescript code operates on. `StreamVal(List<Value>)` today; backed
+  by Page iterators or Exchange sources at scale.
+
+Typeclass-driven push-down (e.g., `Filterable RawData` → Lucene query construction) replaces the
+old Block D (push-down to ESQL text) as the principled optimization path. This is future work
+requiring typeclasses in the language.
+
+**Supersedes**: Old Block B/C/D/E definitions in roadmap.md. Old Block D (push-down to ESQL text)
+is deprioritized.
+
+**Does not supersede**: D-012 and D-013 were already superseded by D-040. D-040 itself remains
+valid — the Join Calculus model is unchanged, only the block structure and distributed strategy
+are refined.
+
+**Ref**: [Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f)

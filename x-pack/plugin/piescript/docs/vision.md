@@ -2,11 +2,16 @@
 
 > **Living doc** — revisit when the project's direction shifts or new insights emerge.
 >
-> **Revised**: 2026-03-16. The execution model has been redesigned around the Join Calculus
-> (Fournet & Gonthier). The previous plan-graph / free-monad-over-π-effects architecture is
-> archived in `docs/archive/vision.pre-join-calculus.md`. See D-040 for the decision record.
+> **Revised**: 2026-03-17. The distributed execution strategy has been refined: piescript gives
+> **explicit control** over distributed computing. Nodes, shards, and topology are first-class
+> values. `spawn` is sugar over channel creation + send. The compute engine (Page/Block/Exchange)
+> is ES infrastructure that piescript orchestrates via channels, not infrastructure piescript is
+> built on. See D-042 for the decision record.
 >
-> **Ref**: [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef)
+> Previous revision (2026-03-16): execution model redesigned around Join Calculus (D-040).
+>
+> **Ref**: [Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f),
+> [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef)
 
 ## One-Liner
 
@@ -62,25 +67,65 @@ Piescript's core insight is the separation of two concerns:
 1. **Pure functional expressions** — let-bindings, lambdas, application, records, pattern matching.
    These evaluate locally, on whichever node runs them. They produce values.
 
-2. **Coordination primitives** — `spawn` (launch asynchronous computation, producing a channel),
-   `when` (synchronize on one or more channels, react when results arrive), and channels (typed
-   conduits for asynchronous results). These orchestrate distributed work.
+2. **Coordination primitives** — channels (typed conduits for async results), `send` (send a
+   message to a channel — message travels to the channel's definition site), `when` (synchronize
+   on one or more channels, react when results arrive), and parallel composition. These orchestrate
+   distributed work.
 
 The coordination layer is based on the **Join Calculus** (Fournet & Gonthier, 2000), a variant of
 the π-calculus designed specifically for distributed implementation. The key properties:
 
 - **Local synchronization**: a join body fires only when all required channels have delivered their
   values. Synchronization is local — no distributed consensus needed at the primitive level.
-- **Asynchronous by construction**: `spawn` launches work without blocking. The spawning
-  computation continues immediately. Results arrive on channels.
+- **Asynchronous by construction**: coordination launches work without blocking. Results arrive on
+  channels.
 - **Reaction rules**: `when` patterns are reaction rules — "when channel A has a value AND channel
-  B has a value, fire this body." This naturally expresses multi-way synchronization (e.g.,
-  "proceed when both query A and query B complete").
+  B has a value, fire this body." This naturally expresses multi-way synchronization.
+- **Locality property**: messages travel to their channel's definition site. A `send ch value` on
+  a remote node routes the value back to wherever `ch` was created. This is the mechanism that
+  makes distributed coordination work without distributed consensus.
+
+### `spawn` is Sugar
+
+Following the Join Calculus asynchronous core (Section 1.3), the true primitives are: channel
+creation, `send`, parallel composition, and `when`. `spawn body` desugars to:
+
+```
+let ch = channel () in fork (send ch body) in ch
+```
+
+Create a channel, fork the body, auto-send the result. `spawn!` creates a bare channel without
+a body — the user completes it via explicit `send`. This distinction is what makes distributed
+execution work: `spawn` handles local concurrency (auto-return), while `spawn!` + explicit `send`
+handles the distributed case where a remote node must explicitly route results back.
+
+### Explicit Control over Distributed Computing
+
+**ESQL is declarative about data retrieval.** You say what you want, ESQL decides where and how.
+
+**Piescript is explicit about distributed computation.** Nodes are values. Shards are values.
+The user sends code to named nodes and coordinates results via channels. The user orchestrates
+the distributed plan — libraries raise the abstraction level when convenience is wanted.
+
+| | ESQL | Piescript |
+|--|------|----------|
+| Model | Declarative query | Explicit distributed program |
+| Distribution | Automatic (optimizer decides) | User-controlled (name nodes, send code) |
+| Topology | Hidden | First-class typed values |
+| Optimization | ESQL's planner | The user's program (+ libraries) |
+
+This means:
+- `index_topology "pattern"` returns cluster topology as typed records (nodes, shards)
+- `send node.inbox closure` ships code to a remote node
+- `scan shard` accesses local data on a data node (Lucene queries)
+- `query \`ESQL\`` defers to ESQL when its declarative optimization is what you want
+- The two approaches coexist — ESQL for declarative data retrieval, piescript for explicit
+  distributed computation
 
 **The rule:** pure code evaluates; coordination primitives orchestrate; the runtime dispatches.
 
 This separation works because the language is **pure and referentially transparent**. The only
-effects are coordination effects (`spawn`, `when`, channel communication). Since pure expressions
+effects are coordination effects (`send`, `when`, channel communication). Since pure expressions
 have no side effects, they can be safely evaluated on any node, and closures can be shipped to
 remote nodes without changing semantics.
 
@@ -175,71 +220,78 @@ locally-synchronizable primitives guarantees that every coordination pattern in 
 efficient distributed implementation. See [references.md](references.md) for the full theoretical
 lineage.
 
-## MVP: Unified Data Pipelines
+## MVP: Distributed Vertical Slice
 
-The MVP goal is a piescript program that can express the equivalent of — and more than — ES
-Transforms, enrich policies, and ingest pipeline chains, as a single typed program.
+> See [mvp.md](mvp.md) for concrete examples of what piescript can do today and what's aspirational,
+> including a real-world risk scoring case study and the distributed vertical slice target.
+
+The MVP goal is a piescript program that demonstrates **explicit distributed computation**:
+discover cluster topology, ship code to data nodes, access local data, and coordinate results
+via channels. This proves the core value proposition: user-controlled distributed computing with
+code mobility.
 
 ### What the MVP demonstrates
 
-1. **Query data** from one or more indices via ESQL.
-2. **Transform, filter, and aggregate** the results using typed, composable functions.
-3. **Run multiple queries concurrently** via `spawn` + `when` — no sequential blocking.
-4. **Join / enrich** by querying a second index and merging fields — no separate enrich policy
-   or processor configuration needed.
-5. **Write results** to a target index via `writeTo`.
-6. **Run on a schedule** as an async persistent task within Elasticsearch.
+1. **Discover topology** — query the cluster for nodes and shards as typed piescript values.
+2. **Create channels** — bare channel creation via `spawn!` for explicit coordination.
+3. **Ship code to data nodes** — `send node.inbox closure` delivers a closure to a remote node.
+4. **Access local data** — `scan shard` runs Lucene queries on the data node.
+5. **Coordinate results** — remote closures explicitly `send` results back to coordinator-owned
+   channels. `when` patterns synchronize on the results.
+6. **Query via ESQL** — `query \`ESQL\`` remains the easy path for declarative data retrieval.
 
 ### Why this proves the use case
 
-- **Expressiveness**: a piescript transform is a *program*, not a configuration. Users can write
-  arbitrary logic — not just the fixed aggregation modes the Transform API anticipated.
-- **Type safety**: the entire pipeline — source query, transforms, joins, output — is type-checked
-  as one unit. If an enrich join references a field that doesn't exist, the error is caught at
-  compile time, not at 3 AM on the 10 millionth document.
-- **Concurrency**: multiple queries execute in parallel via `spawn` + `when`, with the type system
-  ensuring that `when` bodies receive the correct types from each channel.
-- **Unification**: one program replaces what today requires chaining a Transform, an enrich policy,
-  an enrich processor, an ingest pipeline, and the glue between them. One language, one type system,
-  one error model, one debugging story.
+- **Distributed computing**: piescript code runs on data nodes, not just the coordinator. This is
+  the fundamental capability that no other Elasticsearch feature provides at the language level.
+- **Code mobility**: closures (code + captured environment) travel to where data lives. Purity
+  guarantees this is safe.
+- **Explicit control**: the user decides what runs where. No hidden optimizer. Libraries can
+  provide higher-level abstractions, but the primitives are always available.
+- **Type safety**: the entire pipeline — topology discovery, closure construction, channel
+  coordination, result processing — is type-checked as one unit.
+- **Join Calculus foundation**: channels, send, and when are the only coordination primitives.
+  Everything else (including Exchange streaming at scale) is orchestrated through them.
 
 ### Conceptual example
 
-What today requires an enrich policy + enrich processor + ingest pipeline + transform:
+The distributed vertical slice:
 
 ```
-let orders_ch = spawn (query `FROM incoming-orders | WHERE @timestamp > now() - 1h`);
-let customers_ch = spawn (query `FROM customer-database`);
-
-when (orders_ch orders) & (customers_ch customers) -> {
-  let enriched = orders |> map (fn order ->
-    let customer = customers
-      |> filter (fn c -> c.id == order.customer_id)
-      |> reduce { name: "", tier: "" } (fn _ c -> { name: c.name, tier: c.tier });
-    { order | customer_name: customer.name, tier: customer.tier });
-
-  let summary = enriched
-    |> groupBy .tier
-    |> reduce { count: 0, revenue: 0 } (fn acc row ->
-         { count: acc.count + 1, revenue: acc.revenue + row.amount });
-
-  summary |> writeTo "order-summary-by-tier"
-}
+let topo = index_topology "my-index"
+in let ch = spawn!
+in let target = head topo
+in send target.node.inbox (fn () ->
+  let data = scan target |> filter (fn r -> r.status == "active")
+  in send ch data
+)
+in when (ch results) ->
+  results |> map (fn r -> { id: r.id, status: r.status })
 ```
 
-One typed program. Both queries run concurrently. The `when` fires when both complete. The type
-checker verifies field compatibility across the entire pipeline before anything runs.
+The coordinator discovers topology, creates a bare channel, ships a closure to a data node.
+The data node scans its local shard, filters, and explicitly sends results back. The coordinator
+receives and processes them. Genuine distributed computing — verified by the remote closure
+returning the node name it ran on.
 
 ### MVP scope (mapped to blocks)
 
 The MVP requires completing these blocks from the [roadmap](roadmap.md):
 
-- **Block A**: `spawn` + single-value `when` (async coordination) — concurrent query execution
-- **Block B**: Multi-value channels (full Join Calculus runtime) — streaming results
-- **Block C**: `writeTo` sink + scheduler — persistence and scheduled execution
+- **Block A**: `spawn` + single-value `when` (local async coordination) :white_check_mark:
+- **Block B**: ES topology as typed values (`index_topology`, node/shard records)
+- **Block C**: Cross-node code execution (`send`, `spawn!`, closure serialization, channel registry)
+- **Block D**: Local data access (`scan` on data nodes)
 
-Push-down compilation of piescript transforms into ESQL expressions (Block D) is a post-MVP
-optimization. The MVP achieves correctness and concurrency; performance optimization follows.
+Stretch goal: **Block E** (`writeTo` — persist results to indices). Not required for the vertical
+slice, but enables the Transform replacement story.
+
+### The unified data pipelines story
+
+The original MVP vision — replacing ES Transforms, enrich policies, and ingest pipeline chains
+with a single typed program — remains valid and is now a **superset** of the distributed vertical
+slice. It requires `writeTo` (Block E), `groupBy` combinator, and scheduled execution. The
+distributed vertical slice comes first because it proves the harder, more foundational capability.
 
 ## What Piescript is Not
 
@@ -258,13 +310,16 @@ optimization. The MVP achieves correctness and concurrency; performance optimiza
 
 These are directional, not committed:
 
-- **Distributed coordination** — `spawn`ed computations dispatched to data nodes, `when` patterns
-  synchronizing results across nodes, leveraging ES's transport layer for cross-node channels.
-- **ESQL Exchange integration** — piescript as a consumer/producer in ESQL's Exchange pipeline for
-  high-throughput streaming data flow.
-- **Push-down compilation** — compiling mobile piescript lambdas into ESQL expressions (map → EVAL,
-  filter → WHERE) for vectorized execution on data nodes. Significant compiler work (closure
-  conversion, lambda lifting, defunctionalization).
+- **Typeclass-driven push-down** — specialize generic functions (`filter`, `map`) based on data
+  representation via typeclasses. `filter pred rawdata` compiles to a Lucene query; `filter pred
+  stream` iterates values. Replaces the old push-down-to-ESQL-text approach with a principled,
+  type-directed optimization that works with piescript's own `scan` data access path.
+- **Exchange streaming via explicit orchestration** — for large data volumes, piescript orchestrates
+  Exchange setup via channels (send closure to data node → data node initializes Exchange sink →
+  coordinator connects source → Pages stream with back-pressure). The Exchange is ES infrastructure
+  that piescript talks to, not infrastructure piescript is built on.
+- **Multi-value channels** — streaming patterns, fold-as-join, event handling. Single-value `send`
+  is covered by Block C; multi-value channels extend this to repeated messages over time.
 - **Linearity for channels** — QTT-style multiplicities (0, 1, ω) on bindings. Channel endpoints
   are linear (multiplicity 1), enabling session types with deadlock-freedom guarantees. Most values
   remain unrestricted (ω). See [references.md § Linear Haskell](references.md).

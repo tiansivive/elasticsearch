@@ -3,10 +3,13 @@
 > **Living doc** — update status markers as work progresses. Add new phases/sub-phases as they are
 > planned.
 >
-> **Revised**: 2026-03-16. Phases 3–5 have been replaced by Blocks A–E based on the Join Calculus
-> model (D-040). The previous phase-based roadmap is archived in
-> `docs/archive/roadmap.pre-join-calculus.md`. Old plan files (`phase3_stream_runtime.plan.md`,
-> `phase4_process_primitives.plan.md`) are archived in `docs/archive/`.
+> **Revised**: 2026-03-17. Blocks B–E restructured around the distributed vertical slice (D-042).
+> Block B is now ES topology; Block C is cross-node execution; Block D is local data access;
+> Block E is `writeTo` (stretch goal). Old block definitions (multi-value channels, `writeTo` +
+> scheduler, push-down compilation, Exchange integration) are deferred. See D-042 for rationale.
+>
+> Previous revision (2026-03-16): Phases 3–5 replaced by Blocks A–E based on Join Calculus (D-040).
+> The pre-join-calculus roadmap is archived in `docs/archive/roadmap.pre-join-calculus.md`.
 
 **Overall design**: [scripting language design](../../.cursor/plans/scripting_language_design_9286506e.plan.md)
 
@@ -21,31 +24,45 @@
 
 ---
 
-## MVP Milestone — Unified Data Pipelines
+## MVP Milestone — Distributed Vertical Slice
 
-> See [vision.md § MVP](vision.md#mvp-unified-data-pipelines) for the full rationale.
+> See [vision.md § MVP](vision.md#mvp-distributed-vertical-slice) for the full rationale.
+> See [mvp.md](mvp.md) for concrete examples of what piescript enables today and what's aspirational.
+>
+> **Revised**: 2026-03-17. The MVP target has shifted from "unified data pipelines" to
+> "distributed computing vertical slice" — proving that piescript can discover topology, ship code
+> to remote nodes, access local data, and coordinate results via channels. See D-042.
 
-The MVP target is a piescript program that replaces the combination of ES Transforms, enrich
-policies, enrich processors, and ingest pipeline chains with a single typed program. The MVP
-demonstrates expressiveness (arbitrary user-defined logic), type safety (compile-time field and type
-checking across the entire pipeline), concurrency (parallel queries via `spawn` + `join`), and
-unification (one language replacing multiple chained features).
+The MVP target is a piescript program that demonstrates **explicit distributed computation**: the
+user discovers cluster topology, creates channels, ships closures to data nodes, the data nodes
+execute Lucene queries locally, send results back to coordinator-owned channels, and the
+coordinator processes the results. This proves the core value proposition: user-controlled
+distributed computing with code mobility, coordinated by the Join Calculus.
 
 **MVP scope** — the following must be complete:
 
 | Block | What it contributes to the MVP | Status |
 |-------|-------------------------------|--------|
-| Phase 1e | Pattern matching — control flow in transforms | Deferred — not blocking Blocks A+ |
 | Phase 2 | Index resolution — typed query results, field-level type checking, eager evaluation | :white_check_mark: |
-| Block A | `spawn` + single-value `when` — concurrent multi-query coordination | :memo: |
-| Block B | Multi-value channels — full Join Calculus runtime | :memo: |
-| Block C | `writeTo` sink + scheduler — persistence and scheduled execution | :memo: |
+| Block A | `spawn` + single-value `when` — local async coordination | :white_check_mark: |
+| Block B | ES topology as typed values — `index_topology`, node/shard records | :memo: |
+| Block C | Cross-node code execution — `send`, `spawn!`, closure serialization, channel registry | :memo: |
+| Block D | Local data access — `scan` on data nodes inside shipped closures | :memo: |
 
-**Post-MVP enhancements** (not required for the MVP demonstration):
+**Stretch goal** (valuable but not required for the vertical slice):
 
-- Block D: Push-down compilation (piescript lambdas → ESQL expressions)
-- Block E: Exchange integration (streaming performance via ESQL's compute engine)
-- Phase 6: QTT multiplicities, session types, explicit user-facing channels
+| Block | What it adds | Status |
+|-------|-------------|--------|
+| Block E | `writeTo` — persist results to an index (Bulk API). Transform replacement story. | :memo: |
+
+**Post-MVP enhancements**:
+
+- Multi-value channels (streaming patterns, fold-as-join)
+- Scheduled execution (persistent tasks)
+- Typeclasses + RawData → Lucene push-down (principled optimization via type system)
+- Exchange streaming (scale via compute engine, orchestrated explicitly by piescript)
+- Push-down to ESQL text (deprioritized — typeclass approach is more general)
+- Phase 6: QTT multiplicities, session types
 - Phase 7: Module system (stored programs with imports)
 - Phase 8: IDE tooling
 
@@ -222,13 +239,13 @@ or when downstream work requires them.
 | Pattern matching deferred (Phase 1e) | D-010, D-029 | `match` expressions, exhaustiveness checking, `if/then/else` as sugar — all deferred. Not blocking Blocks A+. |
 | Integer-only arithmetic | D-020 | `Long` and `Double` literals exist but cannot participate in arithmetic. Requires coercion rules or type classes. |
 | Null semantics unsound | D-007 | `Null` unifies with any type. Proper `Option` type requires ADTs (Phase 1e+). |
-| `DIRECT_EXECUTOR_SERVICE` | D-004 | Parse, elaborate, evaluate all run synchronously on the calling thread. Needs a dedicated thread pool when computation becomes heavier. |
 | `KeywordVal` uses `String`, not `BytesRef` | D-026 | Reverse conversion needed when piescript values flow into ESQL query parameters (Phase 2+). |
-| No backwards-compatibility versioning | — | `PiescriptRequest`/`PiescriptResponse` do not use `TransportVersion` checks. |
 | Double `EsqlBodyParser.parse()` call | T2.6 | Index pattern extracted once in `IndexResolutionPrePass.collectQueries()` and again in `Queries.query()`. Consequence of opaque `ESQL_BODY` token approach. Goes away when ANTLR grammar structurally captures the `FROM` clause. |
 | Opaque `ESQL_BODY` lexer token | T2.1 | ESQL body captured as backtick-delimited raw text (`` query `FROM ...` ``); index pattern extracted via Java string parsing. Future: parse `FROM <pattern>` structurally in the ANTLR grammar. |
-| Merge `/_piescript/eval` and `/_piescript/dev` | T2.9 | Both REST handlers dispatch to `TransportPiescriptAction` with a `dev` flag. Future: single `/_piescript/eval?dev` endpoint, eliminating `RestPiescriptDevAction`. |
 | Empty mapping diagnostics | — | When `buildRowFields` produces an empty row (index exists but field caps returns no usable fields), emit a diagnostic on `ElaborationState` rather than silently producing `Stream { }`. Downstream type errors ("missing fields … in `{ }`") are confusing when the real issue is a missing or unmapped index. |
+
+See also [General Tech Debt — ES Conventions & Plugin Infrastructure](#general-tech-debt--es-conventions--plugin-infrastructure)
+for cross-cutting items (TransportVersion, logging, ActionType naming, thread pool, endpoint merge).
 
 ---
 
@@ -256,7 +273,7 @@ open-row unification infrastructure from Phase 1d.
 
 ---
 
-## Block A — `spawn` + Single-Value `when` (Async Coordination) :memo:
+## Block A — `spawn` + Single-Value `when` (Async Coordination) :white_check_mark:
 
 > Replaces the old Phase 3 (plan graph) and Phase 4 (`par` blocks). See D-040, D-041.
 
@@ -280,16 +297,16 @@ paths. See D-041.
 
 | Task | Status |
 |------|--------|
-| `Channel τ` type constructor in the type system | :memo: |
-| `CoreSpawn` and `CoreWhen` variants in `CoreExpr` sealed hierarchy | :memo: |
-| `spawn` and `when` in ANTLR grammar | :memo: |
-| `SpawnVal(SubscribableListener<Value>)` in `Value` hierarchy | :memo: |
-| Uniformly async evaluator refactor (CPS / ActionListener-based evaluation) | :memo: |
-| `spawn` evaluation: fork to GENERIC thread pool, return `SpawnVal` | :memo: |
-| `when` synchronization: positional collector for all arities | :memo: |
-| `TransportPiescriptAction` async wiring (ActionListener pipeline) | :memo: |
-| Error propagation through channels (spawn failure → channel failure) | :memo: |
-| Unit tests (spawn/when semantics, concurrent queries, error propagation) | :memo: |
+| `Channel τ` type constructor in the type system | :white_check_mark: |
+| `CoreSpawn` and `CoreWhen` variants in `CoreExpr` sealed hierarchy | :white_check_mark: |
+| `spawn` and `when` in ANTLR grammar | :white_check_mark: |
+| `SpawnVal(SubscribableListener<Value>)` in `Value` hierarchy | :white_check_mark: |
+| Uniformly async evaluator refactor (CPS / ActionListener-based evaluation) | :white_check_mark: |
+| `spawn` evaluation: fork to GENERIC thread pool, return `SpawnVal` | :white_check_mark: |
+| `when` synchronization: positional collector for all arities | :white_check_mark: |
+| `TransportPiescriptAction` async wiring (ActionListener pipeline) | :white_check_mark: |
+| Error propagation through channels (spawn failure → channel failure) | :white_check_mark: |
+| Unit tests (spawn/when semantics, concurrent queries, error propagation) | :white_check_mark: |
 | Integration tests (concurrent ESQL queries via spawn + when) | :memo: |
 
 **Key architectural decisions:**
@@ -308,7 +325,7 @@ paths. See D-041.
 
 - D-005 (HM type system), D-006 (de Bruijn), D-014 (traveling closures), D-016 (combinators as
   prelude built-ins) — all still apply unchanged
-- Mobility check concept — deferred to Block D (push-down compilation)
+- Mobility check concept — deferred to push-down compilation (deprioritized, see D-042)
 
 **What is superseded:**
 
@@ -320,91 +337,212 @@ paths. See D-041.
   not just an influence.
 
 **Ref**: [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
-[Block A plan](../../.cursor/plans/block_a_implementation_2fdbab36.plan.md)
+[Block A plan](../../.cursor/plans/block_a_implementation_2fdbab36.plan.md),
+[Block A implementation](14bf4826-a39e-4012-ab4c-d73ad902a95f)
 
 ---
 
-## Block B — Multi-Value Channels (Full Join Calculus) :memo:
+## Block B — ES Topology & Node Types :memo:
 
-> Extends Block A with streaming channels and explicit send/receive.
+> **Revised**: 2026-03-17. Replaces old Block B (multi-value channels). See D-042.
 
-Block A's channels carry a single value (the final result of a `spawn`ed computation). Block B
-introduces multi-value channels that carry streams of messages, enabling:
+Make the cluster visible as typed piescript values. This is the entry point to distributed
+execution — piescript can describe ES infrastructure as first-class values before it can send
+code anywhere.
 
-- **Fold-as-join**: aggregate results incrementally as values arrive on a channel.
-- **Streaming intermediate results**: one computation produces values over time, another consumes
-  them concurrently.
-- **General event handling**: react to sequences of events, not just single completions.
-
-**Implementation strategy**: Introduce a lightweight piescript-native multi-value channel
-(`Queue<Value>` + notification mechanism), distinct from ESQL's `Exchange`. The join automaton
-matches patterns over these channels — firing the join body each time the pattern is satisfied.
+**What it delivers:**
+- A builtin function (name TBD — not `from`, which collides with ESQL `FROM`; candidates:
+  `topology`, `shards_of`, `index_topology`) that takes an index pattern and returns a record
+  describing nodes and shards.
+- Plain record types — no opaque builtin types needed initially. Nodes and shards are records.
+- Implementation reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting`
+  → `DiscoveryNode` and converts to `RecordVal`/`StreamVal`.
 
 | Task | Status |
 |------|--------|
-| `newchan` and `send` primitives (Core IR + grammar) | :memo: |
-| Multi-value channel implementation (concurrent queue + notification) | :memo: |
-| Join automaton for pattern matching over multi-value channels | :memo: |
-| Join semantics: `&` (all channels) and `|` (any channel — if feasible) | :memo: |
-| Channel completion / close semantics | :memo: |
-| Backpressure mechanism (optional, may defer) | :memo: |
-| Unit and integration tests | :memo: |
+| Inject `ClusterService` into piescript transport action | :memo: |
+| Builtin function: index pattern → topology record | :memo: |
+| Return type design: node/shard record structure | :memo: |
+| Type the builtin in `Prelude` with concrete return type | :memo: |
+| Unit tests (topology resolution, record structure) | :memo: |
+| Integration test (real cluster topology via the endpoint) | :memo: |
 
 ---
 
-## Block C — `writeTo` Sink + Scheduler :memo:
+## Block C — Cross-Node Code Execution (`send` + `spawn!`) :memo:
 
-Adds persistence and scheduled execution. `writeTo` writes stream results to a target index
-(via the Bulk API). The scheduler runs piescript programs as persistent tasks on a configurable
-schedule — the "Transform replacement" use case.
+> **Revised**: 2026-03-17. Replaces old Block C (`writeTo` + scheduler). See D-042.
+
+The core distributed computing story. Ship a closure to a remote node, get a result back. This is
+the hardest and most important block.
+
+**What it delivers:**
+- `spawn!` — bare channel creation (`new SubscribableListener<>()` in a `SpawnVal`). Creates a
+  channel without executing a body. User completes it via explicit `send`.
+- `send` primitive — locally: `listener.onResponse(value)`. Cross-node: transport message routed
+  to the channel's owner node via the channel registry.
+- Closure serialization — `(CoreExpr body, Value[] captured_env)` over the wire. Core IR is a tree
+  of records. Values are recursively serializable. Channel references serialize as
+  `ChannelRef(ownerNodeId, channelId)`.
+- Channel registry — `ConcurrentHashMap<String, SubscribableListener<Value>>` per node. Channels
+  named as `<ownerNodeId>:<channelUuid>`.
+- Remote evaluator — transport action on data nodes: accept serialized closure, evaluate, send
+  result on specified channel.
+- Two transport handlers:
+  - `piescript/execute_closure` — coordinator → data node
+  - `piescript/channel_message` — data node → coordinator (or any node → channel owner)
+
+**Verification:** A `local_node` builtin returns the current node's identity. Remote closures
+return `{ ran_on: local_node, result: ... }` to prove code crossed nodes. Integration tests use
+multi-node clusters.
+
+**Likely sub-blocks** (to be detailed when implementation begins):
+- C.1: `spawn!` + local `send` (semantics without transport)
+- C.2: `Value` serialization (`Writeable` for all `Value` variants)
+- C.3: `CoreExpr` serialization (Core IR over the wire)
+- C.4: Transport handlers + channel registry (cross-node wiring)
+- C.5: Multi-node integration test
+
+| Task | Status |
+|------|--------|
+| `spawn!` — bare channel creation (grammar + Core IR + evaluator) | :memo: |
+| `send` primitive — local channel completion | :memo: |
+| `Value` serialization (`Writeable` implementations) | :memo: |
+| `CoreExpr` serialization (Core IR tree over transport) | :memo: |
+| Channel registry (`ConcurrentHashMap` per node) | :memo: |
+| Transport handler: `piescript/execute_closure` | :memo: |
+| Transport handler: `piescript/channel_message` | :memo: |
+| Remote evaluator (evaluate closure on data node) | :memo: |
+| `local_node` builtin (for verification) | :memo: |
+| Multi-node integration tests (prove cross-node execution) | :memo: |
+
+---
+
+## Block D — Local Data Access (`scan`) :memo:
+
+> **Revised**: 2026-03-17. Replaces old Block D (push-down compilation). See D-042.
+
+Access data on a data node without going through ESQL. Completes the distributed vertical slice.
+
+**What it delivers:**
+- `scan` as a builtin function — takes a shard reference (from Block B topology records), returns
+  data. For the vertical slice: returns `StreamVal` (materialized).
+- Implementation: `IndexSearcher` / Lucene on the local shard. Runs inside closures shipped via
+  `send`.
+- The `RawData` lazy type (typeclass-driven push-down to Lucene) is a future optimization, not
+  required for the vertical slice.
+
+| Task | Status |
+|------|--------|
+| `scan` builtin function (grammar or prelude) | :memo: |
+| Shard-local Lucene query execution | :memo: |
+| Result conversion to `StreamVal` | :memo: |
+| Integration test: `send` closure with `scan` to data node, verify results | :memo: |
+
+**Full vertical slice example** (after Blocks B+C+D):
+
+```
+let topo = index_topology "my-index"
+in let ch = spawn!
+in let target = head topo
+in send target.node.inbox (fn () ->
+  let data = scan target |> filter (fn r -> r.status == "active")
+  in send ch data
+)
+in when (ch results) ->
+  results |> map (fn r -> { id: r.id, status: r.status })
+```
+
+---
+
+## Block E — Writing Sinks (`writeTo`) :memo: (Stretch Goal)
+
+> **Revised**: 2026-03-17. Moved from old Block C. Not required for the distributed vertical slice.
+
+Persist piescript results to an index via the Bulk API. Makes piescript a replacement for ES
+Transforms. Depends on the distributed vertical slice being complete (Blocks B–D) for the full
+story, but could be implemented independently for coordinator-only use.
 
 | Task | Status |
 |------|--------|
 | `writeTo` sink primitive (Core IR + grammar + typing) | :memo: |
 | Bulk API integration (batch writes from stream results) | :memo: |
-| Stored program representation (simple precursor to Phase 7 module system) | :memo: |
-| Persistent task implementation for piescript execution | :memo: |
-| REST API for creating/managing scheduled piescript jobs | :memo: |
-| Status/progress reporting via the tasks API | :memo: |
-| Checkpointing for incremental/resumable execution | :memo: |
-| Integration tests (scheduled execution, write-back, failure recovery) | :memo: |
+| Integration tests (write-back, error handling) | :memo: |
+
+Scheduled execution (persistent tasks, REST API for managing piescript jobs, checkpointing) is
+deferred until `writeTo` lands and the scheduler story is needed.
 
 ---
 
-## Block D — Push-Down Compilation (Optimization) :thought_balloon:
+## Deferred: Multi-Value Channels :thought_balloon:
 
-Optimizes performance by compiling mobile piescript lambdas into ESQL expressions. A `map` with
-a simple field projection becomes an ESQL `EVAL` clause; a `filter` with a simple predicate
-becomes a `WHERE` clause. This is significant compiler work — not a simple string concatenation.
+> Old Block B, reworked. See D-042.
 
-**Complexity**: Requires closure conversion, lambda lifting, and a mobility analysis to determine
-which lambdas can be expressed in ESQL's expression language. Recursion, higher-order functions,
-closures over complex values, and sub-queries all present challenges. Semantic divergence (piescript
-vs. ESQL behavior for the same operation) must be carefully managed.
+Block A's channels are single-value (one completion). Multi-value channels carry streams of
+messages over time — needed for streaming patterns, fold-as-join, and event handling. Single-value
+`send` (completing a `spawn!`) is covered by Block C. Multi-value channels are about repeated
+messages on the same channel.
 
 | Task | Status |
 |------|--------|
-| Mobility analysis (which lambdas are ESQL-expressible?) | :thought_balloon: |
-| Core IR → ESQL text compiler backend | :thought_balloon: |
-| Closure conversion / lambda lifting for mobile closures | :thought_balloon: |
-| Push-down optimization pass (rewrite queries with fused transforms) | :thought_balloon: |
-| `groupBy` + `reduce` → ESQL `STATS` compilation | :thought_balloon: |
-| Semantic equivalence testing (piescript eval vs. ESQL execution) | :thought_balloon: |
+| `newchan` primitive (explicit multi-value channel creation) | :thought_balloon: |
+| Multi-value channel implementation (concurrent queue + notification) | :thought_balloon: |
+| Join automaton for pattern matching over multi-value channels | :thought_balloon: |
+| Channel completion / close semantics | :thought_balloon: |
+| Backpressure mechanism | :thought_balloon: |
 
 ---
 
-## Block E — Exchange Integration (Streaming Performance) :thought_balloon:
+## Deferred: Typeclass-Driven Push-Down (RawData → Lucene) :thought_balloon:
 
-Integrates piescript with ESQL's `Exchange` mechanism for high-throughput, distributed streaming
-data flow. Instead of materializing full query results before processing, piescript operates on
-`Page`s/`Block`s incrementally as they stream through the Exchange pipeline.
+> Replaces old Block D (push-down to ESQL text). See D-042.
 
-| Task | Status |
-|------|--------|
-| Piescript as Exchange consumer (process Pages incrementally) | :thought_balloon: |
-| Piescript as Exchange producer (emit Pages to downstream operators) | :thought_balloon: |
-| `Value` ↔ `Block`/`Page` conversion layer | :thought_balloon: |
-| Cross-node channel implementation via Exchange | :thought_balloon: |
+Typeclasses specialize generic functions based on data representation:
+
+```
+instance Filterable RawData where
+  filter pred rawdata = rawdata.addLuceneFilter(compilePredicate pred)
+
+instance Filterable Stream where
+  filter pred stream = stream.filter(pred)
+```
+
+When `scan` returns `RawData` (a description, not data), typeclass instances push operations into
+the description (filter → Lucene query, project → stored fields). Materialization to `Page`/`Block`
+happens only when actual data is needed. This is more general than the old Block D (compile to
+ESQL text) because it works with piescript's own data access path (`scan`), not just ESQL queries.
+
+Requires: typeclasses in the language (significant), `RawData` type, compiler instance resolution,
+`LuceneQuery` type.
+
+---
+
+## Deferred: Exchange Streaming (Scale) :thought_balloon:
+
+> Reframed from old Block E. See D-042.
+
+For large data volumes, piescript orchestrates Exchange setup **explicitly via channels** — the
+Exchange is ES infrastructure that piescript talks to, not infrastructure piescript is built on:
+
+1. Send closure to data node (via `send`)
+2. Data node scans, materializes into Exchange sink, sends back metadata (exchange ID)
+3. Coordinator connects Exchange source, signals to begin streaming
+4. Pages stream with back-pressure via Exchange
+5. Coordinator converts Pages to Values at the boundary (or processes directly)
+
+This is an explicit coordination protocol written in piescript (or in a library), not hidden
+runtime magic. Piescript doesn't abstract over scale decisions — the user chooses.
+
+---
+
+## Deprioritized: Push-Down to ESQL Text :thought_balloon:
+
+> Old Block D. Deprioritized by D-042 — typeclass approach is more general.
+
+Compile piescript lambdas into ESQL expression strings (`filter pred` → `WHERE`, `map f` →
+`EVAL`). Still useful as an optimization for the `query \`ESQL\`` path, but no longer on the
+critical path. Significant compiler work (closure conversion, lambda lifting, mobility analysis)
+for limited scope (only works with ESQL, not with piescript's own `scan`).
 
 ---
 
@@ -414,7 +552,7 @@ data flow. Instead of materializing full query results before processing, piescr
 
 Introduces QTT-style multiplicities {0, 1, ω} on bindings (D-018). Channel endpoints are linear
 (multiplicity 1), enabling session types with deadlock-freedom. Streams and all other values
-remain unrestricted (ω). User-visible channel primitives beyond `spawn`/`join`/`newchan`/`send`.
+remain unrestricted (ω). Builds on the channel primitives from Block C (`send`, `spawn!`).
 
 - QTT multiplicity annotations on function types (`A →_π B`)
 - Usage tracking in the type checker (count how many times each binding is used)
@@ -444,6 +582,28 @@ Developer experience beyond the REST API.
 - Language Server Protocol implementation
 - Syntax highlighting definitions
 - REPL / interactive evaluation mode
+
+---
+
+## General Tech Debt — ES Conventions & Plugin Infrastructure
+
+Cross-cutting tech debt related to Elasticsearch conventions, plugin infrastructure, and
+production readiness. These are not tied to any specific phase — they apply to the plugin as a
+whole and should be addressed before merging to main or shipping.
+
+Identified by reviewing the plugin against `docs/internal/GeneralArchitectureGuide.md`,
+`docs/internal/DistributedArchitectureGuide.md`, and `docs/internal/Versioning.md`.
+
+| Item | Severity | Notes |
+|------|----------|-------|
+| No backwards-compatibility versioning | High | `PiescriptRequest`/`PiescriptResponse` do not use `TransportVersion` checks. Required before shipping — any serialization field added after the initial version needs a version guard. See `Versioning.md`. |
+| `ActionType` name scope review | Medium | `PiescriptAction.NAME` is `"indices:data/read/piescript"`. Piescript is a language evaluation endpoint that may or may not touch indices. `cluster:admin/piescript/eval` or `cluster:data/read/piescript` might be more semantically accurate per `GeneralArchitectureGuide.md` § Transport Layer naming conventions. Needs a deliberate decision — `indices:` scope is defensible given `CompositeIndicesRequest` and ESQL delegation. |
+| No logging in transport/eval layer | Medium | `TransportPiescriptAction`, `Evaluator`, and supporting classes have no logging. Should add `private static final Logger logger = LogManager.getLogger(...)` with WARN for unexpected failures and DEBUG for pipeline stage timing, per ES logging conventions. |
+| `ActionListener.wrap()` usage | Low | Several call sites use `ActionListener.wrap(onResponse, onFailure)` instead of the preferred `delegateFailureAndWrap()` pattern. Instances in `TransportPiescriptAction` (dev pipeline), `EvalCoordination.PositionalCollector`, and `IndexResolutionPrePass.resolve`. Some are intentional (dev pipeline converts failures to response fields), but others should be modernized. |
+| Dedicated thread pool | Low | Transport action and evaluator run on `ThreadPool.Names.GENERIC`. Fine for a prototype, but a dedicated thread pool (via `Plugin.getExecutorBuilders()`) would provide better isolation and tunability for a production language runtime. |
+| Merge `/_piescript/eval` and `/_piescript/dev` | Low | Both REST handlers dispatch to `TransportPiescriptAction` with a `dev` flag. Future: single `/_piescript/eval?dev` endpoint, eliminating `RestPiescriptDevAction`. |
+| Duplicate `parseProgram()` in REST handlers | Low | `RestPiescriptAction` and `RestPiescriptDevAction` have identical `parseProgram()` methods. Should be extracted to a shared utility. Goes away when the endpoints are merged. |
+| Identical catch blocks in dev pipeline | Low | `TransportPiescriptAction.elaborateAndEvaluateDev` catches `ElaborationException` and `Exception` separately but handles both identically. Should be collapsed to a single `Exception` catch. |
 
 ---
 
