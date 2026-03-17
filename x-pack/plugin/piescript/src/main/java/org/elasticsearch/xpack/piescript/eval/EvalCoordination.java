@@ -47,13 +47,15 @@ final class EvalCoordination {
     }
 
     /**
-     * Extend the de Bruijn environment with channel results. Bindings are prepended in
-     * reverse order so that binding 0 ends up at index 0 (the innermost/most-recent
-     * position), matching the left-to-right source order of {@code when} bindings.
+     * Extend the de Bruijn environment with channel results. Each {@code prepend}
+     * pushes a value to the innermost position (index 0), so we iterate forward:
+     * the last binding prepended becomes the innermost (index 0), and the first
+     * binding ends up outermost — matching how the elaborator's {@code foldContext}
+     * binds left-to-right with each new name shadowing at the innermost position.
      */
     private static Value[] extendEnv(Value[] base, List<Value> values) {
         var env = base;
-        for (int i = values.size() - 1; i >= 0; i--) {
+        for (int i = 0; i < values.size(); i++) {
             env = Evaluator.prepend(values.get(i), env);
         }
         return env;

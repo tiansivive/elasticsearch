@@ -176,6 +176,119 @@ from effect interpretation.
 
 - [PDF](https://homepages.inf.ed.ac.uk/gdp/publications/handling-algebraic-effects.pdf)
 
+## Bird-Meertens Formalism and Data Parallelism
+
+The algebraic theory of why `map`, `filter`, and `reduce` can be safely parallelized and
+distributed. Directly relevant to Block D (push-down compilation): the BMF tells us which
+piescript combinators are safe to fuse into ESQL plans and which can be partitioned across
+shards/threads. The core insight is that **list homomorphisms** — functions `h` satisfying
+`h(xs ++ ys) = h(xs) ⊕ h(ys)` for some associative `⊕` — are automatically parallelizable.
+
+### Bird — *An Introduction to the Theory of Lists* (1987)
+
+Establishes the algebraic framework: lists as a free monoid, and computation over lists as
+homomorphisms. `map f` is a homomorphism (preserves concatenation). `fold ⊕ e` is a homomorphism
+when `⊕` is associative with identity `e`. `filter p` is a homomorphism (it distributes over
+concatenation). These algebraic identities are what make scatter-gather execution correct.
+
+- [PDF (Oxford)](https://www.cs.ox.ac.uk/files/3378/PRG56.pdf)
+
+### Meertens — *Algorithmics: Towards Programming as a Mathematical Activity* (1986)
+
+The companion paper establishing the "Bird-Meertens Formalism" (BMF). Develops a calculus of
+program transformations where parallelism emerges from algebraic laws rather than explicit thread
+management. The formalism treats parallelizability as a consequence of the algebraic structure
+of the computation, not as an annotation.
+
+- [Springer](https://link.springer.com/chapter/10.1007/3-540-16042-6_15)
+
+### Gibbons — *The Third Homomorphism Theorem* (1996)
+
+Proves that if a function over lists can be written as both a `foldl` and a `foldr`, it must be a
+list homomorphism — and therefore parallelizable. Provides a mechanical method for discovering
+parallelism in sequential code. Relevant to Block D: if a piescript `reduce` can be identified as
+a homomorphism (which it is when the combining function is associative), the optimizer can safely
+split it across partitions.
+
+- [PDF](http://www.cs.ox.ac.uk/people/jeremy.gibbons/publications/thirdht.pdf)
+
+### Meijer, Fokkinga, Paterson — *Functional Programming with Bananas, Lenses, Envelopes and Barbed Wire* (1991)
+
+Generalizes folds from lists to arbitrary algebraic data types via **catamorphisms** (and their
+duals: anamorphisms, hylomorphisms, paramorphisms). The parallelization story extends beyond flat
+lists to any initial algebra. Relevant to piescript if it gains algebraic data types — recursive
+types can be consumed by catamorphisms that admit the same parallel decomposition as list folds.
+
+- [PDF (Citeseer)](https://maartenfokkinga.github.io/utwente/mmf91m.pdf)
+
+### Blelloch — *Programming Parallel Algorithms* (1996)
+
+Formalizes **nested data parallelism**: parallel operations nested inside other parallel operations,
+with a compiler that flattens them into efficient flat parallelism. The NESL language demonstrates
+this. Relevant to piescript's future: a `map` over a stream where each element itself triggers a
+parallel computation (e.g., `map (fn row -> spawn (query ...)) rows`) is nested data parallelism.
+
+- [PDF (CMU)](https://www.cs.cmu.edu/~guyb/papers/Ble96.pdf)
+
+### Wadler — *Theorems for Free!* (1989)
+
+Parametricity: polymorphic functions satisfy algebraic laws for free, derived from their types
+alone. A function `f : ∀a. [a] → [a]` must commute with `map g` for any `g` — no proof needed,
+it follows from the type. This is why swapping the underlying container from a local list to a
+distributed dataset preserves correctness: the operations are defined only in terms of the
+algebraic interface, so any lawful implementation works.
+
+- [PDF](https://homepages.inf.ed.ac.uk/wadler/papers/free/free.ps)
+- [ACM DL](https://dl.acm.org/doi/10.1145/99370.99404)
+
+### Lämmel — *Google's MapReduce Programming Model — Revisited* (2008)
+
+Formally analyzes MapReduce through the lens of BMF and list homomorphisms. Shows that the
+map-reduce pattern is a specific instance of the Bird-Meertens algebraic framework: `map` is a
+list homomorphism, `reduce` (with an associative combiner) is a fold over a commutative monoid,
+and the shuffle/group-by phase is a natural transformation. Makes explicit the connection between
+the industry practice (Hadoop/MapReduce) and the theory (BMF).
+
+- [PDF (ScienceDirect)](https://www.sciencedirect.com/science/article/pii/S0167642307001281)
+
+### Chambers et al. — *FlumeJava: Easy, Efficient Data-Parallel Pipelines* (ICFP, 2010)
+
+Google's internal system for data-parallel pipelines. Explicitly models computation as deferred
+functional combinators over `PCollection`s (parallel collections). The optimizer fuses combinator
+chains, performs push-down, and selects execution strategies — the same optimization space as
+piescript's Block D. The `PCollection` is essentially a distributed functor.
+
+- [PDF (Google Research)](https://static.googleusercontent.com/media/research.google.com/en//pubs/archive/35650.pdf)
+
+### Yu et al. — *DryadLINQ: A System for General-Purpose Distributed Data-Parallel Computing Using a High-Level Language* (OSDI, 2008)
+
+Takes LINQ — which is monadic comprehension syntax over `IEnumerable` — and executes it
+distributedly. The closest existing system to the pattern piescript is building: same functor
+interface (map/filter/reduce), different execution backend (local collection vs. distributed
+DAG). Shows that the algebraic interface is sufficient to enable transparent distribution.
+
+- [PDF (Microsoft Research)](https://www.microsoft.com/en-us/research/wp-content/uploads/2008/10/DryadLINQ.pdf)
+
+### Relevance to Piescript
+
+The BMF tells us precisely which piescript operations are safe to push down and parallelize:
+
+- **`map f`** is always a homomorphism (distributes over concatenation). Safe to push down to
+  shards unconditionally. Block D compiles `map` → ESQL `EVAL`.
+- **`filter p`** is always a homomorphism. Safe to push down. Block D compiles `filter` →
+  ESQL `WHERE`.
+- **`reduce e f`** is a homomorphism when `f` is associative with identity `e` (i.e., `(e, f)`
+  forms a monoid). For Block D, the optimizer needs to verify (or the user needs to assert)
+  associativity to split a reduce across partitions.
+- **User-defined combinators** over streams inherit parallelizability from their algebraic
+  structure. If piescript gains typeclasses, a `Monoid` constraint on `reduce`'s combiner would
+  make parallelizability a type-level guarantee.
+
+The free monad perspective from [architecture.md](architecture.md) connects to BMF: the residual
+of partial evaluation is a tree of coordination effects. Push-down compilation (Block D) fuses
+homomorphic combinators into ESQL plans. Non-homomorphic operations (stateful folds, operations
+with data dependencies between elements) remain at the piescript level.
+
 ## BEAM / Erlang / Elixir — Lessons and Differentiation
 
 Erlang/BEAM is the most successful production system for distributed computation with message
@@ -286,6 +399,13 @@ if piescript ever needs finer-grained usage tracking (e.g., "used at most N time
 | Dunfield & Krishnaswami (bidirectional) | Checking rule for universal types, annotation elaboration (D-034) |
 | Honda et al. (session types) | Future: typing channel protocols for safety |
 | Wadler (propositions as sessions) | Future: deadlock-freedom from the type system |
+| Bird (theory of lists) | Algebraic foundation: `map`/`filter`/`reduce` as list homomorphisms (Block D) |
+| Gibbons (third homomorphism theorem) | Identifying parallelizable reductions mechanically (Block D) |
+| Meijer et al. (bananas/catamorphisms) | Generalizing folds to algebraic data types (future ADTs) |
+| Blelloch (nested data parallelism) | Nested parallel computation flattening (Block E) |
+| Wadler (theorems for free) | Parametricity guarantees for swapping local → distributed containers |
+| Lämmel (MapReduce revisited) | Formal link between scatter-gather execution and BMF |
+| FlumeJava / DryadLINQ | Deferred combinator fusion, push-down optimization (Block D) |
 | Stark & Fiore (free-algebra models) | Theoretical basis for algebraic effect interpretation (informational) |
 | Wu & Schrijvers (fusion for free) | Future: optimization via handler fusion (Block D) |
 | BEAM / Erlang | Distribution transparency, OTP supervision, scheduling fairness |

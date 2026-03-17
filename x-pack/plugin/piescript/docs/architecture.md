@@ -2,23 +2,28 @@
 
 > **Living doc** — update when adding components, changing data flow, or making structural decisions.
 >
-> **Revised**: 2026-03-16. The execution model has been redesigned around the Join Calculus (D-040).
-> The plan graph / two-layer IR / optimizer / executor architecture is archived in
-> `docs/archive/architecture.pre-join-calculus.md`.
+> **Revised**: 2026-03-17. Distributed execution strategy refined (D-042): `spawn` is sugar over
+> channel creation + send; piescript gives explicit control over distributed computing; the compute
+> engine (Page/Block/Exchange) is infrastructure piescript orchestrates, not infrastructure piescript
+> is built on. Channel registry and transport actions for cross-node execution are documented.
 >
-> **Ref**: [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef)
+> Previous revision (2026-03-16): execution model redesigned around Join Calculus (D-040).
+>
+> **Ref**: [Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f),
+> [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef)
 
 ## System Overview
 
 Piescript is an Elasticsearch x-pack plugin that adds a typed functional scripting language on top of
-ESQL. The current architecture (through Phase 2) has a synchronous compilation and evaluation
-pipeline: programs are received via REST, parsed, type-checked against index mappings, and evaluated
-by a tree-walking interpreter that fires ESQL queries synchronously and operates over materialized
-stream results.
+ESQL. Programs are received via REST, parsed, type-checked against real index mappings, and evaluated
+by a uniformly asynchronous tree-walking interpreter. The evaluator uses continuation-passing style
+(CPS) via `ActionListener` — pure expressions complete synchronously inline, while coordination
+primitives (`spawn`, `when`) and ESQL queries execute asynchronously.
 
-Block A extends this with asynchronous coordination via Join Calculus primitives (`spawn`, `when`,
-channels), enabling concurrent query execution and multi-way synchronization. The surface keyword
-is `when` (not `join`) to avoid collision with SQL/ESQL JOIN terminology — see D-041.
+`spawn` forks computation to the GENERIC thread pool and returns a channel
+(`SubscribableListener<Value>`). `when` synchronizes on one or more channels using a positional
+collector (`AtomicArray` + `CountDown`), enabling concurrent multi-index query execution. The surface
+keyword is `when` (not `join`) to avoid collision with SQL/ESQL JOIN terminology — see D-041.
 
 ```
 Client
@@ -117,12 +122,20 @@ async tree-walking interpreter (D-041).
 - Callbacks fire synchronously (inline) for pure expressions.
 - `CoreQuery` fires an ESQL query asynchronously and returns a `StreamVal`.
 
-### Coordination Nodes (Block A)
+### Coordination Nodes (Block A + Block C)
 
-- `CoreSpawn(CoreExpr body)` — launch `body` asynchronously, return a channel.
+- `CoreSpawn(CoreExpr body)` — launch `body` asynchronously, return a channel. Sugar for
+  `let ch = channel() in fork(send ch body) in ch` (see D-042).
   - Type: `τ → Channel τ` (where `τ` is the type of `body`).
   - Evaluation: create a `SubscribableListener<Value>`, fork `body` evaluation to
     `threadPool.executor(GENERIC)`, return `SpawnVal(listener)`.
+
+- `CoreSpawnBare(MonoType channelType)` — create a bare channel without executing a body
+  (surface syntax: `spawn!`). The user completes it via explicit `send`.
+  - Type: `Channel τ`.
+  - Evaluation: `new SubscribableListener<>()` wrapped in `SpawnVal`. No fork, no body.
+  - Needed for the distributed pattern: coordinator creates channel, ships closure (capturing
+    channel reference) to remote node, remote node explicitly sends result back.
 
 - `CoreWhen(List<WhenBinding> channels, CoreExpr body)` — synchronize on channels, then evaluate
   `body` with bound values. (Surface keyword is `when` — see D-041.)
@@ -131,6 +144,11 @@ async tree-walking interpreter (D-041).
   - Evaluation: register callbacks on each channel's `SubscribableListener`. Use a positional
     collector (`AtomicArray<Value>` + `CountDown`) to preserve binding order for de Bruijn
     indexing. When all channels complete, bind the received values and evaluate `body`.
+
+- `CoreSend(CoreExpr channel, CoreExpr value)` — send a value on a channel (Block C).
+  - Locally: `listener.onResponse(value)`.
+  - Cross-node: serialize value, send transport message to the channel's owner node.
+  - The channel reference carries `(ownerNodeId, channelId)` — the runtime routes accordingly.
 
 ### Prelude Built-ins
 
@@ -143,8 +161,17 @@ functions, not extending the Core IR grammar.
 
 ## The Evaluator
 
-The evaluator is a uniformly async tree-walking de Bruijn environment machine (D-041). Every
-`evaluate` call takes an `ActionListener<Value>`. It handles all `CoreExpr` variants:
+The evaluator is a uniformly async tree-walking de Bruijn environment machine (D-041), split
+across four classes for maintainability:
+
+- `Evaluator` — core dispatch (`evaluate`, `applyFunction`) and all `CoreExpr` cases
+- `EvalPrimOps` — arithmetic, comparison, and boolean operations
+- `EvalBuiltins` — stream processing (`map`, `filter`, `reduce`) via `SubscribableListener`
+  chaining for stack-safe sequential iteration
+- `EvalCoordination` — `when` evaluation via `PositionalCollector` (encapsulates `AtomicArray` +
+  `CountDown` + failure propagation)
+
+Every `evaluate` call takes an `ActionListener<Value>`. It handles all `CoreExpr` variants:
 
 - **Functional nodes**: callbacks fire synchronously (inline). `CoreVar` looks up the de Bruijn
   environment. `CoreApp` applies a closure. `CoreLet` extends the environment. `CoreQuery` fires
@@ -167,8 +194,8 @@ This is a continuation-passing style (CPS) transformation of the evaluator, wher
 `SubscribableListener` callbacks serve as continuations. The ES infrastructure provides the
 scheduling: `SubscribableListener.addListener` subscribes to channel results (firing immediately
 if already complete), and `threadPool.executor(GENERIC)` provides safe threads for spawned
-computations. Built-in functions (`map`, `filter`, `reduce`) use an iterative while-loop pattern
-for stream processing to avoid stack growth from recursive callbacks.
+computations. Built-in functions (`map`, `filter`, `reduce`) use `SubscribableListener` chaining
+(`newForked` → `andThen` → `addListener`) for stack-safe sequential stream processing.
 
 ## Runtime Values
 
@@ -195,33 +222,66 @@ The Join Calculus model maps directly to Elasticsearch's existing async infrastr
 | Piescript Concept | ES Infrastructure | Notes |
 |------------------|-------------------|-------|
 | Single-value channel (`Channel τ`) | `SubscribableListener<Value>` | Single-completion future; other listeners subscribe for the result |
-| `spawn` (fork computation) | `threadPool.executor(GENERIC).execute(...)` | Safe to block; used for query execution |
-| `when` (channel synchronization) | Positional collector (`AtomicArray` + `CountDown`) | Preserves binding order for de Bruijn indexing; fires when all slots filled |
+| `spawn` (fork computation) | `threadPool.executor(GENERIC).execute(...)` | Sugar for channel + fork + auto-send |
+| `spawn!` (bare channel) | `new SubscribableListener<>()` | User completes via explicit `send` |
+| `send` (local) | `listener.onResponse(value)` | Completes a channel locally |
+| `send` (cross-node) | Transport message to channel owner | See channel registry below |
+| `when` (channel synchronization) | Positional collector (`AtomicArray` + `CountDown`) | Preserves binding order for de Bruijn indexing |
 | Error propagation | `ActionListener.onFailure(Exception)` | `SubscribableListener` propagates failures to all subscribers |
 | Query execution | `client.execute(EsqlQueryAction, request, listener)` | Async via ActionListener |
+| Topology discovery | `ClusterService.state()` → `RoutingTable` → `DiscoveryNode` | Reads existing cluster state |
 
-### Future: Multi-Value Channels (Block B)
+### Cross-Node Infrastructure (Block C)
 
-Block A's `SubscribableListener` is inherently single-value (one completion). Block B introduces
-multi-value channels for streaming results:
+**Channel registry**: each node maintains a `ConcurrentHashMap<String, SubscribableListener<Value>>`
+mapping channel IDs to local listeners. When `spawn!` creates a channel, it generates a UUID and
+registers the listener. Channel references serialize as `ChannelRef(ownerNodeId, channelId)` —
+two strings, trivially serializable inside closures.
 
-- **Implementation**: lightweight piescript-native concurrent queue (`Queue<Value>` +
-  notification mechanism), not ESQL's `Exchange` (which operates on `Page`/`Block`, a different
-  abstraction level).
-- **Join automaton**: pattern matching over multi-value channels, firing the join body each time
-  the pattern is satisfied.
-- **Primitives**: `newchan` (create a multi-value channel), `send` (send a value on a channel).
+**Transport actions**:
+- `piescript/execute_closure` — coordinator → data node. Payload: serialized closure
+  `(CoreExpr, Value[])` + result channel reference. Data node deserializes, evaluates, sends
+  result on the specified channel.
+- `piescript/channel_message` — any node → channel owner. Payload: `(channelId, serialized Value)`.
+  Owner looks up the `SubscribableListener` in the channel registry and completes it.
 
-### Future: Exchange Integration (Block E)
+This implements the Join Calculus locality property: messages travel to their channel's definition
+site. A `send ch value` on a remote node routes the value to the node where `ch` was created.
 
-For high-throughput streaming, piescript can participate in ESQL's Exchange pipeline:
+**Value serialization**: all `Value` variants need `Writeable` implementations for transport.
+Primitives (`IntegerVal`, `LongVal`, etc.) are trivial. `RecordVal` and `StreamVal` are recursive.
+`ClosureVal` requires Core IR serialization (`CoreExpr` tree + captured `Value[]` environment).
+`SpawnVal` serializes as `ChannelRef(ownerNodeId, channelId)` — the deserializing side creates a
+remote proxy that sends transport messages when `send` is called on it.
 
-- ESQL's `Exchange` is a multi-value, streaming, concurrent FIFO of `Page`s across threads/nodes.
-- `ExchangeService` registers transport handlers for cross-node streaming.
-- Piescript could operate on `Page`s/`Block`s directly (or convert to `Value`s incrementally),
-  becoming a consumer/producer in ESQL's distributed streaming pipeline.
+### The Type Stack: RawData / Page / Value
 
-This is a performance optimization for Block E, not required for correctness.
+Three representations of data at different abstraction levels:
+
+| Level | Type | What it is | When it's used |
+|-------|------|-----------|----------------|
+| Description | `RawData` (future) | Shard-local data reference + filters. No I/O. | Typeclass push-down: `filter pred rawdata` → Lucene query |
+| Columnar | `Page`/`Block` | Batched, ref-counted, `Writeable`. What Lucene produces. | Scale: Exchange streaming. Not a piescript concern by default. |
+| Values | `Stream` of `Value` | What piescript code operates on. `StreamVal(List<Value>)` today. | All piescript computation. Backed by Page iterators at scale. |
+
+Conversion between levels: `EsqlValueConverter` already converts `Page` rows → `RecordVal`. The
+reverse (Value → Block) is straightforward given type information. The `RawData` → `Page`
+transition is materialization (Lucene reads). Piescript doesn't abstract over scale decisions —
+the user (or a library) chooses when to use simple `Value` messages vs. Exchange streaming.
+
+### Future: Multi-Value Channels (Deferred)
+
+Block A's `SubscribableListener` is inherently single-value (one completion). Multi-value channels
+would carry streams of messages over time — needed for streaming patterns, fold-as-join, event
+handling. Single-value `send` (completing a `spawn!`) is covered by Block C.
+
+### Future: Exchange as Explicit Orchestration (Deferred)
+
+The compute engine (Page/Block/Exchange) is ES infrastructure that piescript **orchestrates via
+channels**, not infrastructure piescript is built on. For scale, the user (or a library) explicitly
+sets up an Exchange via a sequence of channel messages — send closure to data node, data node
+initializes Exchange sink and sends back metadata, coordinator connects source, Pages stream.
+This is a piescript coordination protocol, not hidden runtime magic.
 
 ## Theoretical Model: Free Monad over Join Calculus Effects
 
@@ -273,9 +333,10 @@ in one step. There is no explicit free monad data structure. The evaluator goes 
 `CoreExpr` to runtime effects via ActionListener callbacks (a continuation monad, not a free
 monad). This is correct and simple for the initial implementation.
 
-### Block D: Lowering Pass Introduced
+### Future: Lowering Pass (When Push-Down is Implemented)
 
-When Block D (push-down compilation) is implemented, the evaluator splits into two phases:
+When push-down compilation is implemented (via typeclasses or direct compilation), the evaluator
+splits into two phases:
 
 1. **Partial evaluator**: reduces pure code, gets stuck on coordination effects, produces the
    free monad residual. This is the lowering pass.
