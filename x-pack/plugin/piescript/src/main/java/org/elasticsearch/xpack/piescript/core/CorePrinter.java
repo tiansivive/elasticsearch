@@ -169,10 +169,23 @@ public final class CorePrinter {
                 sb.append(')');
             }
             case CoreSpawn sp -> {
-                sb.append("(spawn ");
-                writeExpr(sp.body(), state, sb);
-                sb.append(" : ");
-                sb.append(state != null ? writeType(TypeWalker.resolveDeep(sp.type(), state)) : writeType(sp.type()));
+                if (sp.body() != null) {
+                    sb.append("(spawn ");
+                    writeExpr(sp.body(), state, sb);
+                    sb.append(" : ");
+                    sb.append(state != null ? writeType(TypeWalker.resolveDeep(sp.type(), state)) : writeType(sp.type()));
+                    sb.append(')');
+                } else {
+                    sb.append("(spawn! : ");
+                    sb.append(state != null ? writeType(TypeWalker.resolveDeep(sp.type(), state)) : writeType(sp.type()));
+                    sb.append(')');
+                }
+            }
+            case CoreSend send -> {
+                sb.append("(send ");
+                writeExpr(send.channel(), state, sb);
+                sb.append(' ');
+                writeExpr(send.value(), state, sb);
                 sb.append(')');
             }
             case CoreWhen wh -> {

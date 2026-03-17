@@ -13,9 +13,11 @@ import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 
 /**
- * Spawn expression elaboration: converts a {@code SpawnExpr} CST node into a
- * typed {@link org.elasticsearch.xpack.piescript.core.CoreSpawn}. The body
- * expression is elaborated and its type is wrapped in {@code Chan}.
+ * Spawn expression elaboration. Two forms (D-045):
+ * <ul>
+ *   <li>{@code spawn expr} — fork body, return {@code Channel bodyType}.</li>
+ *   <li>{@code spawn!} — bare channel creation, return {@code Channel alpha} (fresh meta).</li>
+ * </ul>
  */
 final class Spawns {
 
@@ -26,5 +28,12 @@ final class Spawns {
         var body = elab.elaborate(s.expr(), ctx);
         var chanType = new MonoType.AppType(Elaborator.CHANNEL, body.type());
         return new CoreSpawn(src.source(), body, chanType);
+    }
+
+    static CoreExpr spawnBang(Elaborator elab, PiescriptAntlrParser.SpawnBangExprContext s, ElaborationContext ctx) {
+        var src = Elaborator.source(s);
+        var elementMeta = elab.state.freshType(ctx.bindingLevel());
+        var chanType = new MonoType.AppType(Elaborator.CHANNEL, elementMeta);
+        return new CoreSpawn(src.source(), null, chanType);
     }
 }

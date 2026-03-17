@@ -98,6 +98,22 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      * <p>The default implementation does nothing.</p>
      */
     @Override
+    public void enterSpawnBangExpr(PiescriptAntlrParser.SpawnBangExprContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitSpawnBangExpr(PiescriptAntlrParser.SpawnBangExprContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
     public void enterSpawnExpr(PiescriptAntlrParser.SpawnExprContext ctx) {}
 
     /**
@@ -107,6 +123,22 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      */
     @Override
     public void exitSpawnExpr(PiescriptAntlrParser.SpawnExprContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void enterSendExpr(PiescriptAntlrParser.SendExprContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitSendExpr(PiescriptAntlrParser.SendExprContext ctx) {}
 
     /**
      * {@inheritDoc}

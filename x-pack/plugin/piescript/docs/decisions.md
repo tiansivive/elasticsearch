@@ -1595,3 +1595,176 @@ working with topology results and other list values.
 field (Block C), non-STARTED shard states.
 
 **Ref**: Block B implementation session
+
+---
+
+## D-045: Block C Design — ChannelVal, Registry, Transport, Inbox
+
+**Phase**: Block C | **Status**: accepted
+
+**Context**: Block B delivers cluster topology as typed piescript values. Block C makes that
+topology actionable: ship a closure to a remote node, get a result back. The design discussion
+explored channel representation, transport architecture, inbox semantics, and how `send`/`spawn!`
+compose with the existing `spawn`/`when` model.
+
+**Decisions**:
+
+### 1. `SpawnVal` renamed to `ChannelVal(nodeId, channelId)`
+
+The `SpawnVal(SubscribableListener<Value>)` representation from Block A held a JVM-local listener
+directly in the value. This cannot serialize — `SubscribableListener` is a local object. The
+value is renamed to `ChannelVal(String nodeId, String channelId)` — pure metadata that identifies
+the channel and the node that owns it. The `SubscribableListener` moves to the `ChannelRegistry`
+(see below). `ChannelVal` is trivially serializable (two strings) and can travel across nodes
+inside closures' captured environments.
+
+The rename also reflects that channels are the concept; `spawn` is just one way to create them.
+
+### 2. `spawn!` as bare channel creation
+
+`spawn!` creates a channel without executing a body. Grammar: `SPAWN BANG`. Core IR: `CoreSpawn`
+with a nullable body (null = bare channel). Evaluator: generates a UUID, creates a
+`SubscribableListener`, registers it in the `ChannelRegistry`, returns `ChannelVal(localNodeId,
+channelId)`. The user completes the channel later via explicit `send`.
+
+`spawn expr` (with body) remains unchanged in surface syntax but now also registers via the
+registry internally, returning `ChannelVal` instead of holding the listener directly.
+
+Following D-042 §1, `spawn body` is sugar for `let ch = spawn! in fork(send ch body) in ch`.
+This is the design principle that makes distributed execution work: the body of `spawn` auto-sends
+its result, but distributed code uses explicit `send` to route results to coordinator-owned
+channels.
+
+### 3. `send` primitive
+
+`send channel value` completes a channel with a value. Grammar: `SEND expr expr`. Core IR:
+`CoreSend(channel, value, type)`. Type: `Channel a -> a -> Null`.
+
+Evaluation depends on locality:
+- Local (`nodeId == localNodeId`): look up channel in registry, call `onResponse(value)`.
+- Remote: serialize the value, send a transport message to the owner node.
+
+`send` is a keyword/Core IR node, not a builtin function, because it requires custom elaboration
+logic (constraining the channel type parameter against the value type).
+
+### 4. ChannelRegistry: `ActionListener<Value>` per entry
+
+Each node maintains a `ChannelRegistry` backed by `ConcurrentHashMap<String, ActionListener<Value>>`.
+This stores both regular channels and the inbox.
+
+- **Regular channels**: registered by `spawn!` (or `spawn expr`). The entry wraps a
+  `SubscribableListener<Value>` and auto-removes from the registry on completion (to prevent
+  leaks). One-shot.
+- **Inbox**: registered at plugin startup. A persistent, reusable `ActionListener<Value>` that
+  creates a new `Evaluator` for each received value and applies the closure. Never removed.
+
+The `when` evaluator needs `SubscribableListener.addListener`. The registry provides a `lookup`
+method that returns the underlying `SubscribableListener` for local channels. The inbox is not
+accessible via `lookup`, so `when` on the inbox naturally fails.
+
+### 5. Single transport handler: `piescript/send`
+
+One transport action handles all cross-node communication. The request carries `(channelId,
+serialized Value)`. The handler on the receiving node calls
+`channelRegistry.get(channelId).onResponse(deserializedValue)`. It never inspects the value type
+or the channel ID. Uniform, value-agnostic, channel-agnostic.
+
+There is no separate "execute closure" handler. When a closure is sent to a node's inbox, the
+transport handler delivers it like any other value. The inbox's registered `ActionListener` is
+what evaluates the closure — that behavior is determined at registration time, not delivery time.
+
+### 6. Inbox argument = local node info (dependency injection via lambda abstraction)
+
+The inbox closure receives the local node's information record as its lambda argument. The inbox
+handler applies each received closure with the local node's `RecordVal` (containing `id`, `name`,
+`address`, etc.). This eliminates the need for a `local_node` primitive — the node identity is
+just a lambda parameter.
+
+This is dependency injection via the most fundamental mechanism in the language: lambda
+abstraction. As piescript evolves, the inbox argument type can widen to include shard handles,
+local capabilities, or other node-specific context without changing the transport protocol.
+
+Inbox type: `Channel (NodeInfo -> Null)`. Topology node records gain an `inbox` field:
+`ChannelVal(nodeId, "INBOX")`.
+
+### 7. `when` only works on local channels
+
+`when` requires a local `SubscribableListener` to call `addListener` on. The detection mechanism
+is natural:
+
+- **Remote channels (including remote inboxes)**: the evaluator checks `nodeId == localNodeId`.
+  If remote, it fails with "cannot wait on remote channel."
+- **Local inbox**: the `ChannelRegistry.lookup` method only returns `SubscribableListener`s
+  created by `spawn!`/`spawn`. The inbox is registered as a plain `ActionListener`, not a
+  `SubscribableListener`, so `lookup` returns nothing.
+
+In practice, the piescript program only sees other nodes' inboxes (via `topology`). The
+initiator's own inbox is never exposed to the program. So `when` on an inbox fails at the first
+check (remote), making the second check redundant — but both layers are present for robustness.
+
+### 8. Channels carrying channels: `Channel (Channel a)`
+
+Passing channel references through channels is a natural pi-calculus pattern (name passing). A
+channel of type `Channel (Channel a)` is a "rendezvous point for exchanging channel references."
+This falls out of HM inference automatically — `Channel` is just a regular type constructor.
+
+This enables the "setup remote node" pattern: send a closure to a data node, the closure creates
+a local channel (`spawn!`), sends its reference back to the coordinator, and sets up a `when`
+handler. The coordinator then routes messages to the remote channel via the received reference.
+
+### 9. Both Value and CoreExpr serialization required
+
+Closures are `ClosureVal(CoreExpr body, Value[] env)`. To ship a closure across nodes:
+- The `CoreExpr` body (unevaluated) must serialize — this is the code.
+- The `Value[]` captured environment must serialize — this is the data (which may contain other
+  closures, channel refs, records, etc., recursively).
+
+All 11 `Value` variants and all 16 `CoreExpr` variants need `Writeable` implementations, plus
+`MonoType`, `RowType`, `LitVal`, and `Op`.
+
+**Supersedes**: D-042 §5 (channel serialization via named registry) is refined — the registry
+now stores `ActionListener<Value>` instead of `SubscribableListener<Value>`, and `ChannelVal`
+replaces the `<ownerNodeId>:<channelUuid>` naming scheme with structured fields.
+
+**Ref**: Block C design discussion
+
+---
+
+## D-046: Value restriction for let-generalization
+
+**Status**: Accepted
+**Date**: 2026-03-17
+
+### Context
+
+Piescript uses Hindley-Milner type inference with let-polymorphism: `let id = fn x -> x` generalizes
+to `∀a. a → a`. This is sound for pure values (lambdas, literals) but unsound for side-effecting
+expressions. Specifically, `let ch = spawn!` generalizes `Channel ?a` to `∀a. Channel a`, making
+each use of `ch` a different instantiation. Downstream constraints from `send` and `when` never
+meet, leaving types unresolved.
+
+This is the classic problem that the **value restriction** (Wright 1995, adopted by OCaml/SML)
+solves: only *syntactic values* are safe to generalize.
+
+### Decision
+
+Apply the value restriction at both let-generalization sites (`Let.topBindings` and `Let.letImpl`).
+Before generalizing, check `isSyntacticValue(rhs)`:
+
+- **Values** (safe to generalize): `CoreLit`, `CoreLam`, `CoreVar`, `CoreFree`,
+  `CoreRecord` (if all fields are values), `CoreTypeAbs` (if body is a value).
+- **Non-values** (keep monomorphic): `CoreApp`, `CoreLet`, `CorePrimOp`, `CoreProject`,
+  `CoreUpdate`, `CoreQuery`, `CoreSpawn`, `CoreWhen`, `CoreSend`.
+
+For non-values, constraints are solved eagerly and the type remains monomorphic.
+
+### Consequences
+
+- `let ch = spawn!` stays `Channel ?a` (monomorphic) — all uses share one meta, unification works.
+- `let ch = spawn 42` stays `Channel Integer` (already concrete, no change).
+- `let id = fn x -> x` still generalizes to `∀a. a → a` (lambda is a value).
+- `let x = f 1` does **not** generalize (application is not a value). This matches OCaml behavior.
+- Future: if relaxed generalization is needed (e.g., for partially applied builtins), the check
+  can be expanded. The value restriction is conservative but safe.
+
+**Ref**: Wright (1995) "Simple Imperative Polymorphism", OCaml value restriction
