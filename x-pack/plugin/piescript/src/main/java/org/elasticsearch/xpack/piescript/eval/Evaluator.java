@@ -23,6 +23,7 @@ import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreQuery;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
+import org.elasticsearch.xpack.piescript.core.CoreSend;
 import org.elasticsearch.xpack.piescript.core.CoreSpawn;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
@@ -141,11 +142,28 @@ public final class Evaluator {
             }
 
             case CoreSpawn spawn -> {
-                var channel = new SubscribableListener<Value>();
-                // env is safe to capture: immutable by convention (prepend always allocates a new array)
-                deps.executor().execute(ActionRunnable.wrap(channel, l -> evaluate(spawn.body(), env, l)));
-                listener.onResponse(new Value.SpawnVal(channel));
+                var channelId = deps.channelRegistry().nextChannelId();
+                var channelListener = new SubscribableListener<Value>();
+                deps.channelRegistry().register(channelId, channelListener);
+                if (spawn.body() != null) {
+                    deps.executor().execute(ActionRunnable.wrap(channelListener, l -> evaluate(spawn.body(), env, l)));
+                }
+                listener.onResponse(new Value.ChannelVal(deps.localNodeId(), channelId));
             }
+
+            case CoreSend send -> evaluate(send.channel(), env, listener.delegateFailureAndWrap((l1, chanVal) -> {
+                var ch = (Value.ChannelVal) chanVal;
+                evaluate(send.value(), env, l1.delegateFailureAndWrap((l2, value) -> {
+                    if (ch.nodeId() != null && ch.nodeId().equals(deps.localNodeId())) {
+                        deps.channelRegistry().complete(ch.channelId(), value);
+                    } else {
+                        // TODO(C.3): remote send via TransportService
+                        l2.onFailure(new EvaluationException("remote send not yet implemented (target node: " + ch.nodeId() + ")"));
+                        return;
+                    }
+                    l2.onResponse(new Value.NullVal());
+                }));
+            }));
 
             case CoreWhen when -> EvalCoordination.evaluateWhen(this, when, env, listener);
         }

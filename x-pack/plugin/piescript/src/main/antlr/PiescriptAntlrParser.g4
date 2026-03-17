@@ -25,7 +25,9 @@ topBinding
 expr
     : LET ident (COLON type)? ASSIGN expr IN expr        # LetExpr
     | FN param+ ARROW expr                               # LambdaExpr
+    | SPAWN_BANG                                          # SpawnBangExpr
     | SPAWN expr                                         # SpawnExpr
+    | SEND primary expr                                  # SendExpr
     | WHEN whenBinding (AMP whenBinding)* ARROW expr     # WhenExpr
     | pipeExpr                                           # ExprPipe
     ;

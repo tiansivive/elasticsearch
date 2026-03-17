@@ -45,7 +45,7 @@ public class EvaluatorTests extends ESTestCase {
         var elaborator = new Elaborator(state);
         var coreExpr = elaborator.elaborateProgram(program);
         var future = new PlainActionFuture<Value>();
-        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(coreExpr, future);
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(coreExpr, future);
         return future.actionGet();
     }
 
@@ -373,7 +373,7 @@ public class EvaluatorTests extends ESTestCase {
      */
     private Value evaluateWithEnv(CoreExpr expr, Value... env) {
         var future = new PlainActionFuture<Value>();
-        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(expr, env, future);
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(expr, env, future);
         return future.actionGet();
     }
 
@@ -562,7 +562,7 @@ public class EvaluatorTests extends ESTestCase {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
             var future = new PlainActionFuture<Value>();
-            new Evaluator(new EvalDependencies(null, pool, null)).evaluate(coreExpr, future);
+            new Evaluator(testDeps(pool)).evaluate(coreExpr, future);
             return future.actionGet(5, TimeUnit.SECONDS);
         } finally {
             pool.shutdown();
@@ -627,10 +627,57 @@ public class EvaluatorTests extends ESTestCase {
         assertThat(result, is(new Value.IntegerVal(42)));
     }
 
+    // ──── spawn! / send (Block C) ────
+
+    public void testSpawnBangAndSendInteger() {
+        var result = evaluate("let ch = spawn! in let u = send ch 42 in when (ch x) -> x");
+        assertThat(result, is(new Value.IntegerVal(42)));
+    }
+
+    public void testSpawnBangAndSendBoolean() {
+        var result = evaluate("let ch = spawn! in let u = send ch true in when (ch x) -> x");
+        assertThat(result, is(new Value.BooleanVal(true)));
+    }
+
+    public void testSpawnBangAndSendString() {
+        var result = evaluate("let ch = spawn! in let u = send ch \"hello\" in when (ch x) -> x");
+        assertThat(result, is(new Value.KeywordVal("hello")));
+    }
+
+    public void testSpawnBangAndSendRecord() {
+        var result = evaluate("let ch = spawn! in let u = send ch { a: 1, b: 2 } in when (ch r) -> r.a + r.b");
+        assertThat(result, is(new Value.IntegerVal(3)));
+    }
+
+    public void testSendReturnsNull() {
+        var result = evaluate("let ch = spawn! in send ch 42");
+        assertThat(result, is(new Value.NullVal()));
+    }
+
+    public void testSpawnBangAndSendWithComputation() {
+        var result = evaluate("let ch = spawn! in let u = send ch (10 + 20) in when (ch x) -> x * 2");
+        assertThat(result, is(new Value.IntegerVal(60)));
+    }
+
+    public void testSpawnBangMultipleChannelsSendAndWhen() {
+        var result = evaluate("let a = spawn! in let b = spawn! in let u = send a 10 in let u = send b 20 in when (a x) & (b y) -> x + y");
+        assertThat(result, is(new Value.IntegerVal(30)));
+    }
+
+    public void testSpawnBangAndSendAsyncWithThreadPool() throws Exception {
+        var result = evaluateAsync("let ch = spawn! in let u = send ch 99 in when (ch x) -> x");
+        assertThat(result, is(new Value.IntegerVal(99)));
+    }
+
+    public void testSendToSpawnedChannelWithBody() {
+        var result = evaluate("let ch = spawn 42 in when (ch x) -> x");
+        assertThat(result, is(new Value.IntegerVal(42)));
+    }
+
     public void testQueryWithoutClientThrows() {
         var query = new org.elasticsearch.xpack.piescript.core.CoreQuery(SRC, "FROM test", "test", INT);
         var future = new PlainActionFuture<Value>();
-        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(query, future);
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(query, future);
         var ex = expectThrows(EvaluationException.class, future::actionGet);
         assertThat(ex.getMessage(), containsString("requires a client"));
     }
@@ -655,11 +702,7 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, headFree, new CoreVar(SRC, 0, "list", INT), INT);
 
         var future = new PlainActionFuture<Value>();
-        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(
-            fullExpr,
-            new Value[] { emptyList },
-            future
-        );
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(fullExpr, new Value[] { emptyList }, future);
         var ex = expectThrows(EvaluationException.class, future::actionGet);
         assertThat(ex.getMessage(), containsString("empty list"));
     }
@@ -683,11 +726,7 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, tailFree, new CoreVar(SRC, 0, "list", INT), INT);
 
         var future = new PlainActionFuture<Value>();
-        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(
-            fullExpr,
-            new Value[] { emptyList },
-            future
-        );
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(fullExpr, new Value[] { emptyList }, future);
         var ex = expectThrows(EvaluationException.class, future::actionGet);
         assertThat(ex.getMessage(), containsString("empty list"));
     }
@@ -724,12 +763,16 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, topologyFree, new CoreVar(SRC, 0, "index", INT), INT);
 
         var future = new PlainActionFuture<Value>();
-        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(
             fullExpr,
             new Value[] { new Value.KeywordVal("test") },
             future
         );
         var ex = expectThrows(EvaluationException.class, future::actionGet);
         assertThat(ex.getMessage(), containsString("requires cluster service"));
+    }
+
+    private static EvalDependencies testDeps(java.util.concurrent.Executor executor) {
+        return new EvalDependencies(null, executor, null, new ChannelRegistry(), "test-node");
     }
 }

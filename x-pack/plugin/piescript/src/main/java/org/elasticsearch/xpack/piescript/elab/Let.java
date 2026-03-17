@@ -8,7 +8,13 @@
 package org.elasticsearch.xpack.piescript.elab;
 
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
+import org.elasticsearch.xpack.piescript.core.CoreFree;
+import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
+import org.elasticsearch.xpack.piescript.core.CoreLit;
+import org.elasticsearch.xpack.piescript.core.CoreRecord;
+import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
+import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.TypeScheme;
@@ -17,6 +23,11 @@ import java.util.List;
 
 /**
  * Let-binding elaboration: top-level bindings and {@code let ... in ...} expressions.
+ *
+ * <p>Applies the <b>value restriction</b> (D-046): only syntactic values (lambdas,
+ * literals, variables, records of values) are generalized. Side-effecting expressions
+ * like {@code spawn}, {@code spawn!}, {@code send}, function application, and queries
+ * keep their monomorphic type, preventing unsound polymorphism over mutable channels.
  */
 final class Let {
 
@@ -49,9 +60,13 @@ final class Let {
         if (binding.type() != null) {
             scheme = expectedScheme;
             wrappedRhs = rhs;
-        } else {
+        } else if (isSyntacticValue(rhs)) {
             scheme = elab.generalize(expectedScheme.body(), letCtx.bindingLevel());
             wrappedRhs = Polymorphism.wrapTypeAbs(rhs, scheme, src.source());
+        } else {
+            elab.solveConstraints();
+            scheme = TypeScheme.mono(expectedScheme.body());
+            wrappedRhs = rhs;
         }
         var bodyCtx = ctx.bind(name, scheme);
         var body = topBindings(elab, bindings, index + 1, finalExpr, bodyCtx);
@@ -88,9 +103,13 @@ final class Let {
         if (let.type() != null) {
             scheme = expectedScheme;
             wrappedRhs = rhs;
-        } else {
+        } else if (isSyntacticValue(rhs)) {
             scheme = elab.generalize(expectedScheme.body(), letCtx.bindingLevel());
             wrappedRhs = Polymorphism.wrapTypeAbs(rhs, scheme, src.source());
+        } else {
+            elab.solveConstraints();
+            scheme = TypeScheme.mono(expectedScheme.body());
+            wrappedRhs = rhs;
         }
         var bodyCtx = ctx.bind(name, scheme);
         CoreExpr body;
@@ -101,5 +120,21 @@ final class Let {
         }
 
         return new CoreLet(src.source(), name, wrappedRhs.type(), wrappedRhs, body, body.type());
+    }
+
+    /**
+     * Value restriction (D-046): only syntactic values are safe to generalize.
+     * Non-values (applications, side-effecting primitives) keep monomorphic types.
+     */
+    private static boolean isSyntacticValue(CoreExpr expr) {
+        return switch (expr) {
+            case CoreLit ignored -> true;
+            case CoreLam ignored -> true;
+            case CoreVar ignored -> true;
+            case CoreFree ignored -> true;
+            case CoreRecord rec -> rec.children().stream().allMatch(Let::isSyntacticValue);
+            case CoreTypeAbs ta -> isSyntacticValue(ta.body());
+            default -> false;
+        };
     }
 }

@@ -124,31 +124,30 @@ async tree-walking interpreter (D-041).
 
 ### Coordination Nodes (Block A + Block C)
 
-- `CoreSpawn(CoreExpr body)` — launch `body` asynchronously, return a channel. Sugar for
-  `let ch = channel() in fork(send ch body) in ch` (see D-042).
-  - Type: `τ → Channel τ` (where `τ` is the type of `body`).
-  - Evaluation: create a `SubscribableListener<Value>`, fork `body` evaluation to
-    `threadPool.executor(GENERIC)`, return `SpawnVal(listener)`.
-
-- `CoreSpawnBare(MonoType channelType)` — create a bare channel without executing a body
-  (surface syntax: `spawn!`). The user completes it via explicit `send`.
-  - Type: `Channel τ`.
-  - Evaluation: `new SubscribableListener<>()` wrapped in `SpawnVal`. No fork, no body.
-  - Needed for the distributed pattern: coordinator creates channel, ships closure (capturing
-    channel reference) to remote node, remote node explicitly sends result back.
+- `CoreSpawn(@Nullable CoreExpr body)` — launch `body` asynchronously, return a channel (D-042,
+  D-045). When `body` is non-null: fork body evaluation, complete channel on result. When `body`
+  is null: bare channel creation (`spawn!` syntax) — user completes it via explicit `send`.
+  - Type: `Channel τ` (where `τ` is the body's type, or an unsolved meta for `spawn!`).
+  - Evaluation: generate `channelId`, register a `SubscribableListener<Value>` in the
+    `ChannelRegistry`, optionally fork `body`, return `ChannelVal(localNodeId, channelId)`.
+  - `spawn!` bindings are subject to the **value restriction** (D-046): `let ch = spawn!` stays
+    monomorphic (`Channel ?a`), preventing unsound polymorphism. Downstream `send`/`when` usage
+    unifies `?a` to a concrete type.
 
 - `CoreWhen(List<WhenBinding> channels, CoreExpr body)` — synchronize on channels, then evaluate
   `body` with bound values. (Surface keyword is `when` — see D-041.)
   - Each `WhenBinding` specifies a channel expression and a variable binding.
   - Type: the body's type, with channel value types bound to the variables.
-  - Evaluation: register callbacks on each channel's `SubscribableListener`. Use a positional
-    collector (`AtomicArray<Value>` + `CountDown`) to preserve binding order for de Bruijn
-    indexing. When all channels complete, bind the received values and evaluate `body`.
+  - Evaluation: look up each channel's `SubscribableListener` in the `ChannelRegistry` via
+    `channelId`, register callbacks. Use a positional collector (`AtomicArray<Value>` +
+    `CountDown`) to preserve binding order for de Bruijn indexing. When all channels complete,
+    bind the received values and evaluate `body`.
 
-- `CoreSend(CoreExpr channel, CoreExpr value)` — send a value on a channel (Block C).
-  - Locally: `listener.onResponse(value)`.
-  - Cross-node: serialize value, send transport message to the channel's owner node.
-  - The channel reference carries `(ownerNodeId, channelId)` — the runtime routes accordingly.
+- `CoreSend(CoreExpr channel, CoreExpr value)` — send a value on a channel (Block C, D-045).
+  - Type: `Null` (fire-and-forget).
+  - Locally: `channelRegistry.complete(channelId, value)`.
+  - Cross-node: (C.3) serialize value, send transport message to the channel's owner node.
+  - The channel reference is `ChannelVal(nodeId, channelId)` — the runtime routes accordingly.
 
 ### Prelude Built-ins
 

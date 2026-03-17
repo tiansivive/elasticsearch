@@ -7,7 +7,6 @@
 
 package org.elasticsearch.xpack.piescript.eval;
 
-import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 
 import java.util.List;
@@ -70,9 +69,13 @@ public sealed interface Value {
     record BuiltinVal(String name, int arity, List<Value> partialArgs) implements Value {}
 
     /**
-     * A channel carrying a single async result. Wraps a {@link SubscribableListener}
-     * that completes when the spawned computation finishes. Produced by evaluating
-     * {@code CoreSpawn}; consumed by {@code CoreWhen}. See D-040, D-041.
+     * A channel reference — pure metadata identifying a channel on a specific node.
+     * The actual {@code SubscribableListener} lives in the per-node
+     * {@link ChannelRegistry}, not in the value itself. This allows channels to
+     * be serialized and sent across the wire. See D-040, D-041, D-045.
+     *
+     * @param nodeId    the node that owns this channel (matches a discovery node ID)
+     * @param channelId unique channel identifier within that node
      */
-    record SpawnVal(SubscribableListener<Value> channel) implements Value {}
+    record ChannelVal(String nodeId, String channelId) implements Value {}
 }

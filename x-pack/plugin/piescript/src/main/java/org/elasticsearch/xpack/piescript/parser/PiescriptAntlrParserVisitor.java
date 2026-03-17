@@ -49,12 +49,28 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
     T visitLambdaExpr(PiescriptAntlrParser.LambdaExprContext ctx);
 
     /**
+     * Visit a parse tree produced by the {@code SpawnBangExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#expr}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitSpawnBangExpr(PiescriptAntlrParser.SpawnBangExprContext ctx);
+
+    /**
      * Visit a parse tree produced by the {@code SpawnExpr}
      * labeled alternative in {@link PiescriptAntlrParser#expr}.
      * @param ctx the parse tree
      * @return the visitor result
      */
     T visitSpawnExpr(PiescriptAntlrParser.SpawnExprContext ctx);
+
+    /**
+     * Visit a parse tree produced by the {@code SendExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#expr}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitSendExpr(PiescriptAntlrParser.SendExprContext ctx);
 
     /**
      * Visit a parse tree produced by the {@code WhenExpr}

@@ -22,6 +22,7 @@ import org.elasticsearch.xpack.piescript.elab.ElaborationState;
 import org.elasticsearch.xpack.piescript.elab.Elaborator;
 import org.elasticsearch.xpack.piescript.elab.IndexResolutionPrePass;
 import org.elasticsearch.xpack.piescript.elab.ResolvedMapping;
+import org.elasticsearch.xpack.piescript.eval.ChannelRegistry;
 import org.elasticsearch.xpack.piescript.eval.EvalDependencies;
 import org.elasticsearch.xpack.piescript.eval.Evaluator;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
@@ -50,7 +51,8 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, threadPool.executor(ThreadPool.Names.GENERIC));
         this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService);
         this.executor = threadPool.executor(ThreadPool.Names.GENERIC);
-        this.evalDeps = new EvalDependencies(client, this.executor, clusterService);
+        var localNodeId = transportService.getLocalNode().getId();
+        this.evalDeps = new EvalDependencies(client, this.executor, clusterService, new ChannelRegistry(), localNodeId);
     }
 
     @Override
