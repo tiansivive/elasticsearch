@@ -120,7 +120,7 @@ async tree-walking interpreter (D-041).
 - `CoreVar`, `CoreFree`, `CoreLit`, `CoreLam`, `CoreApp`, `CoreLet`, `CoreRecord`, `CoreProject`,
   `CoreUpdate`, `CorePrimOp`, `CoreTypeAbs`, `CoreTypeApp`, `CoreQuery`
 - Callbacks fire synchronously (inline) for pure expressions.
-- `CoreQuery` fires an ESQL query asynchronously and returns a `StreamVal`.
+- `CoreQuery` fires an ESQL query asynchronously and returns a `ListVal`.
 
 ### Coordination Nodes (Block A + Block C)
 
@@ -153,7 +153,7 @@ async tree-walking interpreter (D-041).
 ### Prelude Built-ins
 
 `map`, `filter`, `reduce` are prelude built-in functions (D-016), not Core IR nodes. They are
-typed as normal polymorphic functions and operate over materialized `StreamVal(List<Value>)` via
+typed as normal polymorphic functions and operate over materialized `ListVal(List<Value>)` via
 `applyFunction` callbacks. This keeps the IR uniform and enables a clean path to typeclasses.
 
 Adding new combinators (`take`, `zip`, `groupBy`, `partition`, etc.) means adding prelude
@@ -162,20 +162,26 @@ functions, not extending the Core IR grammar.
 ## The Evaluator
 
 The evaluator is a uniformly async tree-walking de Bruijn environment machine (D-041), split
-across four classes for maintainability:
+across five classes for maintainability:
 
 - `Evaluator` — core dispatch (`evaluate`, `applyFunction`) and all `CoreExpr` cases
 - `EvalPrimOps` — arithmetic, comparison, and boolean operations
-- `EvalBuiltins` — stream processing (`map`, `filter`, `reduce`) via `SubscribableListener`
-  chaining for stack-safe sequential iteration
+- `EvalBuiltins` — list processing (`map`, `filter`, `reduce`, `head`, `tail`, `length`,
+  `isEmpty`) via `SubscribableListener` chaining for stack-safe sequential iteration
 - `EvalCoordination` — `when` evaluation via `PositionalCollector` (encapsulates `AtomicArray` +
   `CountDown` + failure propagation)
+- `EvalTopology` — `topology` builtin implementation (reads `ClusterState` → `RoutingTable` →
+  `ShardRouting` → `DiscoveryNode`, converts to typed `RecordVal`/`ListVal`)
+
+The evaluator takes an `EvalDependencies` record bundling `Client`, `Executor`, and
+`ClusterService` (D-044). This replaces the growing constructor parameter list and scales to
+Block C (which will add `TransportService` and a channel registry).
 
 Every `evaluate` call takes an `ActionListener<Value>`. It handles all `CoreExpr` variants:
 
 - **Functional nodes**: callbacks fire synchronously (inline). `CoreVar` looks up the de Bruijn
   environment. `CoreApp` applies a closure. `CoreLet` extends the environment. `CoreQuery` fires
-  an ESQL query asynchronously via `ActionListener` and returns a `StreamVal`.
+  an ESQL query asynchronously via `ActionListener` and returns a `ListVal`.
 
 - **Coordination nodes (Block A)**: evaluated asynchronously via `ActionListener` callbacks.
   `CoreSpawn` forks computation and returns a `SpawnVal` (wrapping a `SubscribableListener`).
@@ -210,7 +216,7 @@ computations. Built-in functions (`map`, `filter`, `reduce`) use `SubscribableLi
 | `BooleanVal` | Boolean value |
 | `NullVal` | Null value |
 | `RecordVal` | Record with named fields |
-| `StreamVal(List<Value>)` | Eagerly materialized stream of values |
+| `ListVal(List<Value>)` | Eagerly materialized list of values (renamed from `StreamVal` in Block B — D-043) |
 | `ClosureVal` | Lambda closure (code + captured environment) |
 | `BuiltinVal` | Curried built-in function (name, arity, partial args) |
 | `SpawnVal(SubscribableListener<Value>)` | Channel carrying an async result (Block A) |
@@ -249,7 +255,7 @@ This implements the Join Calculus locality property: messages travel to their ch
 site. A `send ch value` on a remote node routes the value to the node where `ch` was created.
 
 **Value serialization**: all `Value` variants need `Writeable` implementations for transport.
-Primitives (`IntegerVal`, `LongVal`, etc.) are trivial. `RecordVal` and `StreamVal` are recursive.
+Primitives (`IntegerVal`, `LongVal`, etc.) are trivial. `RecordVal` and `ListVal` are recursive.
 `ClosureVal` requires Core IR serialization (`CoreExpr` tree + captured `Value[]` environment).
 `SpawnVal` serializes as `ChannelRef(ownerNodeId, channelId)` — the deserializing side creates a
 remote proxy that sends transport messages when `send` is called on it.
@@ -262,7 +268,7 @@ Three representations of data at different abstraction levels:
 |-------|------|-----------|----------------|
 | Description | `RawData` (future) | Shard-local data reference + filters. No I/O. | Typeclass push-down: `filter pred rawdata` → Lucene query |
 | Columnar | `Page`/`Block` | Batched, ref-counted, `Writeable`. What Lucene produces. | Scale: Exchange streaming. Not a piescript concern by default. |
-| Values | `Stream` of `Value` | What piescript code operates on. `StreamVal(List<Value>)` today. | All piescript computation. Backed by Page iterators at scale. |
+| Values | `List` of `Value` | What piescript code operates on. `ListVal(List<Value>)` today. | All piescript computation. Backed by Page iterators at scale. |
 
 Conversion between levels: `EsqlValueConverter` already converts `Page` rows → `RecordVal`. The
 reverse (Value → Block) is straightforward given type information. The `RawData` → `Page`

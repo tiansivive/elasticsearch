@@ -63,10 +63,10 @@ public class TypeDataStructureTests extends ESTestCase {
     }
 
     public void testAppType() {
-        var stream = new MonoType.TCon("Stream");
+        var list = new MonoType.TCon("List");
         var record = new MonoType.TCon("Record");
-        var app = new MonoType.AppType(stream, record);
-        assertThat(app.constructor(), is(stream));
+        var app = new MonoType.AppType(list, record);
+        assertThat(app.constructor(), is(list));
         assertThat(app.argument(), is(record));
     }
 
@@ -219,7 +219,7 @@ public class TypeDataStructureTests extends ESTestCase {
             new MonoType.TCon("Integer"),
             new MonoType.Arrow(new MonoType.TCon("Integer"), new MonoType.TCon("Boolean")),
             new MonoType.RecordType(RowType.closed(Map.of())),
-            new MonoType.AppType(new MonoType.TCon("Stream"), new MonoType.TCon("Record")),
+            new MonoType.AppType(new MonoType.TCon("List"), new MonoType.TCon("Record")),
             new MonoType.Meta(0, 0, Kind.TYPE) };
         for (MonoType type : types) {
             assertNotNull(type);

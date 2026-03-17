@@ -115,7 +115,7 @@ the distributed plan — libraries raise the abstraction level when convenience 
 | Optimization | ESQL's planner | The user's program (+ libraries) |
 
 This means:
-- `index_topology "pattern"` returns cluster topology as typed records (nodes, shards)
+- `topology "index-name"` returns cluster topology as typed records (nodes, shards) — D-044
 - `send node.inbox closure` ships code to a remote node
 - `scan shard` accesses local data on a data node (Lucene queries)
 - `query \`ESQL\`` defers to ESQL when its declarative optimization is what you want
@@ -258,9 +258,9 @@ code mobility.
 The distributed vertical slice:
 
 ```
-let topo = index_topology "my-index"
+let topo = topology "my-index"
+in let target = head topo.shards
 in let ch = spawn!
-in let target = head topo
 in send target.node.inbox (fn () ->
   let data = scan target |> filter (fn r -> r.status == "active")
   in send ch data
@@ -279,7 +279,7 @@ returning the node name it ran on.
 The MVP requires completing these blocks from the [roadmap](roadmap.md):
 
 - **Block A**: `spawn` + single-value `when` (local async coordination) :white_check_mark:
-- **Block B**: ES topology as typed values (`index_topology`, node/shard records)
+- **Block B**: ES topology as typed values (`topology`, node/shard records) :white_check_mark:
 - **Block C**: Cross-node code execution (`send`, `spawn!`, closure serialization, channel registry)
 - **Block D**: Local data access (`scan` on data nodes)
 

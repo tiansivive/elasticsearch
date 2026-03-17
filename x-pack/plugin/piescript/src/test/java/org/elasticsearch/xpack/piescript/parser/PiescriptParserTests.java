@@ -338,16 +338,16 @@ public class PiescriptParserTests extends ESTestCase {
     }
 
     public void testTypeApplication() {
-        assertParses("(fn x -> x : Stream Int -> Stream Int)");
+        assertParses("(fn x -> x : List Int -> List Int)");
     }
 
     public void testTypeAppWithRecord() {
-        assertParses("(fn x -> x : Stream { name: Int } -> Stream { name: Int })");
+        assertParses("(fn x -> x : List { name: Int } -> List { name: Int })");
     }
 
     public void testTypeAppPrecedenceOverArrow() {
         // f a -> f b -> f c should parse as (f a) -> ((f b) -> (f c))
-        assertParses("(fn x -> x : Stream Int -> Stream Int -> Stream Int)");
+        assertParses("(fn x -> x : List Int -> List Int -> List Int)");
     }
 
     public void testNestedFunctionType() {

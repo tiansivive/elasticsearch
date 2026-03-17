@@ -189,7 +189,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
                 }
                 builder.endObject();
             }
-            case Value.StreamVal s -> {
+            case Value.ListVal s -> {
                 builder.startArray(fieldName);
                 for (var element : s.elements()) {
                     writeValueAsArrayElement(builder, element);
@@ -217,7 +217,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
                 }
                 builder.endObject();
             }
-            case Value.StreamVal s -> {
+            case Value.ListVal s -> {
                 builder.startArray();
                 for (var element : s.elements()) {
                     writeValueAsArrayElement(builder, element);
@@ -257,7 +257,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
                 out.writeByte((byte) 6);
                 out.writeMap(v.fields(), (o, value) -> writeValue(o, value));
             }
-            case Value.StreamVal s -> {
+            case Value.ListVal s -> {
                 out.writeByte((byte) 9);
                 out.writeCollection(s.elements(), (o, element) -> writeValue(o, element));
             }
@@ -279,7 +279,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case 6 -> new Value.RecordVal(in.readMap(PiescriptResponse::readValue));
             case 7 -> new Value.ClosureVal(null, null);
             case 8 -> new Value.BuiltinVal("?", 0, List.of());
-            case 9 -> new Value.StreamVal(in.readCollectionAsList(PiescriptResponse::readValue));
+            case 9 -> new Value.ListVal(in.readCollectionAsList(PiescriptResponse::readValue));
             case 10 -> new Value.SpawnVal(null);
             default -> throw new IOException("unknown Value tag: " + tag);
         };

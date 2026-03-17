@@ -14,14 +14,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Built-in function application and stream processing ({@code map}, {@code filter},
- * {@code reduce}). Stream element iteration is expressed as a {@link SubscribableListener}
+ * Built-in function application and list processing ({@code map}, {@code filter},
+ * {@code reduce}). List element iteration is expressed as a {@link SubscribableListener}
  * chain — each element becomes one step in the chain, and the infrastructure handles
  * both synchronous inline completion and genuinely async suspension. See D-041.
  *
  * <p>The chain approach allocates O(n) listeners upfront. An iterative while-loop
  * (ThrottledIterator-style) would achieve O(1) outstanding listeners; worth
- * revisiting if stream sizes grow large enough for the allocation to matter.
+ * revisiting if list sizes grow large enough for the allocation to matter.
  */
 final class EvalBuiltins {
 
@@ -39,14 +39,33 @@ final class EvalBuiltins {
 
     private static void executeBuiltin(Evaluator eval, String name, List<Value> args, ActionListener<Value> listener) {
         switch (name) {
-            case "map" -> mapStream(eval, args.get(0), requireStream(args.get(1), name).elements(), listener);
-            case "filter" -> filterStream(eval, args.get(0), requireStream(args.get(1), name).elements(), listener);
-            case "reduce" -> reduceStream(eval, args.get(0), args.get(1), requireStream(args.get(2), name).elements(), listener);
+            case "map" -> mapList(eval, args.get(0), requireList(args.get(1), name).elements(), listener);
+            case "filter" -> filterList(eval, args.get(0), requireList(args.get(1), name).elements(), listener);
+            case "reduce" -> reduceList(eval, args.get(0), args.get(1), requireList(args.get(2), name).elements(), listener);
+            case "head" -> {
+                var elems = requireList(args.get(0), name).elements();
+                if (elems.isEmpty()) {
+                    listener.onFailure(new EvaluationException("head: empty list"));
+                } else {
+                    listener.onResponse(elems.getFirst());
+                }
+            }
+            case "tail" -> {
+                var elems = requireList(args.get(0), name).elements();
+                if (elems.isEmpty()) {
+                    listener.onFailure(new EvaluationException("tail: empty list"));
+                } else {
+                    listener.onResponse(new Value.ListVal(elems.subList(1, elems.size())));
+                }
+            }
+            case "length" -> listener.onResponse(new Value.IntegerVal(requireList(args.get(0), name).elements().size()));
+            case "isEmpty" -> listener.onResponse(new Value.BooleanVal(requireList(args.get(0), name).elements().isEmpty()));
+            case "topology" -> EvalTopology.resolveTopology(eval, args.get(0), listener);
             default -> listener.onFailure(new EvaluationException("unknown built-in: " + name));
         }
     }
 
-    private static void mapStream(Evaluator eval, Value fn, List<Value> elements, ActionListener<Value> listener) {
+    private static void mapList(Evaluator eval, Value fn, List<Value> elements, ActionListener<Value> listener) {
         var results = new ArrayList<Value>();
         var chain = SubscribableListener.<Void>newForked(l -> l.onResponse(null));
         for (var element : elements) {
@@ -55,10 +74,10 @@ final class EvalBuiltins {
                 return null;
             })));
         }
-        chain.addListener(listener.safeMap(ignored -> new Value.StreamVal(results)));
+        chain.addListener(listener.safeMap(ignored -> new Value.ListVal(results)));
     }
 
-    private static void filterStream(Evaluator eval, Value fn, List<Value> elements, ActionListener<Value> listener) {
+    private static void filterList(Evaluator eval, Value fn, List<Value> elements, ActionListener<Value> listener) {
         var results = new ArrayList<Value>();
         var chain = SubscribableListener.<Void>newForked(l -> l.onResponse(null));
         for (var element : elements) {
@@ -69,23 +88,23 @@ final class EvalBuiltins {
                 return null;
             })));
         }
-        chain.addListener(listener.safeMap(ignored -> new Value.StreamVal(results)));
+        chain.addListener(listener.safeMap(ignored -> new Value.ListVal(results)));
     }
 
-    private static void reduceStream(Evaluator eval, Value fn, Value initialAcc, List<Value> elements, ActionListener<Value> listener) {
+    private static void reduceList(Evaluator eval, Value fn, Value initialAcc, List<Value> elements, ActionListener<Value> listener) {
         var chain = SubscribableListener.<Value>newForked(l -> l.onResponse(initialAcc));
         for (var element : elements) {
-            chain = chain.<Value>andThen((l, acc) ->
-                eval.applyFunction(fn, acc, l.delegateFailureAndWrap((l2, partial) -> eval.applyFunction(partial, element, l2)))
+            chain = chain.<Value>andThen(
+                (l, acc) -> eval.applyFunction(fn, acc, l.delegateFailureAndWrap((l2, partial) -> eval.applyFunction(partial, element, l2)))
             );
         }
         chain.addListener(listener);
     }
 
-    private static Value.StreamVal requireStream(Value value, String builtinName) {
+    static Value.ListVal requireList(Value value, String builtinName) {
         return switch (value) {
-            case Value.StreamVal s -> s;
-            default -> throw new AssertionError("type checker bug: expected Stream for " + builtinName + ", got " + value);
+            case Value.ListVal s -> s;
+            default -> throw new AssertionError("type checker bug: expected List for " + builtinName + ", got " + value);
         };
     }
 }

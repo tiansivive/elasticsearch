@@ -23,25 +23,69 @@ final class EvalPrimOps {
         var op = primOp.op();
 
         switch (op) {
-            case NOT -> eval.evaluate(args.get(0), env, listener.delegateFailureAndWrap((l, operand) ->
-                l.onResponse(new Value.BooleanVal(!requireBoolean(operand, op)))));
+            case NOT -> eval.evaluate(
+                args.get(0),
+                env,
+                listener.delegateFailureAndWrap((l, operand) -> l.onResponse(new Value.BooleanVal(!requireBoolean(operand, op))))
+            );
 
-            case NEG -> eval.evaluate(args.get(0), env, listener.delegateFailureAndWrap((l, operand) ->
-                l.onResponse(new Value.IntegerVal(-requireInteger(operand, op)))));
+            case NEG -> eval.evaluate(
+                args.get(0),
+                env,
+                listener.delegateFailureAndWrap((l, operand) -> l.onResponse(new Value.IntegerVal(-requireInteger(operand, op))))
+            );
 
-            case ADD, SUB, MUL, DIV, MOD -> eval.evaluate(args.get(0), env, listener.delegateFailureAndWrap((l1, leftVal) ->
-                eval.evaluate(args.get(1), env, l1.delegateFailureAndWrap((l2, rightVal) ->
-                    l2.onResponse(new Value.IntegerVal(intArithmetic(op, requireInteger(leftVal, op), requireInteger(rightVal, op))))))));
+            case ADD, SUB, MUL, DIV, MOD -> eval.evaluate(
+                args.get(0),
+                env,
+                listener.delegateFailureAndWrap(
+                    (l1, leftVal) -> eval.evaluate(
+                        args.get(1),
+                        env,
+                        l1.delegateFailureAndWrap(
+                            (l2, rightVal) -> l2.onResponse(
+                                new Value.IntegerVal(intArithmetic(op, requireInteger(leftVal, op), requireInteger(rightVal, op)))
+                            )
+                        )
+                    )
+                )
+            );
 
-            case EQ, NEQ, LT, GT, LTE, GTE -> eval.evaluate(args.get(0), env, listener.delegateFailureAndWrap((l1, leftVal) ->
-                eval.evaluate(args.get(1), env, l1.delegateFailureAndWrap((l2, rightVal) ->
-                    l2.onResponse(new Value.BooleanVal(intComparison(op, requireInteger(leftVal, op), requireInteger(rightVal, op))))))));
+            case EQ, NEQ, LT, GT, LTE, GTE -> eval.evaluate(
+                args.get(0),
+                env,
+                listener.delegateFailureAndWrap(
+                    (l1, leftVal) -> eval.evaluate(
+                        args.get(1),
+                        env,
+                        l1.delegateFailureAndWrap(
+                            (l2, rightVal) -> l2.onResponse(
+                                new Value.BooleanVal(intComparison(op, requireInteger(leftVal, op), requireInteger(rightVal, op)))
+                            )
+                        )
+                    )
+                )
+            );
 
-            case AND, OR -> eval.evaluate(args.get(0), env, listener.delegateFailureAndWrap((l1, leftVal) ->
-                eval.evaluate(args.get(1), env, l1.delegateFailureAndWrap((l2, rightVal) ->
-                    l2.onResponse(new Value.BooleanVal(
-                        op == Op.AND ? requireBoolean(leftVal, op) && requireBoolean(rightVal, op)
-                                     : requireBoolean(leftVal, op) || requireBoolean(rightVal, op)))))));
+            case AND, OR -> eval.evaluate(
+                args.get(0),
+                env,
+                listener.delegateFailureAndWrap(
+                    (l1, leftVal) -> eval.evaluate(
+                        args.get(1),
+                        env,
+                        l1.delegateFailureAndWrap(
+                            (l2, rightVal) -> l2.onResponse(
+                                new Value.BooleanVal(
+                                    op == Op.AND
+                                        ? requireBoolean(leftVal, op) && requireBoolean(rightVal, op)
+                                        : requireBoolean(leftVal, op) || requireBoolean(rightVal, op)
+                                )
+                            )
+                        )
+                    )
+                )
+            );
         }
     }
 

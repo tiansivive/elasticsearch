@@ -11,6 +11,7 @@ import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.internal.Client;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -21,6 +22,7 @@ import org.elasticsearch.xpack.piescript.elab.ElaborationState;
 import org.elasticsearch.xpack.piescript.elab.Elaborator;
 import org.elasticsearch.xpack.piescript.elab.IndexResolutionPrePass;
 import org.elasticsearch.xpack.piescript.elab.ResolvedMapping;
+import org.elasticsearch.xpack.piescript.eval.EvalDependencies;
 import org.elasticsearch.xpack.piescript.eval.Evaluator;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
@@ -34,15 +36,21 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
 
     private final PiescriptParser parser = new PiescriptParser();
     private final IndexResolutionPrePass indexResolutionPrePass;
-    private final Client client;
+    private final EvalDependencies evalDeps;
     private final Executor executor;
 
     @Inject
-    public TransportPiescriptAction(TransportService transportService, ActionFilters actionFilters, Client client, ThreadPool threadPool) {
+    public TransportPiescriptAction(
+        TransportService transportService,
+        ActionFilters actionFilters,
+        Client client,
+        ThreadPool threadPool,
+        ClusterService clusterService
+    ) {
         super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, threadPool.executor(ThreadPool.Names.GENERIC));
         this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService);
-        this.client = client;
         this.executor = threadPool.executor(ThreadPool.Names.GENERIC);
+        this.evalDeps = new EvalDependencies(client, this.executor, clusterService);
     }
 
     @Override
@@ -87,9 +95,11 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             var elaborator = new Elaborator(state);
             var coreExpr = elaborator.elaborateProgram(cst);
             var type = CorePrinter.printType(coreExpr.type(), state);
-            var evaluator = new Evaluator(client, executor);
-            evaluator.evaluate(coreExpr, listener.delegateFailureAndWrap((l, value) ->
-                l.onResponse(PiescriptResponse.fromValue(value, type))));
+            var evaluator = new Evaluator(evalDeps);
+            evaluator.evaluate(
+                coreExpr,
+                listener.delegateFailureAndWrap((l, value) -> l.onResponse(PiescriptResponse.fromValue(value, type)))
+            );
         } catch (Exception e) {
             listener.onFailure(e);
         }
@@ -143,17 +153,46 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             String zonker = CorePrinter.printZonker(state);
             List<String> diagnostics = state.diagnostics();
 
-            var evaluator = new Evaluator(client, executor);
-            evaluator.evaluate(coreExpr, ActionListener.wrap(
-                value -> listener.onResponse(PiescriptResponse.fromDev(
-                    new PiescriptResponse.DevInfo(
-                        treeString, core, coreRaw, type, constraints, zonker,
-                        diagnostics, value.toString(), null, null, null))),
-                e -> listener.onResponse(PiescriptResponse.fromDev(
-                    new PiescriptResponse.DevInfo(
-                        treeString, core, coreRaw, type, constraints, zonker,
-                        diagnostics, null, e.getMessage(), null, null)))
-            ));
+            var evaluator = new Evaluator(evalDeps);
+            evaluator.evaluate(
+                coreExpr,
+                ActionListener.wrap(
+                    value -> listener.onResponse(
+                        PiescriptResponse.fromDev(
+                            new PiescriptResponse.DevInfo(
+                                treeString,
+                                core,
+                                coreRaw,
+                                type,
+                                constraints,
+                                zonker,
+                                diagnostics,
+                                value.toString(),
+                                null,
+                                null,
+                                null
+                            )
+                        )
+                    ),
+                    e -> listener.onResponse(
+                        PiescriptResponse.fromDev(
+                            new PiescriptResponse.DevInfo(
+                                treeString,
+                                core,
+                                coreRaw,
+                                type,
+                                constraints,
+                                zonker,
+                                diagnostics,
+                                null,
+                                e.getMessage(),
+                                null,
+                                null
+                            )
+                        )
+                    )
+                )
+            );
         } catch (ElaborationException e) {
             listener.onResponse(devTypeError(treeString, e.getMessage()));
         } catch (Exception e) {

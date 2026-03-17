@@ -259,16 +259,16 @@ public class UnifierTests extends ESTestCase {
 
     public void testAppTypeSuccess() {
         var state = new ElaborationState();
-        var stream = new MonoType.TCon("Stream");
-        var a = new MonoType.AppType(stream, INTEGER);
-        var b = new MonoType.AppType(stream, INTEGER);
+        var list = new MonoType.TCon("List");
+        var a = new MonoType.AppType(list, INTEGER);
+        var b = new MonoType.AppType(list, INTEGER);
         assertTrue(Unifier.unify(a, b, state).isEmpty());
     }
 
     public void testAppTypeMismatch() {
         var state = new ElaborationState();
-        var a = new MonoType.AppType(new MonoType.TCon("Stream"), INTEGER);
-        var b = new MonoType.AppType(new MonoType.TCon("List"), INTEGER);
+        var a = new MonoType.AppType(new MonoType.TCon("List"), INTEGER);
+        var b = new MonoType.AppType(new MonoType.TCon("Vector"), INTEGER);
 
         var error = Unifier.unify(a, b, state);
         assertTrue(error.isPresent());

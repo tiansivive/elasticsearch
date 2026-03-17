@@ -27,9 +27,10 @@ final class EvalCoordination {
         var bindings = when.bindings();
         int n = bindings.size();
 
-        var collector = new PositionalCollector<Value>(n, listener.delegateFailureAndWrap((l, values) ->
-            eval.evaluate(when.body(), extendEnv(env, values), l)
-        ));
+        var collector = new PositionalCollector<Value>(
+            n,
+            listener.delegateFailureAndWrap((l, values) -> eval.evaluate(when.body(), extendEnv(env, values), l))
+        );
 
         for (int i = 0; i < n; i++) {
             resolveChannel(eval, bindings.get(i), env, collector.listenerForSlot(i));
@@ -41,9 +42,11 @@ final class EvalCoordination {
      * Flattens the two-phase "eval binding → unwrap SpawnVal → subscribe" into a single async step.
      */
     private static void resolveChannel(Evaluator eval, CoreWhen.WhenBinding binding, Value[] env, ActionListener<Value> listener) {
-        eval.evaluate(binding.channel(), env, listener.delegateFailureAndWrap((l, chanVal) ->
-            ((Value.SpawnVal) chanVal).channel().addListener(l)
-        ));
+        eval.evaluate(
+            binding.channel(),
+            env,
+            listener.delegateFailureAndWrap((l, chanVal) -> ((Value.SpawnVal) chanVal).channel().addListener(l))
+        );
     }
 
     /**

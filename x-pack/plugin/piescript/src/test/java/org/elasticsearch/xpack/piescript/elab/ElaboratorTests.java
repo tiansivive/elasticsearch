@@ -802,7 +802,7 @@ public class ElaboratorTests extends ESTestCase {
         var type = resolveType(result);
         assertThat(type, instanceOf(MonoType.AppType.class));
         var appType = (MonoType.AppType) type;
-        assertEquals(new MonoType.TCon("Stream"), appType.constructor());
+        assertEquals(new MonoType.TCon("List"), appType.constructor());
         assertThat(appType.argument(), instanceOf(MonoType.RecordType.class));
         var recordType = (MonoType.RecordType) appType.argument();
         assertEquals(INTEGER, recordType.row().fields().get("status"));
@@ -864,5 +864,27 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(result, instanceOf(CoreQuery.class));
         var query = (CoreQuery) result;
         assertEquals("FROM logs-* | WHERE status >= 500 | LIMIT 10", query.esqlQuery());
+    }
+
+    // ──── Block B builtins type inference ────
+
+    public void testHeadTypeInference() {
+        var result = elaborate("head");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testLengthTypeInference() {
+        var result = elaborate("length");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testIsEmptyTypeInference() {
+        var result = elaborate("isEmpty");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testTopologyTypeIsArrow() {
+        var result = elaborate("topology");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
 }

@@ -45,7 +45,7 @@ distributed computing with code mobility, coordinated by the Join Calculus.
 |-------|-------------------------------|--------|
 | Phase 2 | Index resolution — typed query results, field-level type checking, eager evaluation | :white_check_mark: |
 | Block A | `spawn` + single-value `when` — local async coordination | :white_check_mark: |
-| Block B | ES topology as typed values — `index_topology`, node/shard records | :memo: |
+| Block B | ES topology as typed values — `topology`, node/shard records, `List` type rename, list utilities | :white_check_mark: |
 | Block C | Cross-node code execution — `send`, `spawn!`, closure serialization, channel registry | :memo: |
 | Block D | Local data access — `scan` on data nodes inside shipped closures | :memo: |
 
@@ -242,7 +242,7 @@ or when downstream work requires them.
 | `KeywordVal` uses `String`, not `BytesRef` | D-026 | Reverse conversion needed when piescript values flow into ESQL query parameters (Phase 2+). |
 | Double `EsqlBodyParser.parse()` call | T2.6 | Index pattern extracted once in `IndexResolutionPrePass.collectQueries()` and again in `Queries.query()`. Consequence of opaque `ESQL_BODY` token approach. Goes away when ANTLR grammar structurally captures the `FROM` clause. |
 | Opaque `ESQL_BODY` lexer token | T2.1 | ESQL body captured as backtick-delimited raw text (`` query `FROM ...` ``); index pattern extracted via Java string parsing. Future: parse `FROM <pattern>` structurally in the ANTLR grammar. |
-| Empty mapping diagnostics | — | When `buildRowFields` produces an empty row (index exists but field caps returns no usable fields), emit a diagnostic on `ElaborationState` rather than silently producing `Stream { }`. Downstream type errors ("missing fields … in `{ }`") are confusing when the real issue is a missing or unmapped index. |
+| Empty mapping diagnostics | — | When `buildRowFields` produces an empty row (index exists but field caps returns no usable fields), emit a diagnostic on `ElaborationState` rather than silently producing `List { }`. Downstream type errors ("missing fields … in `{ }`") are confusing when the real issue is a missing or unmapped index. |
 
 See also [General Tech Debt — ES Conventions & Plugin Infrastructure](#general-tech-debt--es-conventions--plugin-infrastructure)
 for cross-cutting items (TransportVersion, logging, ActionType naming, thread pool, endpoint merge).
@@ -259,10 +259,10 @@ open-row unification infrastructure from Phase 1d.
 |------|--------|
 | ANTLR grammar — `queryExpr` production with `ESQL_MODE` lexer mode | :white_check_mark: |
 | `CoreQuery` variant in `CoreExpr` sealed hierarchy | :white_check_mark: |
-| `Stream` type constructor, `DataTypeMapping` utility | :white_check_mark: |
+| `List` type constructor (originally `Stream`, renamed in Block B — D-043), `DataTypeMapping` utility | :white_check_mark: |
 | Index resolution pre-pass (`IndexResolver` integration, `ResolvedMapping`) | :white_check_mark: |
 | Concrete-row constraint processing (cross-index conflict detection via `InvalidMappedField`) | :white_check_mark: |
-| Query expression typing (`QueryExpr` → `CoreQuery` with `Stream { ... }`) | :white_check_mark: |
+| Query expression typing (`QueryExpr` → `CoreQuery` with `List { ... }`) | :white_check_mark: |
 | `map`/`filter`/`reduce` as built-in typed functions (module-level free variables, `CoreFree` IR node, `Prelude`) | :white_check_mark: |
 | Eager evaluation (fire `EsqlQueryAction`, convert rows to `RecordVal`s, `map`/`filter`/`reduce` over streams) | :white_check_mark: |
 | Transport pipeline refactor (remove passthrough, unified dev/eval pipeline) | :white_check_mark: |
@@ -319,7 +319,7 @@ paths. See D-041.
 - Positional collector for `when`, not `GroupedActionListener` (D-041)
 - The evaluator is the interpreter; no separate planner/executor split needed (D-040)
 - Stream combinators (`map`, `filter`, `reduce`) remain as eager built-ins over materialized
-  `StreamVal` for now (no change from Phase 2)
+  `ListVal` for now (renamed from `StreamVal` in Block B — D-043)
 
 **What carries forward from old plans:**
 
@@ -342,30 +342,42 @@ paths. See D-041.
 
 ---
 
-## Block B — ES Topology & Node Types :memo:
+## Block B — ES Topology & Node Types :white_check_mark:
 
-> **Revised**: 2026-03-17. Replaces old Block B (multi-value channels). See D-042.
+> **Revised**: 2026-03-17. Replaces old Block B (multi-value channels). See D-042, D-043, D-044.
 
 Make the cluster visible as typed piescript values. This is the entry point to distributed
 execution — piescript can describe ES infrastructure as first-class values before it can send
 code anywhere.
 
 **What it delivers:**
-- A builtin function (name TBD — not `from`, which collides with ESQL `FROM`; candidates:
-  `topology`, `shards_of`, `index_topology`) that takes an index pattern and returns a record
-  describing nodes and shards.
-- Plain record types — no opaque builtin types needed initially. Nodes and shards are records.
+- `topology` builtin function (D-044) that takes an index name and returns a record with both
+  shard-centric and node-centric views of the cluster topology.
+- Plain record types — nodes and shards are records with typed fields.
+- `Stream` → `List` rename throughout (D-043): `TCon("List")`, `Value.ListVal`, prelude signatures.
+- List utility builtins: `head`, `tail`, `length`, `isEmpty`.
+- `EvalDependencies` context object bundling `Client`, `Executor`, `ClusterService`.
+- `EvalTopology` class implementing the `topology` builtin.
 - Implementation reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting`
-  → `DiscoveryNode` and converts to `RecordVal`/`StreamVal`.
+  → `DiscoveryNode` and converts to `RecordVal`/`ListVal`.
 
 | Task | Status |
 |------|--------|
-| Inject `ClusterService` into piescript transport action | :memo: |
-| Builtin function: index pattern → topology record | :memo: |
-| Return type design: node/shard record structure | :memo: |
-| Type the builtin in `Prelude` with concrete return type | :memo: |
-| Unit tests (topology resolution, record structure) | :memo: |
-| Integration test (real cluster topology via the endpoint) | :memo: |
+| Inject `ClusterService` into piescript transport action | :white_check_mark: |
+| `Stream` → `List` rename (type system, values, prelude, tests) — D-043 | :white_check_mark: |
+| `topology` builtin: index name → topology record (both views) — D-044 | :white_check_mark: |
+| Return type design: shard-centric + node-centric record structure | :white_check_mark: |
+| Type the builtin in `Prelude` with concrete return type | :white_check_mark: |
+| `EvalDependencies` context object (`Client`, `Executor`, `ClusterService`) | :white_check_mark: |
+| `EvalTopology` class (topology resolution logic) | :white_check_mark: |
+| List utility builtins (`head`, `tail`, `length`, `isEmpty`) | :white_check_mark: |
+| Unit tests (topology resolution, record structure, list utilities) | :white_check_mark: |
+| Integration test (real cluster topology via the endpoint) | :white_check_mark: |
+
+**Deferred items** (not required for Block B):
+- Wildcard / alias / data stream resolution in `topology` (exact index name only — D-044)
+- Multi-project support (`ProjectId.DEFAULT` used — D-044)
+- Non-STARTED shard states (only STARTED shards included — D-044)
 
 ---
 
@@ -426,7 +438,7 @@ Access data on a data node without going through ESQL. Completes the distributed
 
 **What it delivers:**
 - `scan` as a builtin function — takes a shard reference (from Block B topology records), returns
-  data. For the vertical slice: returns `StreamVal` (materialized).
+  data. For the vertical slice: returns `ListVal` (materialized).
 - Implementation: `IndexSearcher` / Lucene on the local shard. Runs inside closures shipped via
   `send`.
 - The `RawData` lazy type (typeclass-driven push-down to Lucene) is a future optimization, not
@@ -436,15 +448,15 @@ Access data on a data node without going through ESQL. Completes the distributed
 |------|--------|
 | `scan` builtin function (grammar or prelude) | :memo: |
 | Shard-local Lucene query execution | :memo: |
-| Result conversion to `StreamVal` | :memo: |
+| Result conversion to `ListVal` | :memo: |
 | Integration test: `send` closure with `scan` to data node, verify results | :memo: |
 
 **Full vertical slice example** (after Blocks B+C+D):
 
 ```
-let topo = index_topology "my-index"
+let topo = topology "my-index"
+in let target = head topo.shards
 in let ch = spawn!
-in let target = head topo
 in send target.node.inbox (fn () ->
   let data = scan target |> filter (fn r -> r.status == "active")
   in send ch data
@@ -503,8 +515,8 @@ Typeclasses specialize generic functions based on data representation:
 instance Filterable RawData where
   filter pred rawdata = rawdata.addLuceneFilter(compilePredicate pred)
 
-instance Filterable Stream where
-  filter pred stream = stream.filter(pred)
+instance Filterable List where
+  filter pred list = list.filter(pred)
 ```
 
 When `scan` returns `RawData` (a description, not data), typeclass instances push operations into
