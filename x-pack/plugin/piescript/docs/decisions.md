@@ -1517,3 +1517,81 @@ valid — the Join Calculus model is unchanged, only the block structure and dis
 are refined.
 
 **Ref**: [Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f)
+
+---
+
+## D-043: `Stream` → `List` Rename
+
+**Phase**: Block B | **Status**: accepted
+
+**Context**: The piescript type constructor `Stream` and runtime value `StreamVal` represent fully
+materialized, in-memory lists — not lazy streams, not Exchange-backed streaming, not back-pressure-
+aware data flows. The name was inherited from ESQL's `Stream` concept during Phase 2, but as the
+language evolves toward real streaming (Exchange integration, multi-value channels), the name
+becomes actively misleading.
+
+**Decision**: Rename `TCon("Stream")` to `TCon("List")` and `StreamVal` to `ListVal` throughout.
+The name "List" accurately reflects the current semantics (finite, eager, in-memory). "Stream" is
+reserved for future lazy/Exchange-backed streaming (post-MVP).
+
+**Scope**: Type system (`Elaborator.LIST`), values (`Value.ListVal`), Prelude type schemes
+(`map`/`filter`/`reduce` signatures), `EvalBuiltins`, `EsqlValueConverter`, `PiescriptResponse`
+serialization, all tests.
+
+**Ref**: Block B implementation session
+
+---
+
+## D-044: `topology` Builtin Design — Both Views, Closed Rows
+
+**Phase**: Block B | **Status**: accepted
+
+**Context**: The distributed vertical slice (D-042) requires piescript to "see" the cluster before
+it can send code to data nodes. Block B introduces a `topology` builtin that makes ES cluster
+topology available as typed piescript values.
+
+**Decisions**:
+
+### 1. Builtin name: `topology`
+
+Simple, unambiguous. Takes a single `Keyword` argument (index name).
+
+### 2. Returns both shard-centric and node-centric views
+
+A runtime flag to select views doesn't work with HM inference (return type must be statically
+determined). Instead, `topology` returns a record with both views:
+
+```
+topology : Keyword → {
+  shards: List { index: Keyword, shard_id: Integer, primary: Boolean, state: Keyword,
+                 node: { id: Keyword, name: Keyword, address: Keyword } },
+  nodes:  List { id: Keyword, name: Keyword, address: Keyword,
+                 shards: List { index: Keyword, shard_id: Integer, primary: Boolean, state: Keyword } }
+}
+```
+
+### 3. Only STARTED shards
+
+Unassigned and initializing shards have no node and are not useful for the distributed vertical
+slice (Block C: shipping code to data nodes). This is a documented limitation.
+
+### 4. Exact index name only
+
+No wildcard, alias, or data stream resolution. Uses `ClusterState.routingTable(ProjectId.DEFAULT).index(name)` directly. Pattern support is deferred.
+
+### 5. EvalDependencies context object
+
+The Evaluator now takes an `EvalDependencies` record bundling `Client`, `Executor`, and
+`ClusterService`. This replaces the growing constructor parameter list and scales to Block C
+(which will add `TransportService` and a channel registry).
+
+### 6. List utility builtins
+
+`head`, `tail`, `length`, `isEmpty` added as prelude builtins alongside the rename from `Stream`
+to `List`. These operate on `ListVal.elements()` — trivial implementations, but essential for
+working with topology results and other list values.
+
+**Deferred**: Wildcard patterns, multi-project support (`ProjectId.DEFAULT` used), `node.inbox`
+field (Block C), non-STARTED shard states.
+
+**Ref**: Block B implementation session

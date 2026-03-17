@@ -3,26 +3,32 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-17 (Block A complete; roadmap restructured for distributed vertical
-> slice — D-042)
+> **Last updated**: 2026-03-17 (Block B complete — `topology` builtin, `Stream` → `List` rename,
+> list utilities, `EvalDependencies`. See D-043, D-044.)
 
 ## Summary
 
 **Phase 0 is complete. Phase 1 (sub-phases 1a–1d + D-035) is complete. Phase 2 (Index Resolution +
 Concrete-Row Constraints + Eager Evaluation) is complete. Block A (spawn + single-value when) is
-complete.** The evaluator is uniformly asynchronous (CPS / `ActionListener`-based), with `spawn`
-forking computations to the GENERIC thread pool and `when` synchronizing on channels via a
-positional collector. Pure expressions complete synchronously inline — no separate code paths.
-ESQL queries fire asynchronously via `ActionListener`. Built-in functions (`map`, `filter`,
-`reduce`) use `SubscribableListener` chaining for stack-safe iteration. 15 integration tests,
-79 evaluator unit tests, 106 elaborator tests, 99 parser tests — all passing.
+complete. Block B (ES topology, `List` type rename, list utilities) is complete.** The `topology`
+builtin (D-044) makes cluster topology available as typed piescript values — both shard-centric and
+node-centric views. The `Stream` type and `StreamVal` have been renamed to `List` and `ListVal`
+(D-043), reflecting their actual semantics (finite, eager, in-memory). List utility builtins
+(`head`, `tail`, `length`, `isEmpty`) operate on `ListVal`. The evaluator takes an
+`EvalDependencies` record bundling `Client`, `Executor`, and `ClusterService`. The evaluator is
+uniformly asynchronous (CPS / `ActionListener`-based), with `spawn` forking computations to the
+GENERIC thread pool and `when` synchronizing on channels via a positional collector. Pure
+expressions complete synchronously inline — no separate code paths. ESQL queries fire
+asynchronously via `ActionListener`. Built-in functions (`map`, `filter`, `reduce`, `head`, `tail`,
+`length`, `isEmpty`) use `SubscribableListener` chaining for stack-safe iteration. 16 integration
+tests, evaluator unit tests, elaborator tests, parser tests — all passing.
 
 **Phase 1e (Pattern Matching) is deferred** — not blocking the MVP-critical path. The execution
 model is the Join Calculus (D-040), with `spawn`/`when`/channels as coordination primitives.
-The roadmap has been restructured (D-042) around a distributed vertical slice: Block B (ES
-topology), Block C (cross-node execution), Block D (local data access via `scan`). See
-[roadmap.md](roadmap.md) for the block structure, [mvp.md](mvp.md) for concrete examples of what
-piescript enables today, and [roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt)
+The roadmap has been restructured (D-042) around a distributed vertical slice: Block C (cross-node
+execution), Block D (local data access via `scan`). See [roadmap.md](roadmap.md) for the block
+structure, [mvp.md](mvp.md) for concrete examples of what piescript enables today, and
+[roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt)
 for Phase 1 items carried forward.
 
 ## What Works
@@ -31,9 +37,14 @@ for Phase 1 items carried forward.
 |-----------|---------|
 | REST endpoint | `POST /_piescript/eval` accepts `{"program": "..."}` |
 | Dev endpoint | `POST /_piescript/dev` returns CST (`tree`), elaborated Core IR (`core`), raw Core IR (`core_raw`), constraints (`constraints`), zonker substitutions (`zonker`), resolved type (`type`), and evaluated result (`eval`). Parse errors return `parse_error`; type errors return `tree` + `type_error`; eval errors return `eval_error`. |
-| Query typing + evaluation (Phase 2) | `` query `FROM idx` `` type-checks against real index mappings via `IndexResolver`, producing `Stream { field: Type, ... }`. The evaluator fires `EsqlQueryAction` asynchronously via `ActionListener`, converts response rows to `RecordVal`s via `EsqlValueConverter`, and returns a `StreamVal`. Built-in functions (`map`, `filter`, `reduce`) operate over materialized streams. |
+| Query typing + evaluation (Phase 2) | `` query `FROM idx` `` type-checks against real index mappings via `IndexResolver`, producing `List { field: Type, ... }`. The evaluator fires `EsqlQueryAction` asynchronously via `ActionListener`, converts response rows to `RecordVal`s via `EsqlValueConverter`, and returns a `ListVal`. Built-in functions (`map`, `filter`, `reduce`) operate over materialized lists. |
 | `spawn` / `when` (Block A) | `spawn <expr>` forks computation to the GENERIC thread pool, returning a `SpawnVal(SubscribableListener<Value>)` — a typed single-value channel. `when (ch1 x) & (ch2 y) -> body` synchronizes on one or more channels using a positional collector (`AtomicArray` + `CountDown`), binding channel results to variables in the body. Supports concurrent multi-index queries. |
+| `EvalTopology` (Block B) | Implements the `topology` builtin. Reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting` → `DiscoveryNode` and converts to typed `RecordVal`/`ListVal` records. |
 | `Channel τ` type + `SpawnVal` (Block A) | `Channel` is a type constructor (`AppType(TCon("Channel"), tau)`). `SpawnVal` wraps a `SubscribableListener<Value>`. The elaborator infers `Channel τ` for `spawn` expressions and unwraps it in `when` bindings. |
+| `topology` builtin (Block B) | `topology "index-name"` returns a record with both shard-centric and node-centric views of the cluster topology. Shards include `index`, `shard_id`, `primary`, `state`, and nested `node` record. Nodes include `id`, `name`, `address`, and nested `shards` list. Only STARTED shards are included. Exact index name only (no wildcards). See D-044. |
+| `List` type (Block B, renamed from `Stream`) | `List` is the type constructor for in-memory lists (`TCon("List")`). `ListVal(List<Value>)` is the runtime representation. Renamed from `Stream`/`StreamVal` (D-043) to accurately reflect finite, eager, in-memory semantics. "Stream" reserved for future lazy/Exchange-backed streaming. |
+| List utility builtins (Block B) | `head : List a → a`, `tail : List a → List a`, `length : List a → Integer`, `isEmpty : List a → Boolean`. Operate on `ListVal.elements()`. Essential for working with topology results and other list values. |
+| `EvalDependencies` context (Block B) | The evaluator takes an `EvalDependencies` record bundling `Client`, `Executor`, and `ClusterService`. Replaces the growing constructor parameter list and scales to Block C (which will add `TransportService` and a channel registry). See D-044. |
 | Uniformly async evaluator (Block A) | Every `evaluate` call takes an `ActionListener<Value>`. Pure expressions fire callbacks synchronously inline (zero overhead). Coordination primitives (`spawn`, `when`, `query`) are truly async. No separate sync/async code paths (D-041). |
 | Expression evaluation (Phase 1c) | Non-query programs go through parse → elaborate → evaluate pipeline, returning `{"type": "...", "result": ...}` |
 | Request validation | Empty/blank programs rejected with 400 |
@@ -45,7 +56,7 @@ for Phase 1 items carried forward.
 | Core IR printer | `CorePrinter` in `piescript.core`: `printExpr` (zonked), `printExprRaw` (bare metas/rigids), `printConstraints`, `printZonker` — used by dev endpoint for debugging |
 | Parser unit tests | `PiescriptParserTests.java` — comprehensive coverage of every syntax form plus error cases |
 | Type data structures (Phase 1b) | `Kind`, `MonoType`, `RowType`, `TypeScheme`, `LitVal`, `Op` in `piescript.types` package |
-| Core IR (Phase 1b + D-035 + Phase 2 + Block A) | `CoreExpr` sealed hierarchy in `piescript.core`: `CoreVar`, `CoreFree`, `CoreLit`, `CoreLam`, `CoreApp`, `CoreLet`, `CoreRecord`, `CoreProject`, `CoreUpdate`, `CorePrimOp`, `CoreTypeAbs`, `CoreTypeApp`, `CoreQuery`, `CoreSpawn`, `CoreWhen` — extends `Node<CoreExpr>` with `MonoType` on every node. `CoreTypeAbs` and `CoreTypeApp` are unary System F nodes. `CoreFree` is a module-level free variable (built-ins). `CoreQuery` carries an ESQL query string and its resolved stream type. `CoreSpawn` wraps a body expression (type `Channel bodyType`). `CoreWhen` carries a list of `WhenBinding(CoreExpr channel, @Nullable String debugName)` and a body. |
+| Core IR (Phase 1b + D-035 + Phase 2 + Block A) | `CoreExpr` sealed hierarchy in `piescript.core`: `CoreVar`, `CoreFree`, `CoreLit`, `CoreLam`, `CoreApp`, `CoreLet`, `CoreRecord`, `CoreProject`, `CoreUpdate`, `CorePrimOp`, `CoreTypeAbs`, `CoreTypeApp`, `CoreQuery`, `CoreSpawn`, `CoreWhen` — extends `Node<CoreExpr>` with `MonoType` on every node. `CoreTypeAbs` and `CoreTypeApp` are unary System F nodes. `CoreFree` is a module-level free variable (built-ins). `CoreQuery` carries an ESQL query string and its resolved list type. `CoreSpawn` wraps a body expression (type `Channel bodyType`). `CoreWhen` carries a list of `WhenBinding(CoreExpr channel, @Nullable String debugName)` and a body. |
 | Type unit tests (Phase 1b) | `TypeDataStructureTests.java` — construction, equality, sealed hierarchy, factory methods |
 | Core IR unit tests (Phase 1b) | `CoreExprTests.java` — construction, accessors, equality, replaceChildren, tree traversal |
 | Elaboration context (Phase 1b + Phase 2) | Immutable `ElaborationContext` in `piescript.elab`: typing context (Γ) with de Bruijn-indexed local bindings + module-level free variable map + binding level, passed by value through recursive descent. `lookup()` checks local bindings first; `lookupModule()` falls back to the module map. Local variables shadow module-level names. |
@@ -55,14 +66,14 @@ for Phase 1 items carried forward.
 | Type errors (Phase 1b) | `TypeError` sealed interface: `Mismatch`, `InfiniteType`, `FieldMismatch`, `MissingFields` |
 | Unification unit tests (Phase 1b) | `UnifierTests.java` — meta solving, transitive chains, occurs check, null-as-bottom, arrow/record/app structural matching, cross-form mismatch |
 | Elaborator (Phase 1b + D-035 + Phase 2) | `Elaborator` in `piescript.elab`: pattern-matching recursive descent over ANTLR CST → Core IR. Bidirectional HM type inference with deferred constraint solving, `generalize` (metas → Rigids in zonker + `CoreTypeAbs`), `instantiateAndWrap` (parameterized by `Function<MonoType, CoreExpr>` factory — produces `CoreVar` for local bindings, `CoreFree` for module-level free variables), primops as typed functions (concrete Integer-only signatures, D-020), desugaring (multi-param lambda, pipe, accessor, update sugar, blocks, top-level bindings). Two-tier variable lookup: local de Bruijn bindings then module-level free variables. |
-| Prelude (Phase 2) | `Prelude` in `piescript.elab`: defines the module map of built-in function type schemes (`map`, `filter`, `reduce`) and their arities. Type schemes use pre-allocated Rigid IDs (negative, disjoint from `ElaborationState.freshRigid`). Wired into `ElaborationContext.withModule(Prelude.MODULE)` at elaboration start. |
+| Prelude (Phase 2 + Block B) | `Prelude` in `piescript.elab`: defines the module map of built-in function type schemes (`map`, `filter`, `reduce`, `head`, `tail`, `length`, `isEmpty`, `topology`) and their arities. Type schemes use pre-allocated Rigid IDs (negative, disjoint from `ElaborationState.freshRigid`). Wired into `ElaborationContext.withModule(Prelude.MODULE)` at elaboration start. |
 | Type walker (Phase 1b, reduced by D-035) | `TypeWalker` in `piescript.elab`: `resolveDeep` (used by `CorePrinter` for display) and `collectMetas` (used by `Elaborator.generalize`). `walkType`, `generalize`, and `instantiate` were deleted by D-035. |
 | Elaboration exception (Phase 1b) | `ElaborationException`: unchecked, fail-fast, wraps source location + optional `TypeError`. |
 | Elaborator tests (Phase 1b + D-035 + Block A) | `ElaboratorTests.java` — 106 tests covering all Phase 1b/D-035 tests plus `spawn`/`when` type inference (channel type production, unwrapping, multi-binding scenarios, type errors for non-channel `when` bindings). |
-| Runtime values (Phase 1c + Phase 2 + Block A) | `Value` sealed interface in `piescript.eval`: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)`, `BooleanVal`, `NullVal`, `RecordVal`, `StreamVal(List<Value>)`, `ClosureVal`, `BuiltinVal(name, arity, partialArgs)`, `SpawnVal(SubscribableListener<Value>)`. `StreamVal` is the eagerly materialized stream representation. `BuiltinVal` supports curried partial application. `SpawnVal` wraps a single-completion channel (Block A). |
-| ESQL value converter (Phase 2) | `EsqlValueConverter` in `piescript.eval`: converts `EsqlQueryResponse` rows to `StreamVal`. Each row becomes a `RecordVal` (column names → field keys, cell values → field values via `instanceof` dispatch). Handles `Integer`, `Long`, `Double`, `String`, `Boolean`, `null`, multi-value fields (v0: first element only). |
-| Evaluator (Phase 1c + D-035 + Phase 2 + Block A) | Uniformly async tree-walking de Bruijn environment machine, split across four classes: `Evaluator` (core dispatch + `CoreExpr` cases), `EvalPrimOps` (arithmetic, comparison, boolean ops), `EvalBuiltins` (stream processing — `map`/`filter`/`reduce` via `SubscribableListener` chaining), `EvalCoordination` (`when` evaluation via `PositionalCollector`). Takes `Client` and `Executor`. `CoreQuery` fires `EsqlQueryAction` asynchronously. `CoreSpawn` forks to executor, returns `SpawnVal`. `CoreWhen` uses positional collector to synchronize channels and extend the de Bruijn environment. |
-| PiescriptResponse (Phase 1c + Phase 2) | Wrapper response: expression results (`{"type": ..., "result": ...}`), including `StreamVal` serialized as JSON arrays. Implements `ChunkedToXContentObject` and `Releasable`. |
+| Runtime values (Phase 1c + Phase 2 + Block A + Block B) | `Value` sealed interface in `piescript.eval`: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)`, `BooleanVal`, `NullVal`, `RecordVal`, `ListVal(List<Value>)`, `ClosureVal`, `BuiltinVal(name, arity, partialArgs)`, `SpawnVal(SubscribableListener<Value>)`. `ListVal` is the eagerly materialized list representation (renamed from `StreamVal` in Block B — D-043). `BuiltinVal` supports curried partial application. `SpawnVal` wraps a single-completion channel (Block A). |
+| ESQL value converter (Phase 2) | `EsqlValueConverter` in `piescript.eval`: converts `EsqlQueryResponse` rows to `ListVal`. Each row becomes a `RecordVal` (column names → field keys, cell values → field values via `instanceof` dispatch). Handles `Integer`, `Long`, `Double`, `String`, `Boolean`, `null`, multi-value fields (v0: first element only). |
+| Evaluator (Phase 1c + D-035 + Phase 2 + Block A + Block B) | Uniformly async tree-walking de Bruijn environment machine, split across five classes: `Evaluator` (core dispatch + `CoreExpr` cases), `EvalPrimOps` (arithmetic, comparison, boolean ops), `EvalBuiltins` (list processing — `map`/`filter`/`reduce`/`head`/`tail`/`length`/`isEmpty` via `SubscribableListener` chaining), `EvalCoordination` (`when` evaluation via `PositionalCollector`), `EvalTopology` (`topology` builtin implementation). Takes `EvalDependencies` (bundling `Client`, `Executor`, `ClusterService`). `CoreQuery` fires `EsqlQueryAction` asynchronously. `CoreSpawn` forks to executor, returns `SpawnVal`. `CoreWhen` uses positional collector to synchronize channels and extend the de Bruijn environment. |
+| PiescriptResponse (Phase 1c + Phase 2 + Block B) | Wrapper response: expression results (`{"type": ..., "result": ...}`), including `ListVal` serialized as JSON arrays. Implements `ChunkedToXContentObject` and `Releasable`. |
 | Transport pipeline (Phase 2 + Block A) | Unified async pipeline: parse → index resolution pre-pass → elaborate → evaluate (via `ActionListener`). Runs on `ThreadPool.Names.GENERIC` (D-004 revision). The evaluator completes the transport `ActionListener` when done — including after async `spawn`/`when` resolution. |
 | Evaluator tests (Phase 1c + Phase 2 + Block A) | `EvaluatorTests.java` — 79 tests covering: all Phase 1c/Phase 2 tests plus `spawn`/`when` semantics (pure values, computations, multiple bindings, nested spawn, lambda bodies), async evaluation with real thread pools (`Executors.newFixedThreadPool`), and deterministic tests with `DIRECT_EXECUTOR_SERVICE`. |
 
@@ -75,8 +86,11 @@ for Phase 1 items carried forward.
 | Math functions (`pow`, `sqrt`, etc.) | Phase 1 tech debt | No exponentiation or standard math functions. |
 | `sort` / `take` combinators | Block C | No sorting or top-N selection within piescript. Must push into ESQL. |
 | `groupBy` combinator | Block C+ | No grouping/aggregation semantics within piescript. Must push into ESQL. |
-| Multi-value channels | Block B | Block A channels are single-value only |
-| `newchan` / `send` primitives | Block B | No explicit channel creation or message sending |
+| Multi-value channels | Deferred | Block A channels are single-value only |
+| `newchan` / `send` primitives | Block C | No explicit channel creation or message sending |
+| Wildcard / alias / data stream patterns in `topology` | Deferred | `topology` accepts exact index name only (D-044) |
+| Multi-project support in `topology` | Deferred | Uses `ProjectId.DEFAULT` (D-044) |
+| Non-STARTED shard states in `topology` | Deferred | Only STARTED shards included (D-044) |
 | `writeTo` sink primitive | Block C | No mechanism to write stream results to an index |
 | Scheduled async execution | Block C | No persistent task or scheduler |
 | Push-down optimizer | Block D | No compilation of piescript transforms to ESQL expressions |
@@ -163,18 +177,17 @@ superset of the distributed vertical slice — it requires `writeTo` (Block E st
 
 ## Immediate Next Steps
 
-Phases 0–2 and Block A are complete. The language supports concurrent multi-index queries via
-`spawn`/`when`, typed functional composition over query results, and structured record output.
+Phases 0–2, Block A, and Block B are complete. The language supports concurrent multi-index queries
+via `spawn`/`when`, typed functional composition over query results, structured record output,
+cluster topology discovery via `topology`, and list utilities (`head`/`tail`/`length`/`isEmpty`).
 See [mvp.md](mvp.md) for concrete examples.
 
 **Next on the MVP critical path** (distributed vertical slice):
 
-1. **Block B** — ES topology as typed values. Inject `ClusterService`, implement `index_topology`
-   builtin, design node/shard record types.
-2. **Block C** — Cross-node code execution. `spawn!`, `send`, `Value` serialization, `CoreExpr`
+1. **Block C** — Cross-node code execution. `spawn!`, `send`, `Value` serialization, `CoreExpr`
    serialization, channel registry, transport handlers, remote evaluator. The hardest block —
    will be subdivided.
-3. **Block D** — Local data access (`scan`). Lucene queries on data nodes inside shipped closures.
+2. **Block D** — Local data access (`scan`). Lucene queries on data nodes inside shipped closures.
 
 **High-impact small items** (can be addressed opportunistically alongside blocks):
 
@@ -200,6 +213,9 @@ the full consolidated list.
 - Typeclass-driven push-down (RawData → Lucene) — future optimization
 - Exchange streaming (scale) — future, orchestrated explicitly by piescript
 - Push-down to ESQL text — deprioritized (typeclass approach is more general)
+- Wildcard / alias / data stream patterns in `topology` (D-044)
+- Multi-project support in `topology` (`ProjectId.DEFAULT` used) (D-044)
+- Non-STARTED shard states in `topology` (D-044)
 
 Review:
 
@@ -207,9 +223,11 @@ Review:
 - [vision.md](vision.md) for the MVP goal and design philosophy
 - [roadmap.md](roadmap.md) for the updated block breakdown and MVP milestone
 - [decisions.md](decisions.md) for all architectural decisions (D-040 Join Calculus model, D-041
-  Block A implementation, D-042 distributed execution model and block restructure)
+  Block A implementation, D-042 distributed execution model and block restructure, D-043 Stream→List
+  rename, D-044 topology builtin design)
 
 **Ref**: [Phase 2 completion session](303bcf3e-9eef-4719-a47d-24c1ff27a675),
 [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
 [Block A implementation](14bf4826-a39e-4012-ab4c-d73ad902a95f),
-[Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f)
+[Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f),
+Block B implementation session

@@ -107,7 +107,7 @@ public class PiescriptIT extends ESRestTestCase {
         Map<String, Object> responseMap = entityAsMap(response);
         assertThat(responseMap.containsKey("type"), equalTo(true));
         String type = (String) responseMap.get("type");
-        assertThat(type, containsString("Stream"));
+        assertThat(type, containsString("List"));
         assertThat(type, containsString("message"));
         assertThat(type, containsString("status"));
         assertThat(responseMap.containsKey("eval"), equalTo(true));
@@ -120,20 +120,20 @@ public class PiescriptIT extends ESRestTestCase {
 
         Map<String, Object> responseMap = entityAsMap(response);
         String type = (String) responseMap.get("type");
-        assertThat(type, containsString("Stream"));
+        assertThat(type, containsString("List"));
         assertThat(responseMap.containsKey("eval"), equalTo(true));
     }
 
     // ──── Eager query evaluation (Phase 2.8) ────
 
-    public void testQueryEvalReturnsStream() throws IOException {
+    public void testQueryEvalReturnsList() throws IOException {
         Request request = piescriptRequest("query `FROM piescript-typed | SORT name ASC | LIMIT 10`");
         Response response = client().performRequest(request);
         assertOK(response);
 
         Map<String, Object> responseMap = entityAsMap(response);
         String type = (String) responseMap.get("type");
-        assertThat(type, containsString("Stream"));
+        assertThat(type, containsString("List"));
         Object result = responseMap.get("result");
         assertThat(result, instanceOf(List.class));
         @SuppressWarnings("unchecked")
@@ -264,6 +264,102 @@ public class PiescriptIT extends ESRestTestCase {
         Request request = piescriptRequest("let = in");
         ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
+    }
+
+    // ──── Topology builtin (Phase 3) ────
+
+    public void testTopologyReturnsShardAndNodeInfo() throws IOException {
+        Request request = piescriptRequest("topology \"piescript-test\"");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        Object result = responseMap.get("result");
+        assertThat(result, instanceOf(Map.class));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> topoResult = (Map<String, Object>) result;
+
+        assertThat(topoResult.containsKey("shards"), equalTo(true));
+        assertThat(topoResult.containsKey("nodes"), equalTo(true));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> shards = (List<Map<String, Object>>) topoResult.get("shards");
+        assertThat(shards.size(), greaterThanOrEqualTo(1));
+
+        Map<String, Object> firstShard = shards.get(0);
+        assertThat(firstShard.containsKey("index"), equalTo(true));
+        assertThat(firstShard.get("index"), equalTo("piescript-test"));
+        assertThat(firstShard.containsKey("shard_id"), equalTo(true));
+        assertThat(firstShard.containsKey("primary"), equalTo(true));
+        assertThat(firstShard.containsKey("state"), equalTo(true));
+        assertThat(firstShard.containsKey("node"), equalTo(true));
+
+        @SuppressWarnings("unchecked")
+        Map<String, Object> node = (Map<String, Object>) firstShard.get("node");
+        assertThat(node.containsKey("id"), equalTo(true));
+        assertThat(node.containsKey("name"), equalTo(true));
+        assertThat(node.containsKey("address"), equalTo(true));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> nodes = (List<Map<String, Object>>) topoResult.get("nodes");
+        assertThat(nodes.size(), greaterThanOrEqualTo(1));
+        Map<String, Object> firstNode = nodes.get(0);
+        assertThat(firstNode.containsKey("id"), equalTo(true));
+        assertThat(firstNode.containsKey("name"), equalTo(true));
+        assertThat(firstNode.containsKey("shards"), equalTo(true));
+    }
+
+    public void testTopologyTypecheck() throws IOException {
+        Request request = piescriptDevRequest("topology \"piescript-test\"");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        String type = (String) responseMap.get("type");
+        assertThat(type, containsString("shards"));
+        assertThat(type, containsString("nodes"));
+        assertThat(type, containsString("List"));
+    }
+
+    public void testTopologyNonExistentIndexThrows() throws IOException {
+        Request request = piescriptRequest("topology \"nonexistent-index-xyz\"");
+        ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
+        assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
+    }
+
+    // ──── List utility builtins ────
+
+    public void testHeadBuiltin() throws IOException {
+        Request request = piescriptRequest("head (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        Object result = responseMap.get("result");
+        assertThat(result, instanceOf(Map.class));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> record = (Map<String, Object>) result;
+        assertThat(record.get("name"), equalTo("alice"));
+    }
+
+    public void testLengthBuiltin() throws IOException {
+        Request request = piescriptRequest("length (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("type"), equalTo("Integer"));
+        assertThat(responseMap.get("result"), equalTo(3));
+    }
+
+    public void testIsEmptyBuiltin() throws IOException {
+        Request request = piescriptRequest("isEmpty (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("type"), equalTo("Boolean"));
+        assertThat(responseMap.get("result"), equalTo(false));
     }
 
     private static Request piescriptRequest(String program) {

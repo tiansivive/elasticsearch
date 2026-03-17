@@ -47,7 +47,7 @@ final class Queries {
     /**
      * Elaborate a {@code QueryExpr} into a typed {@link CoreQuery}.
      *
-     * @return a {@code CoreQuery} with type {@code Stream { field1: T1, field2: T2, ... }}
+     * @return a {@code CoreQuery} with type {@code List { field1: T1, field2: T2, ... }}
      * @throws ElaborationException if no resolved mapping is found for the index pattern
      */
     static CoreExpr query(Elaborator elab, PiescriptAntlrParser.QueryExprContext q, ElaborationContext ctx) {
@@ -62,9 +62,9 @@ final class Queries {
 
         var rowFields = buildRowFields(mapping.fieldMap(), parsed.indexPattern(), elab, src);
         var rowType = RowType.closed(rowFields);
-        var streamType = new MonoType.AppType(Elaborator.STREAM, new MonoType.RecordType(rowType));
+        var listType = new MonoType.AppType(Elaborator.LIST, new MonoType.RecordType(rowType));
 
-        return new CoreQuery(src.source(), parsed.fullEsqlQuery(), parsed.indexPattern(), streamType);
+        return new CoreQuery(src.source(), parsed.fullEsqlQuery(), parsed.indexPattern(), listType);
     }
 
     /**

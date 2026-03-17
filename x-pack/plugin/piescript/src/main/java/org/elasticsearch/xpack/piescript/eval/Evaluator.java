@@ -10,8 +10,6 @@ package org.elasticsearch.xpack.piescript.eval;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.support.SubscribableListener;
-import org.elasticsearch.client.internal.Client;
-import org.elasticsearch.core.Nullable;
 import org.elasticsearch.xpack.esql.action.EsqlQueryAction;
 import org.elasticsearch.xpack.esql.action.EsqlQueryRequest;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
@@ -36,7 +34,6 @@ import org.elasticsearch.xpack.piescript.types.LitVal;
 
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.concurrent.Executor;
 
 /**
  * Uniformly asynchronous tree-walking evaluator for well-typed Core IR.
@@ -64,13 +61,10 @@ public final class Evaluator {
 
     private static final Value[] EMPTY_ENV = new Value[0];
 
-    @Nullable
-    private final Client client;
-    final Executor executor;
+    final EvalDependencies deps;
 
-    public Evaluator(@Nullable Client client, Executor executor) {
-        this.client = client;
-        this.executor = executor;
+    public Evaluator(EvalDependencies deps) {
+        this.deps = deps;
     }
 
     public void evaluate(CoreExpr expr, ActionListener<Value> listener) {
@@ -94,12 +88,19 @@ public final class Evaluator {
 
             case CoreLam lam -> listener.onResponse(new Value.ClosureVal(lam.body(), env.clone()));
 
-            case CoreApp app -> evaluate(app.fn(), env, listener.delegateFailureAndWrap((l1, fn) ->
-                evaluate(app.arg(), env, l1.delegateFailureAndWrap((l2, arg) ->
-                    applyFunction(fn, arg, l2)))));
+            case CoreApp app -> evaluate(
+                app.fn(),
+                env,
+                listener.delegateFailureAndWrap(
+                    (l1, fn) -> evaluate(app.arg(), env, l1.delegateFailureAndWrap((l2, arg) -> applyFunction(fn, arg, l2)))
+                )
+            );
 
-            case CoreLet let -> evaluate(let.rhs(), env, listener.delegateFailureAndWrap((l, rhsVal) ->
-                evaluate(let.body(), prepend(rhsVal, env), l)));
+            case CoreLet let -> evaluate(
+                let.rhs(),
+                env,
+                listener.delegateFailureAndWrap((l, rhsVal) -> evaluate(let.body(), prepend(rhsVal, env), l))
+            );
 
             case CoreRecord rec -> evaluateRecord(rec, env, listener);
 
@@ -126,20 +127,23 @@ public final class Evaluator {
             case CorePrimOp primOp -> EvalPrimOps.evaluate(this, primOp, env, listener);
 
             case CoreQuery q -> {
-                if (client == null) {
+                if (deps.client() == null) {
                     listener.onFailure(new EvaluationException("query evaluation requires a client"));
                     return;
                 }
                 var request = EsqlQueryRequest.syncEsqlQueryRequest(q.esqlQuery());
-                client.execute(EsqlQueryAction.INSTANCE, request, listener.delegateFailureAndWrap((l, response) ->
-                    l.onResponse(EsqlValueConverter.convertResponse(response))
-                ));
+                deps.client()
+                    .execute(
+                        EsqlQueryAction.INSTANCE,
+                        request,
+                        listener.delegateFailureAndWrap((l, response) -> l.onResponse(EsqlValueConverter.convertResponse(response)))
+                    );
             }
 
             case CoreSpawn spawn -> {
                 var channel = new SubscribableListener<Value>();
                 // env is safe to capture: immutable by convention (prepend always allocates a new array)
-                executor.execute(ActionRunnable.wrap(channel, l -> evaluate(spawn.body(), env, l)));
+                deps.executor().execute(ActionRunnable.wrap(channel, l -> evaluate(spawn.body(), env, l)));
                 listener.onResponse(new Value.SpawnVal(channel));
             }
 

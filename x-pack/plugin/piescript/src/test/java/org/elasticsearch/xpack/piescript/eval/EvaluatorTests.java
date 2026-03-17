@@ -45,7 +45,7 @@ public class EvaluatorTests extends ESTestCase {
         var elaborator = new Elaborator(state);
         var coreExpr = elaborator.elaborateProgram(program);
         var future = new PlainActionFuture<Value>();
-        new Evaluator(null, EsExecutors.DIRECT_EXECUTOR_SERVICE).evaluate(coreExpr, future);
+        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(coreExpr, future);
         return future.actionGet();
     }
 
@@ -345,7 +345,7 @@ public class EvaluatorTests extends ESTestCase {
 
     // ──── Stream built-ins (Phase 2.8) ────
     //
-    // These tests construct Core IR directly and inject a StreamVal into the
+    // These tests construct Core IR directly and inject a ListVal into the
     // evaluator environment, bypassing parsing and elaboration. This validates
     // the built-in map/filter/reduce logic without requiring a real ES client.
 
@@ -353,11 +353,11 @@ public class EvaluatorTests extends ESTestCase {
     private static final MonoType INT = new MonoType.TCon("Integer");
     private static final MonoType BOOL = new MonoType.TCon("Boolean");
 
-    private static Value.StreamVal testStream() {
+    private static Value.ListVal testStream() {
         var row1 = new Value.RecordVal(linkedMap("name", new Value.KeywordVal("alice"), "age", new Value.IntegerVal(30)));
         var row2 = new Value.RecordVal(linkedMap("name", new Value.KeywordVal("bob"), "age", new Value.IntegerVal(25)));
         var row3 = new Value.RecordVal(linkedMap("name", new Value.KeywordVal("carol"), "age", new Value.IntegerVal(35)));
-        return new Value.StreamVal(List.of(row1, row2, row3));
+        return new Value.ListVal(List.of(row1, row2, row3));
     }
 
     private static Map<String, Value> linkedMap(String k1, Value v1, String k2, Value v2) {
@@ -373,7 +373,7 @@ public class EvaluatorTests extends ESTestCase {
      */
     private Value evaluateWithEnv(CoreExpr expr, Value... env) {
         var future = new PlainActionFuture<Value>();
-        new Evaluator(null, EsExecutors.DIRECT_EXECUTOR_SERVICE).evaluate(expr, env, future);
+        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(expr, env, future);
         return future.actionGet();
     }
 
@@ -389,8 +389,8 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", INT), INT);
 
         var result = evaluateWithEnv(fullExpr, stream);
-        assertThat(result, instanceOf(Value.StreamVal.class));
-        var elements = ((Value.StreamVal) result).elements();
+        assertThat(result, instanceOf(Value.ListVal.class));
+        var elements = ((Value.ListVal) result).elements();
         assertThat(elements.size(), is(3));
         assertThat(elements.get(0), is(new Value.IntegerVal(30)));
         assertThat(elements.get(1), is(new Value.IntegerVal(25)));
@@ -413,8 +413,8 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", INT), INT);
 
         var result = evaluateWithEnv(fullExpr, stream);
-        assertThat(result, instanceOf(Value.StreamVal.class));
-        var elements = ((Value.StreamVal) result).elements();
+        assertThat(result, instanceOf(Value.ListVal.class));
+        var elements = ((Value.ListVal) result).elements();
         assertThat(elements.size(), is(3));
         assertThat(elements.get(0), is(new Value.IntegerVal(31)));
         assertThat(elements.get(1), is(new Value.IntegerVal(26)));
@@ -437,8 +437,8 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", INT), INT);
 
         var result = evaluateWithEnv(fullExpr, stream);
-        assertThat(result, instanceOf(Value.StreamVal.class));
-        var elements = ((Value.StreamVal) result).elements();
+        assertThat(result, instanceOf(Value.ListVal.class));
+        var elements = ((Value.ListVal) result).elements();
         assertThat(elements.size(), is(2));
         assertThat(((Value.RecordVal) elements.get(0)).fields().get("name"), is(new Value.KeywordVal("alice")));
         assertThat(((Value.RecordVal) elements.get(1)).fields().get("name"), is(new Value.KeywordVal("carol")));
@@ -458,8 +458,8 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", INT), INT);
 
         var result = evaluateWithEnv(fullExpr, stream);
-        assertThat(result, instanceOf(Value.StreamVal.class));
-        assertThat(((Value.StreamVal) result).elements().size(), is(3));
+        assertThat(result, instanceOf(Value.ListVal.class));
+        assertThat(((Value.ListVal) result).elements().size(), is(3));
     }
 
     public void testFilterRemovesAll() {
@@ -476,8 +476,8 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", INT), INT);
 
         var result = evaluateWithEnv(fullExpr, stream);
-        assertThat(result, instanceOf(Value.StreamVal.class));
-        assertThat(((Value.StreamVal) result).elements().size(), is(0));
+        assertThat(result, instanceOf(Value.ListVal.class));
+        assertThat(((Value.ListVal) result).elements().size(), is(0));
     }
 
     public void testReduceSumAges() {
@@ -508,7 +508,7 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testReduceEmptyStream() {
         // reduce (fn acc elem -> acc + 1) 0 emptyStream — returns initial value
-        var emptyStream = new Value.StreamVal(List.of());
+        var emptyStream = new Value.ListVal(List.of());
         var accVar = new CoreVar(SRC, 1, "acc", INT);
         var lit1 = new org.elasticsearch.xpack.piescript.core.CoreLit(
             SRC,
@@ -534,7 +534,7 @@ public class EvaluatorTests extends ESTestCase {
     }
 
     public void testMapOnEmptyStream() {
-        var emptyStream = new Value.StreamVal(List.of());
+        var emptyStream = new Value.ListVal(List.of());
         var body = new CoreProject(SRC, new CoreVar(SRC, 0, "r", INT), "age", INT);
         var lambda = new CoreLam(SRC, "r", INT, body, INT);
         var mapFree = new CoreFree(SRC, "map", INT);
@@ -542,8 +542,8 @@ public class EvaluatorTests extends ESTestCase {
         var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", INT), INT);
 
         var result = evaluateWithEnv(fullExpr, emptyStream);
-        assertThat(result, instanceOf(Value.StreamVal.class));
-        assertThat(((Value.StreamVal) result).elements().size(), is(0));
+        assertThat(result, instanceOf(Value.ListVal.class));
+        assertThat(((Value.ListVal) result).elements().size(), is(0));
     }
 
     // ──── Spawn / When (Block A) ────
@@ -562,7 +562,7 @@ public class EvaluatorTests extends ESTestCase {
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
             var future = new PlainActionFuture<Value>();
-            new Evaluator(null, pool).evaluate(coreExpr, future);
+            new Evaluator(new EvalDependencies(null, pool, null)).evaluate(coreExpr, future);
             return future.actionGet(5, TimeUnit.SECONDS);
         } finally {
             pool.shutdown();
@@ -601,9 +601,7 @@ public class EvaluatorTests extends ESTestCase {
     }
 
     public void testWhenMultipleBindingsProducesRecord() {
-        var result = evaluate(
-            "let a = spawn 42 in let b = spawn \"hello\" in when (a num) & (b greeting) -> { n: num, g: greeting }"
-        );
+        var result = evaluate("let a = spawn 42 in let b = spawn \"hello\" in when (a num) & (b greeting) -> { n: num, g: greeting }");
         assertThat(result, instanceOf(Value.RecordVal.class));
         var fields = ((Value.RecordVal) result).fields();
         assertThat(fields.get("n"), is(new Value.IntegerVal(42)));
@@ -611,9 +609,7 @@ public class EvaluatorTests extends ESTestCase {
     }
 
     public void testSpawnNestedInWhenBody() {
-        var result = evaluate(
-            "let ch1 = spawn 10 in when (ch1 x) -> let ch2 = spawn (x + 5) in when (ch2 y) -> y"
-        );
+        var result = evaluate("let ch1 = spawn 10 in when (ch1 x) -> let ch2 = spawn (x + 5) in when (ch2 y) -> y");
         assertThat(result, is(new Value.IntegerVal(15)));
     }
 
@@ -634,8 +630,106 @@ public class EvaluatorTests extends ESTestCase {
     public void testQueryWithoutClientThrows() {
         var query = new org.elasticsearch.xpack.piescript.core.CoreQuery(SRC, "FROM test", "test", INT);
         var future = new PlainActionFuture<Value>();
-        new Evaluator(null, EsExecutors.DIRECT_EXECUTOR_SERVICE).evaluate(query, future);
+        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(query, future);
         var ex = expectThrows(EvaluationException.class, future::actionGet);
         assertThat(ex.getMessage(), containsString("requires a client"));
+    }
+
+    // ──── List utility builtins (Block B) ────
+
+    public void testHeadReturnFirstElement() {
+        var stream = testStream();
+        var headFree = new CoreFree(SRC, "head", INT);
+        var fullExpr = new CoreApp(SRC, headFree, new CoreVar(SRC, 0, "list", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, instanceOf(Value.RecordVal.class));
+        var fields = ((Value.RecordVal) result).fields();
+        assertThat(fields.get("name"), is(new Value.KeywordVal("alice")));
+        assertThat(fields.get("age"), is(new Value.IntegerVal(30)));
+    }
+
+    public void testHeadEmptyListThrows() {
+        var emptyList = new Value.ListVal(List.of());
+        var headFree = new CoreFree(SRC, "head", INT);
+        var fullExpr = new CoreApp(SRC, headFree, new CoreVar(SRC, 0, "list", INT), INT);
+
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(
+            fullExpr,
+            new Value[] { emptyList },
+            future
+        );
+        var ex = expectThrows(EvaluationException.class, future::actionGet);
+        assertThat(ex.getMessage(), containsString("empty list"));
+    }
+
+    public void testTailReturnsRest() {
+        var stream = testStream();
+        var tailFree = new CoreFree(SRC, "tail", INT);
+        var fullExpr = new CoreApp(SRC, tailFree, new CoreVar(SRC, 0, "list", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, instanceOf(Value.ListVal.class));
+        var elements = ((Value.ListVal) result).elements();
+        assertThat(elements.size(), is(2));
+        assertThat(((Value.RecordVal) elements.get(0)).fields().get("name"), is(new Value.KeywordVal("bob")));
+        assertThat(((Value.RecordVal) elements.get(1)).fields().get("name"), is(new Value.KeywordVal("carol")));
+    }
+
+    public void testTailEmptyListThrows() {
+        var emptyList = new Value.ListVal(List.of());
+        var tailFree = new CoreFree(SRC, "tail", INT);
+        var fullExpr = new CoreApp(SRC, tailFree, new CoreVar(SRC, 0, "list", INT), INT);
+
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(
+            fullExpr,
+            new Value[] { emptyList },
+            future
+        );
+        var ex = expectThrows(EvaluationException.class, future::actionGet);
+        assertThat(ex.getMessage(), containsString("empty list"));
+    }
+
+    public void testLengthReturnsSize() {
+        var stream = testStream();
+        var lengthFree = new CoreFree(SRC, "length", INT);
+        var fullExpr = new CoreApp(SRC, lengthFree, new CoreVar(SRC, 0, "list", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, is(new Value.IntegerVal(3)));
+    }
+
+    public void testIsEmptyFalseForNonEmpty() {
+        var stream = testStream();
+        var isEmptyFree = new CoreFree(SRC, "isEmpty", INT);
+        var fullExpr = new CoreApp(SRC, isEmptyFree, new CoreVar(SRC, 0, "list", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, stream);
+        assertThat(result, is(new Value.BooleanVal(false)));
+    }
+
+    public void testIsEmptyTrueForEmpty() {
+        var emptyList = new Value.ListVal(List.of());
+        var isEmptyFree = new CoreFree(SRC, "isEmpty", INT);
+        var fullExpr = new CoreApp(SRC, isEmptyFree, new CoreVar(SRC, 0, "list", INT), INT);
+
+        var result = evaluateWithEnv(fullExpr, emptyList);
+        assertThat(result, is(new Value.BooleanVal(true)));
+    }
+
+    public void testTopologyWithoutClusterServiceThrows() {
+        var topologyFree = new CoreFree(SRC, "topology", INT);
+        var fullExpr = new CoreApp(SRC, topologyFree, new CoreVar(SRC, 0, "index", INT), INT);
+
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(new EvalDependencies(null, EsExecutors.DIRECT_EXECUTOR_SERVICE, null)).evaluate(
+            fullExpr,
+            new Value[] { new Value.KeywordVal("test") },
+            future
+        );
+        var ex = expectThrows(EvaluationException.class, future::actionGet);
+        assertThat(ex.getMessage(), containsString("requires cluster service"));
     }
 }

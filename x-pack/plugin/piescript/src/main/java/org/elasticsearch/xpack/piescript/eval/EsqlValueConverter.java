@@ -15,7 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
- * Converts an {@link EsqlQueryResponse} into a piescript {@link Value.StreamVal}.
+ * Converts an {@link EsqlQueryResponse} into a piescript {@link Value.ListVal}.
  *
  * <p>Each ESQL row becomes a {@link Value.RecordVal} whose field names are the
  * column names from the response metadata, and whose field values are produced
@@ -28,24 +28,24 @@ import java.util.List;
  * arrive as {@code String}. This converter maps them to {@link Value.KeywordVal}.
  *
  * <p>Multi-value fields ({@code List<?>}) use a v0 simplification: only the
- * first element is kept. A proper {@code ListVal} can be introduced later.
+ * first element is kept.
  */
 public final class EsqlValueConverter {
 
     private EsqlValueConverter() {}
 
     /**
-     * Convert an entire ESQL query response into a materialized stream.
+     * Convert an entire ESQL query response into a materialized list.
      * Column names become record field keys; cell values become field values.
      * Column order is preserved via {@link LinkedHashMap}.
      */
-    public static Value.StreamVal convertResponse(EsqlQueryResponse response) {
+    public static Value.ListVal convertResponse(EsqlQueryResponse response) {
         List<ColumnInfoImpl> columns = response.columns();
         var elements = new ArrayList<Value>();
         for (Iterable<Object> row : response.rows()) {
             elements.add(convertRow(columns, row));
         }
-        return new Value.StreamVal(elements);
+        return new Value.ListVal(elements);
     }
 
     /**

@@ -2,7 +2,8 @@
 
 > **Living doc** — update whenever files or packages are added/removed/renamed.
 >
-> **Last updated**: 2026-03-16 (Phase 2 complete). **Ref**: [Phase 2 completion](303bcf3e-9eef-4719-a47d-24c1ff27a675)
+> **Last updated**: 2026-03-17 (Block B complete — `topology` builtin, `Stream` → `List` rename,
+> `EvalDependencies`, `EvalTopology`). **Ref**: Block B implementation session
 
 ## Directory Layout
 
@@ -70,10 +71,12 @@ x-pack/plugin/piescript/
     │       │   ├── EsqlBodyParser.java          # Extract index patterns from ESQL body (Phase 2)
     │       │   ├── DataTypeMapping.java         # ES DataType → piescript MonoType (Phase 2)
     │       │   └── Polymorphism.java            # Generalization + instantiation helpers (Phase 2)
-    │       └── eval/                      # Phase 1c + Phase 2: Evaluation
-    │           ├── Value.java                   # Runtime value sealed interface (10 variants)
+    │       └── eval/                      # Phase 1c + Phase 2 + Block B: Evaluation
+    │           ├── Value.java                   # Runtime value sealed interface (11 variants)
     │           ├── Evaluator.java               # Tree-walking de Bruijn environment machine
-    │           ├── EsqlValueConverter.java      # ESQL response → StreamVal converter
+    │           ├── EvalDependencies.java         # Context record bundling Client, Executor, ClusterService (Block B)
+    │           ├── EvalTopology.java             # `topology` builtin implementation (Block B)
+    │           ├── EsqlValueConverter.java      # ESQL response → ListVal converter
     │           └── EvaluationException.java     # Runtime evaluation error
     ├── test/java/org/elasticsearch/xpack/piescript/
     │   ├── parser/
@@ -106,7 +109,7 @@ x-pack/plugin/piescript/
 | File | Purpose |
 |------|---------|
 | `PiescriptAction.java` | Defines the `ActionType` singleton (`indices:data/read/piescript`) with response type `PiescriptResponse`. This is the handle used to dispatch and route the action through the transport layer. |
-| `PiescriptResponse.java` | Response wrapper: holds a `Value` + type string (expression result), including `StreamVal` serialized as JSON arrays. Implements `ChunkedToXContentObject` and `Releasable`. Serializable for transport (D-023). |
+| `PiescriptResponse.java` | Response wrapper: holds a `Value` + type string (expression result), including `ListVal` serialized as JSON arrays. Implements `ChunkedToXContentObject` and `Releasable`. Serializable for transport (D-023). |
 | `PiescriptPlugin.java` | Plugin registration. Implements `ActionPlugin` to register the action handler (`PiescriptAction → TransportPiescriptAction`) and the REST handler (`RestPiescriptAction`). |
 | `PiescriptRequest.java` | Immutable request object carrying the `program` string. Implements `CompositeIndicesRequest` for security delegation. Validates that `program` is non-blank. Serializable for transport. |
 | `RestPiescriptAction.java` | HTTP entry point. Registers `POST /_piescript/eval`, parses the JSON body to extract `program`, and dispatches a `PiescriptRequest` to the transport layer. |
@@ -159,7 +162,7 @@ x-pack/plugin/piescript/
 | File | Purpose |
 |------|---------|
 | `elab/ElaborationContext.java` | Immutable typing context passed by value through recursive descent. Holds the de Bruijn-indexed list of named type schemes, a module-level free variable map (`Map<String, TypeScheme>`), and the binding level. `lookup()` checks local bindings (returns de Bruijn index); `lookupModule()` checks module bindings (returns type scheme only). Local variables shadow module-level names. `withModule()` factory creates a context with pre-populated module bindings. |
-| `elab/Prelude.java` | Built-in function definitions: type schemes and arities for `map`, `filter`, `reduce`. Exports `MODULE` (the module map) and `ARITY` (name → argument count). Wired into the elaboration context at program start. |
+| `elab/Prelude.java` | Built-in function definitions: type schemes and arities for `map`, `filter`, `reduce`, `head`, `tail`, `length`, `isEmpty`, `topology`. Exports `MODULE` (the module map) and `ARITY` (name → argument count). Wired into the elaboration context at program start. |
 | `elab/ElaborationState.java` | Mutable global state shared across the elaboration pass. Holds only the metavariable supply (monotonic counter) and the zonker (meta ID → solution map with chain resolution). `freshType(bindingLevel)` and `freshRow(bindingLevel)` take the binding level from the caller's context. `resolve()` returns `Optional<Object>`. **Phase 1d renames `resolveType` → `zonk` returning `Optional<MonoType>` (D-032), adds `resolveRow(RowType)` for flattening.** |
 | `elab/TypeError.java` | Sealed interface for type errors returned by unification. Variants: `Mismatch` (structural incompatibility), `InfiniteType` (occurs check), `FieldMismatch` (wraps inner error with label), `MissingFields` (field set asymmetry). Not an exception — used as `Optional<TypeError>`. |
 | `elab/Unifier.java` | Static Robinson unification over `MonoType`. Resolves through the zonker, handles `Meta` solving (with occurs check), null-as-bottom (D1.11), and structural matching for `TCon`, `Arrow`, `RecordType` (closed rows), `AppType`. Uses flat `if`-chain early exits + single `switch` expression with `when` guards. Returns `Optional<TypeError>` (empty = success). **Phase 1d rewrites `unifyRows` to Leijen-style open-row decomposition (D-030) and adds `Rigid` handling (D-031).** |
@@ -176,9 +179,11 @@ x-pack/plugin/piescript/
 
 | File | Purpose |
 |------|---------|
-| `eval/Value.java` | Sealed interface for runtime values. 10 variants: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)` (D-026), `BooleanVal`, `NullVal`, `RecordVal(Map<String, Value>)`, `StreamVal(List<Value>)`, `ClosureVal(CoreExpr body, Value[] env)`, `BuiltinVal(name, arity, partialArgs)`. `StreamVal` is the eagerly materialized stream (Phase 2). `BuiltinVal` supports curried partial application for built-in functions. |
-| `eval/Evaluator.java` | Tree-walking de Bruijn environment machine. Takes optional `Client` for query execution. Evaluates all `CoreExpr` variants. `CoreQuery` fires `EsqlQueryAction` synchronously and converts to `StreamVal` via `EsqlValueConverter`. `CoreFree` produces `BuiltinVal`; `CoreApp` dispatches to closures or built-in partial application. Built-ins `map`/`filter`/`reduce` operate over `StreamVal` via `applyFunction`. `CoreLit` converts `BytesRef` to `String` at the boundary. `CorePrimOp` dispatches arithmetic (integer-only, D-020), comparison, and boolean operations. |
-| `eval/EsqlValueConverter.java` | Converts `EsqlQueryResponse` to `StreamVal`. Each row becomes a `RecordVal` (column names as field keys). Cell conversion uses `instanceof` dispatch (`Integer`, `Long`, `Double`, `String`, `Boolean`, `null`, multi-value first-element). |
+| `eval/Value.java` | Sealed interface for runtime values. 11 variants: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)` (D-026), `BooleanVal`, `NullVal`, `RecordVal(Map<String, Value>)`, `ListVal(List<Value>)`, `ClosureVal(CoreExpr body, Value[] env)`, `BuiltinVal(name, arity, partialArgs)`, `SpawnVal(SubscribableListener<Value>)`. `ListVal` is the eagerly materialized list (renamed from `StreamVal` in Block B — D-043). `BuiltinVal` supports curried partial application for built-in functions. `SpawnVal` wraps a single-completion channel (Block A). |
+| `eval/Evaluator.java` | Uniformly async tree-walking de Bruijn environment machine. Takes `EvalDependencies` (bundling `Client`, `Executor`, `ClusterService`). Evaluates all `CoreExpr` variants. `CoreQuery` fires `EsqlQueryAction` asynchronously and converts to `ListVal` via `EsqlValueConverter`. `CoreFree` produces `BuiltinVal`; `CoreApp` dispatches to closures or built-in partial application. Built-ins `map`/`filter`/`reduce`/`head`/`tail`/`length`/`isEmpty` operate over `ListVal` via `applyFunction`. `CoreLit` converts `BytesRef` to `String` at the boundary. `CorePrimOp` dispatches arithmetic (integer-only, D-020), comparison, and boolean operations. |
+| `eval/EsqlValueConverter.java` | Converts `EsqlQueryResponse` to `ListVal`. Each row becomes a `RecordVal` (column names as field keys). Cell conversion uses `instanceof` dispatch (`Integer`, `Long`, `Double`, `String`, `Boolean`, `null`, multi-value first-element). |
+| `eval/EvalDependencies.java` | Context record bundling `Client`, `Executor`, and `ClusterService` for the evaluator (D-044). Replaces the growing constructor parameter list. Scales to Block C (which will add `TransportService` and a channel registry). |
+| `eval/EvalTopology.java` | Implements the `topology` builtin (D-044). Reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting` → `DiscoveryNode` and converts to typed `RecordVal`/`ListVal` records. Returns both shard-centric and node-centric views. Only STARTED shards, exact index name only. |
 | `eval/EvaluationException.java` | Unchecked runtime error for user-observable evaluation failures (null in arithmetic, division by zero). |
 
 ### Tests (`src/test`) — Unit Tests

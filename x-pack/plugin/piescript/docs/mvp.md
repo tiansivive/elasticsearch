@@ -264,9 +264,9 @@ language level.
 ### The Target Program
 
 ```
-let topo = index_topology "my-index"
+let topo = topology "my-index"
+in let target = head topo.shards
 in let ch = spawn!
-in let target = head topo
 in send target.node.inbox (fn () ->
   let data = scan target |> filter (fn r -> r.status == "active")
   in send ch data
@@ -277,7 +277,7 @@ in when (ch results) ->
 
 ### What This Demonstrates
 
-- **Topology discovery**: `index_topology` returns cluster topology as typed records.
+- **Topology discovery**: `topology` returns cluster topology as typed records (D-044).
 - **Bare channel creation**: `spawn!` creates a channel without executing a body.
 - **Code mobility**: the closure `(fn () -> ...)` captures the channel reference and travels to
   the data node.
@@ -289,7 +289,7 @@ in when (ch results) ->
 
 | Gap | Block | Effort |
 |-----|-------|--------|
-| Topology builtin (`index_topology`) | B | Small — reads ClusterState, converts to records |
+| ~~Topology builtin (`topology`)~~ | ~~B~~ | ~~Complete (D-044)~~ |
 | `spawn!` (bare channel creation) | C | Small — `new SubscribableListener<>()` in SpawnVal |
 | `send` primitive (local + cross-node) | C | Medium — local is trivial, cross-node needs transport |
 | `Value` serialization (`Writeable`) | C | Medium — recursive, but well-defined |
