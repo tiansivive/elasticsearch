@@ -38,15 +38,15 @@ final class EvalCoordination {
     }
 
     /**
-     * Evaluate a {@code when} binding's channel expression, then subscribe to the resulting channel.
-     * Flattens the two-phase "eval binding → unwrap SpawnVal → subscribe" into a single async step.
+     * Evaluate a {@code when} binding's channel expression, then subscribe to the resulting channel
+     * via the {@link ChannelRegistry}. The channel must be local (same node) — remote channels
+     * cannot be waited on directly. See D-045.
      */
     private static void resolveChannel(Evaluator eval, CoreWhen.WhenBinding binding, Value[] env, ActionListener<Value> listener) {
-        eval.evaluate(
-            binding.channel(),
-            env,
-            listener.delegateFailureAndWrap((l, chanVal) -> ((Value.SpawnVal) chanVal).channel().addListener(l))
-        );
+        eval.evaluate(binding.channel(), env, listener.delegateFailureAndWrap((l, chanVal) -> {
+            var ch = (Value.ChannelVal) chanVal;
+            eval.deps.channelRegistry().lookupSubscribable(ch.channelId()).addListener(l);
+        }));
     }
 
     /**

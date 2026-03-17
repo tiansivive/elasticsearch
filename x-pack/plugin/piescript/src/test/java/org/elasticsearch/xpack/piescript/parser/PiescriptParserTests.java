@@ -432,6 +432,32 @@ public class PiescriptParserTests extends ESTestCase {
         assertParses("let ch = spawn 42 in when (ch val) -> val + 1");
     }
 
+    // ──── spawn! / send (Block C) ────
+
+    public void testSpawnBang() {
+        assertParses("spawn!");
+    }
+
+    public void testSpawnBangInLet() {
+        assertParses("let ch = spawn! in ch");
+    }
+
+    public void testSendLiteralToChannel() {
+        assertParses("let ch = spawn! in send ch 42");
+    }
+
+    public void testSendExpressionToChannel() {
+        assertParses("let ch = spawn! in send ch (1 + 2)");
+    }
+
+    public void testSendThenWhen() {
+        assertParses("let ch = spawn! in let u = send ch 42 in when (ch x) -> x");
+    }
+
+    public void testSpawnBangDoesNotConflictWithNegation() {
+        assertParses("spawn !true");
+    }
+
     // ──── Error cases ────
 
     public void testEmptyProgram() {

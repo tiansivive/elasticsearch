@@ -73,6 +73,20 @@ public interface PiescriptAntlrParserListener extends ParseTreeListener {
     void exitLambdaExpr(PiescriptAntlrParser.LambdaExprContext ctx);
 
     /**
+     * Enter a parse tree produced by the {@code SpawnBangExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#expr}.
+     * @param ctx the parse tree
+     */
+    void enterSpawnBangExpr(PiescriptAntlrParser.SpawnBangExprContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code SpawnBangExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#expr}.
+     * @param ctx the parse tree
+     */
+    void exitSpawnBangExpr(PiescriptAntlrParser.SpawnBangExprContext ctx);
+
+    /**
      * Enter a parse tree produced by the {@code SpawnExpr}
      * labeled alternative in {@link PiescriptAntlrParser#expr}.
      * @param ctx the parse tree
@@ -85,6 +99,20 @@ public interface PiescriptAntlrParserListener extends ParseTreeListener {
      * @param ctx the parse tree
      */
     void exitSpawnExpr(PiescriptAntlrParser.SpawnExprContext ctx);
+
+    /**
+     * Enter a parse tree produced by the {@code SendExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#expr}.
+     * @param ctx the parse tree
+     */
+    void enterSendExpr(PiescriptAntlrParser.SendExprContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code SendExpr}
+     * labeled alternative in {@link PiescriptAntlrParser#expr}.
+     * @param ctx the parse tree
+     */
+    void exitSendExpr(PiescriptAntlrParser.SendExprContext ctx);
 
     /**
      * Enter a parse tree produced by the {@code WhenExpr}

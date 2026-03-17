@@ -256,6 +256,8 @@ public final class Elaborator {
             case PiescriptAntlrParser.IfExprContext e -> throw error(source(e), "if/then/else is not yet supported (Phase 1e)");
             case PiescriptAntlrParser.QueryExprContext q -> Queries.query(this, q, ctx);
             case PiescriptAntlrParser.SpawnExprContext s -> Spawns.spawn(this, s, ctx);
+            case PiescriptAntlrParser.SpawnBangExprContext s -> Spawns.spawnBang(this, s, ctx);
+            case PiescriptAntlrParser.SendExprContext s -> Sends.send(this, s, ctx);
             case PiescriptAntlrParser.WhenExprContext w -> Whens.when_(this, w, ctx);
 
             default -> throw new ElaborationException(0, 0, "unexpected parse node: " + node.getClass().getSimpleName());

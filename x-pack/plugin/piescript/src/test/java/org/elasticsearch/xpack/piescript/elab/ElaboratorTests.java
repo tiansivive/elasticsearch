@@ -63,7 +63,7 @@ public class ElaboratorTests extends ESTestCase {
     }
 
     private MonoType resolveType(CoreExpr expr) {
-        return state.zonkOrKeep(expr.type());
+        return TypeWalker.resolveDeep(expr.type(), state);
     }
 
     // ──── Literals ────
@@ -763,6 +763,69 @@ public class ElaboratorTests extends ESTestCase {
     public void testWhenChannelTypeMismatchFails() {
         var e = expectThrows(ElaborationException.class, () -> elaborate("when (42 x) -> x"));
         assertThat(e.getMessage(), containsString("Channel"));
+    }
+
+    // ──── spawn! / send (Block C) ────
+
+    public void testSpawnBangProducesChannelType() {
+        var result = elaborate("spawn!");
+        assertThat(result, instanceOf(org.elasticsearch.xpack.piescript.core.CoreSpawn.class));
+        var spawn = (org.elasticsearch.xpack.piescript.core.CoreSpawn) result;
+        assertNull(spawn.body());
+        var type = resolveType(result);
+        assertThat(type, instanceOf(MonoType.AppType.class));
+        var appType = (MonoType.AppType) type;
+        assertEquals(new MonoType.TCon("Channel"), appType.constructor());
+    }
+
+    public void testSpawnBangTypeUnifiesWithSend() {
+        var result = elaborate("let ch = spawn! in let u = send ch 42 in when (ch x) -> x");
+        var type = resolveType(result);
+        assertEquals(INTEGER, type);
+    }
+
+    public void testSpawnBangTypeUnifiesWithSendBoolean() {
+        var result = elaborate("let ch = spawn! in let u = send ch true in when (ch x) -> x");
+        var type = resolveType(result);
+        assertEquals(BOOLEAN, type);
+    }
+
+    public void testSendProducesNullType() {
+        var result = elaborate("let ch = spawn! in send ch 42");
+        var type = resolveType(result);
+        assertEquals(new MonoType.TCon("Null"), type);
+    }
+
+    public void testSendRequiresChannelType() {
+        var e = expectThrows(ElaborationException.class, () -> elaborate("send 42 99"));
+        assertThat(e.getMessage(), containsString("Channel"));
+    }
+
+    public void testSendValueMustMatchChannelElementType() {
+        var e = expectThrows(ElaborationException.class, () -> elaborate("let ch = spawn 42 in send ch true"));
+        assertThat(e.getMessage(), containsString("mismatch"));
+    }
+
+    // ──── Value restriction (D-046) ────
+
+    public void testValueRestrictionLambdaGeneralizes() {
+        var result = elaborate("let id = fn x -> x in id 42");
+        assertEquals(INTEGER, resolveType(result));
+    }
+
+    public void testValueRestrictionLambdaUsedAtMultipleTypes() {
+        var result = elaborate("let id = fn x -> x in let a = id 42 in id true");
+        assertEquals(BOOLEAN, resolveType(result));
+    }
+
+    public void testValueRestrictionSpawnBangStaysMonomorphic() {
+        var result = elaborate("let ch = spawn! in let u = send ch 42 in when (ch x) -> x");
+        assertEquals(INTEGER, resolveType(result));
+    }
+
+    public void testValueRestrictionApplicationNotGeneralized() {
+        var result = elaborate("let x = (fn a -> a) 42 in x");
+        assertEquals(INTEGER, resolveType(result));
     }
 
     // ──── Query expression typing (Phase 2: T2.5/T2.6) ────
