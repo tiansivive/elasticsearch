@@ -64,8 +64,8 @@ as closures — safe because the language is pure and referentially transparent.
 - **Purity enables distribution**: The language is pure and referentially transparent. Closures can
   be shipped to remote nodes because captured values are immutable. See D-014.
 - **Combinators are prelude built-ins**: `map`, `filter`, `reduce` are normal polymorphic functions,
-  not Core IR nodes. They operate over materialized `StreamVal`. This prepares for typeclasses
-  (`map` → `Functor.fmap`). See D-016.
+  not Core IR nodes. They operate over materialized `ListVal` (renamed from `StreamVal` in
+  Block B — D-043). This prepares for typeclasses (`map` → `Functor.fmap`). See D-016.
 - **Channels backed by ES infrastructure**: `SubscribableListener<Value>` for single-value channels,
   positional collector (`AtomicArray` + `CountDown`) for `when` synchronization. See D-040, D-041.
 

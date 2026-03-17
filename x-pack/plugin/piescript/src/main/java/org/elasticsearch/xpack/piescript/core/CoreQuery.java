@@ -19,7 +19,7 @@ import java.util.Objects;
  * string (for execution via {@code EsqlQueryAction}) and the extracted index
  * pattern (for diagnostics and index-resolution keying).
  *
- * <p>The type is {@code AppType(TCon("Stream"), RecordType(rho))} where
+ * <p>The type is {@code AppType(TCon("List"), RecordType(rho))} where
  * {@code rho} is a row derived from the resolved index mapping.
  *
  * <p>{@code CoreQuery} remains a {@link CoreExpr} variant — the two-layer IR

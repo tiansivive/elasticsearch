@@ -33,7 +33,7 @@ public sealed interface MonoType {
     /** Record type with row structure (closed or open). */
     record RecordType(RowType row) implements MonoType {}
 
-    /** Type application: constructor applied to argument (e.g. {@code Stream Record}). */
+    /** Type application: constructor applied to argument (e.g. {@code List Record}). */
     record AppType(MonoType constructor, MonoType argument) implements MonoType {}
 
     /**

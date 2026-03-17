@@ -58,7 +58,7 @@ public final class Elaborator {
     static final MonoType BOOLEAN = new MonoType.TCon("Boolean");
     static final MonoType NULL_TYPE = new MonoType.TCon("Null");
 
-    static final MonoType STREAM = new MonoType.TCon("Stream");
+    static final MonoType LIST = new MonoType.TCon("List");
     static final MonoType CHANNEL = new MonoType.TCon("Channel");
     static final MonoType DATETIME = new MonoType.TCon("DateTime");
     static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
@@ -86,7 +86,7 @@ public final class Elaborator {
         Map.entry("GeoShape", GEO_SHAPE),
         Map.entry("CartesianShape", CARTESIAN_SHAPE),
         Map.entry("Unsupported", UNSUPPORTED),
-        Map.entry("Stream", STREAM),
+        Map.entry("List", LIST),
         Map.entry("Channel", CHANNEL)
     );
 

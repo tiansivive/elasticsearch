@@ -70,7 +70,7 @@ public class DataTypeMappingTests extends ESTestCase {
         assertFalse(DataTypeMapping.isSupported(DataType.OBJECT));
     }
 
-    public void testStreamTypeConstructorExists() {
-        assertEquals("Stream", ((MonoType.TCon) Elaborator.STREAM).name());
+    public void testListTypeConstructorExists() {
+        assertEquals("List", ((MonoType.TCon) Elaborator.LIST).name());
     }
 }

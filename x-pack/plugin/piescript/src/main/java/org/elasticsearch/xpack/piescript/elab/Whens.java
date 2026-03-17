@@ -30,16 +30,12 @@ final class Whens {
     static CoreExpr when_(Elaborator elab, PiescriptAntlrParser.WhenExprContext w, ElaborationContext ctx) {
         var src = Elaborator.source(w);
 
-        var elaborated = w.whenBinding().stream()
-            .map(b -> elaborateBinding(elab, b, ctx))
-            .toList();
+        var elaborated = w.whenBinding().stream().map(b -> elaborateBinding(elab, b, ctx)).toList();
 
         var bodyCtx = foldContext(ctx, elaborated);
         var body = elab.elaborate(w.expr(), bodyCtx);
 
-        var bindings = elaborated.stream()
-            .map(b -> new CoreWhen.WhenBinding(b.channel(), b.name()))
-            .toList();
+        var bindings = elaborated.stream().map(b -> new CoreWhen.WhenBinding(b.channel(), b.name())).toList();
 
         return new CoreWhen(src.source(), bindings, body, body.type());
     }
