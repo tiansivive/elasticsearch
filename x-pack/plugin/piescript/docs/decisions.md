@@ -1874,3 +1874,48 @@ All are Prelude builtins — no grammar or Core IR changes needed.
 - `shards` and `nodes` reduce boilerplate for the common case of needing one view.
 
 **Ref**: Block C cross-node execution discussion
+
+---
+
+## D-049: Polymorphic equality (`==` / `!=`)
+
+**Status**: accepted
+**Date**: 2026-03-18
+
+### Context
+
+Equality and inequality operators (`==`, `!=`) were typed as `Integer → Integer → Boolean`,
+matching the ordering operators (`<`, `>`, `<=`, `>=`). This prevented comparing `Keyword` values
+(e.g. `n.id != topo.local.id`), which is essential for filtering nodes in cross-node programs.
+
+### Decision
+
+Make `==` and `!=` **fully polymorphic**: `∀a. a → a → Boolean`. Both operands must unify to the
+same type, but that type is unconstrained. The elaborator emits a fresh meta variable for the
+operand type instead of constraining to `Integer`. The evaluator uses Java's `Object.equals()` on
+`Value` record instances (structural equality).
+
+Ordering operators (`<`, `>`, `<=`, `>=`) remain `Integer → Integer → Boolean`.
+
+### Semantics
+
+| Value type | Equality behavior |
+|---|---|
+| `IntegerVal` | Numeric equality (Java `int ==`) |
+| `KeywordVal` | String equality (Java `String.equals`) |
+| `BooleanVal` | Logical equality |
+| `NullVal` | `Null == Null` is `true` |
+| `RecordVal` | Structural: all fields must match (Java record `.equals`) |
+| `ListVal` | Structural: element-wise equality (Java `List.equals`) |
+| `ClosureVal` | Reference equality (Java record `.equals` on body + env). Semantically questionable — comparing closures is not meaningful, but it won't crash. |
+| `ChannelVal` | Structural: same `nodeId` and `channelId` |
+
+### Consequences
+
+- `filter (fn n -> n.id != topo.local.id) topo.nodes` now type-checks and evaluates correctly.
+- Cross-node debug scripts work without workarounds.
+- Comparing closures or complex values for equality is allowed but not recommended. A future
+  `Eq` typeclass (or similar mechanism) could restrict equality to sensible types.
+- No changes to the grammar, parser, or Core IR.
+
+**Ref**: Block C manual testing, multinode debug scripts

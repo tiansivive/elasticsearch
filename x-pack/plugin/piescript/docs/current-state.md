@@ -92,6 +92,7 @@ for Phase 1 items carried forward.
 | `groupBy` combinator | Block D+ | No grouping/aggregation semantics within piescript. Must push into ESQL. |
 | Multi-value channels | Deferred | Block A/C channels are single-value only |
 | Builder DSL for CoreExpr/Value/MonoType | Block C.4 | Verbose construction of IR nodes, values, and types. Factory methods planned. |
+| String / list concat operators | Phase 1 tech debt | No `<>` (string concat) or `++` (list concat). See roadmap. |
 | Multi-node integration tests | Block C.5 | No tests proving cross-node execution works end-to-end. |
 | Wildcard / alias / data stream patterns in `topology` | Deferred | `topology` accepts exact index name only (D-044) |
 | Multi-project support in `topology` | Deferred | Uses `ProjectId.DEFAULT` (D-044) |

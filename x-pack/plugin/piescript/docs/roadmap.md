@@ -243,6 +243,7 @@ or when downstream work requires them.
 | Double `EsqlBodyParser.parse()` call | T2.6 | Index pattern extracted once in `IndexResolutionPrePass.collectQueries()` and again in `Queries.query()`. Consequence of opaque `ESQL_BODY` token approach. Goes away when ANTLR grammar structurally captures the `FROM` clause. |
 | Opaque `ESQL_BODY` lexer token | T2.1 | ESQL body captured as backtick-delimited raw text (`` query `FROM ...` ``); index pattern extracted via Java string parsing. Future: parse `FROM <pattern>` structurally in the ANTLR grammar. |
 | Empty mapping diagnostics | — | When `buildRowFields` produces an empty row (index exists but field caps returns no usable fields), emit a diagnostic on `ElaborationState` rather than silently producing `List { }`. Downstream type errors ("missing fields … in `{ }`") are confusing when the real issue is a missing or unmapped index. |
+| String concat operator (`<>`) | Phase 1 tech debt | No way to concatenate `Keyword` values. Proposed: `<>` for string concat (aligns with Haskell `Semigroup`, Elixir convention). Separate `++` for list concat. Both are future typeclass candidates (`Semigroup.<>`). |
 
 See also [General Tech Debt — ES Conventions & Plugin Infrastructure](#general-tech-debt--es-conventions--plugin-infrastructure)
 for cross-cutting items (TransportVersion, logging, ActionType naming, thread pool, endpoint merge).

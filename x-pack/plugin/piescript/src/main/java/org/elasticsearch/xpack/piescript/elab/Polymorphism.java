@@ -113,12 +113,19 @@ final class Polymorphism {
                 instantiateBody(elab, p, rigidSubst),
                 instantiateBody(elab, r, rigidSubst)
             );
+            // Flatten the row through the zonker so fields hidden behind solved
+            // row-variable tails are visited. Without this, rigids in the
+            // continuation (e.g. from successive field projections) would be
+            // silently skipped. A future cleanup could run resolveDeep on the
+            // whole scheme body before walking, removing the need for ad-hoc
+            // flattening here.
             case MonoType.RecordType(var row) -> {
+                var flat = elab.state.resolveRow(row);
                 var newFields = new LinkedHashMap<String, MonoType>();
-                for (var entry : row.fields().entrySet()) {
+                for (var entry : flat.fields().entrySet()) {
                     newFields.put(entry.getKey(), instantiateBody(elab, entry.getValue(), rigidSubst));
                 }
-                var newRowVar = row.rowVar().map(rv -> {
+                var newRowVar = flat.rowVar().map(rv -> {
                     var resolved = elab.state.zonkOrKeep(rv);
                     if (resolved instanceof MonoType.Rigid r && rigidSubst.containsKey(r.id())) {
                         var replacement = rigidSubst.get(r.id());
