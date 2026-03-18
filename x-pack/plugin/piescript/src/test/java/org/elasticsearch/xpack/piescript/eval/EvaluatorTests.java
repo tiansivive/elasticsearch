@@ -175,6 +175,26 @@ public class EvaluatorTests extends ESTestCase {
         assertThat(evaluate("3 != 3"), is(new Value.BooleanVal(false)));
     }
 
+    public void testKeywordEqual() {
+        assertThat(evaluate("\"hello\" == \"hello\""), is(new Value.BooleanVal(true)));
+        assertThat(evaluate("\"hello\" == \"world\""), is(new Value.BooleanVal(false)));
+    }
+
+    public void testKeywordNotEqual() {
+        assertThat(evaluate("\"hello\" != \"world\""), is(new Value.BooleanVal(true)));
+        assertThat(evaluate("\"hello\" != \"hello\""), is(new Value.BooleanVal(false)));
+    }
+
+    public void testBooleanEqual() {
+        assertThat(evaluate("true == true"), is(new Value.BooleanVal(true)));
+        assertThat(evaluate("true == false"), is(new Value.BooleanVal(false)));
+    }
+
+    public void testBooleanNotEqual() {
+        assertThat(evaluate("true != false"), is(new Value.BooleanVal(true)));
+        assertThat(evaluate("false != false"), is(new Value.BooleanVal(false)));
+    }
+
     // ──── Boolean operators ────
 
     public void testAnd() {

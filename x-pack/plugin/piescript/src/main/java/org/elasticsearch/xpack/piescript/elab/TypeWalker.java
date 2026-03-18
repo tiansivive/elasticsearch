@@ -66,11 +66,16 @@ public final class TypeWalker {
                 collectMetas(param, bindingLevel, state, acc);
                 collectMetas(result, bindingLevel, state, acc);
             }
+            // Flatten the row so that fields behind solved row-variable tails
+            // are collected. Without this, metas reachable only through the
+            // row chain would escape generalization. A future cleanup could
+            // unify this with resolveDeep to avoid ad-hoc flattening.
             case MonoType.RecordType(var row) -> {
-                for (var fieldType : row.fields().values()) {
+                var flat = state.resolveRow(row);
+                for (var fieldType : flat.fields().values()) {
                     collectMetas(fieldType, bindingLevel, state, acc);
                 }
-                row.rowVar().ifPresent(rv -> {
+                flat.rowVar().ifPresent(rv -> {
                     if (rv.bindingLevel() >= bindingLevel && state.isSolved(rv.id()) == false) {
                         acc.put(rv.id(), rv.kind());
                     }
