@@ -25,8 +25,11 @@ import org.elasticsearch.xpack.piescript.eval.EvaluationException;
 import org.elasticsearch.xpack.piescript.eval.Evaluator;
 import org.elasticsearch.xpack.piescript.eval.Value;
 
-import java.util.Map;
 import java.util.concurrent.Executor;
+
+import static org.elasticsearch.xpack.piescript.eval.Values.field;
+import static org.elasticsearch.xpack.piescript.eval.Values.keyword;
+import static org.elasticsearch.xpack.piescript.eval.Values.record;
 
 /**
  * Transport handler for cross-node channel sends (D-045, D-047). Handles two cases:
@@ -79,7 +82,14 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
     }
 
     private EvalDependencies buildEvalDeps() {
-        return new EvalDependencies(client, executor, clusterService, transportService, channelRegistry, transportService.getLocalNode().getId());
+        return new EvalDependencies(
+            client,
+            executor,
+            clusterService,
+            transportService,
+            channelRegistry,
+            transportService.getLocalNode().getId()
+        );
     }
 
     @Override
@@ -108,15 +118,10 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
 
     private Value.RecordVal buildLocalNodeInfo() {
         var localNode = transportService.getLocalNode();
-        return new Value.RecordVal(
-            Map.of(
-                "id",
-                new Value.KeywordVal(localNode.getId()),
-                "name",
-                new Value.KeywordVal(localNode.getName()),
-                "address",
-                new Value.KeywordVal(localNode.getHostAddress())
-            )
+        return record(
+            field("id", keyword(localNode.getId())),
+            field("name", keyword(localNode.getName())),
+            field("address", keyword(localNode.getHostAddress()))
         );
     }
 }

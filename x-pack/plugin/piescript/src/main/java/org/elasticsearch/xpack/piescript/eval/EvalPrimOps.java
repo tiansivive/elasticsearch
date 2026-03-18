@@ -58,14 +58,10 @@ final class EvalPrimOps {
                 args.get(0),
                 env,
                 listener.delegateFailureAndWrap(
-                    (l1, leftVal) -> eval.evaluate(
-                        args.get(1),
-                        env,
-                        l1.delegateFailureAndWrap((l2, rightVal) -> {
-                            boolean equal = leftVal.equals(rightVal);
-                            l2.onResponse(new Value.BooleanVal(op == Op.EQ ? equal : !equal));
-                        })
-                    )
+                    (l1, leftVal) -> eval.evaluate(args.get(1), env, l1.delegateFailureAndWrap((l2, rightVal) -> {
+                        boolean equal = leftVal.equals(rightVal);
+                        l2.onResponse(new Value.BooleanVal(op == Op.EQ ? equal : !equal));
+                    }))
                 )
             );
 
