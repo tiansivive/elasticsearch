@@ -156,12 +156,12 @@ public final class Evaluator {
             }
 
             // Three-way dispatch for send (D-045, D-047):
-            //  1. Inbox — always via transport, even for the local node. The inbox is not in the
-            //     ChannelRegistry because it is reusable (not a single-shot SubscribableListener),
-            //     and keeping it out prevents `when` from accidentally subscribing to it. Inbox
-            //     handling (validate ClosureVal, fork evaluation) lives in TransportPiescriptSendAction.
-            //  2. Local regular channel — direct registry completion, no transport overhead.
-            //  3. Remote regular channel — serialized via transport to the owning node.
+            // 1. Inbox — always via transport, even for the local node. The inbox is not in the
+            // ChannelRegistry because it is reusable (not a single-shot SubscribableListener),
+            // and keeping it out prevents `when` from accidentally subscribing to it. Inbox
+            // handling (validate ClosureVal, fork evaluation) lives in TransportPiescriptSendAction.
+            // 2. Local regular channel — direct registry completion, no transport overhead.
+            // 3. Remote regular channel — serialized via transport to the owning node.
             // This separation goes away when multi-value channels replace the current model.
             case CoreSend send -> evaluate(send.channel(), env, listener.delegateFailureAndWrap((l1, chanVal) -> {
                 var ch = (Value.ChannelVal) chanVal;

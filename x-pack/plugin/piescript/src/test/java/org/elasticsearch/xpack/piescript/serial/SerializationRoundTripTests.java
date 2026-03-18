@@ -7,12 +7,9 @@
 
 package org.elasticsearch.xpack.piescript.serial;
 
-import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.common.io.stream.BytesStreamOutput;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.xpack.esql.core.tree.Location;
-import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreExprSerialization;
@@ -37,24 +34,55 @@ import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.Op;
-import org.elasticsearch.xpack.piescript.types.RowType;
 import org.elasticsearch.xpack.piescript.types.TypeSerialization;
 
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
+import static org.elasticsearch.xpack.piescript.core.Exprs.add;
+import static org.elasticsearch.xpack.piescript.core.Exprs.app;
+import static org.elasticsearch.xpack.piescript.core.Exprs.binding;
+import static org.elasticsearch.xpack.piescript.core.Exprs.field;
+import static org.elasticsearch.xpack.piescript.core.Exprs.free;
+import static org.elasticsearch.xpack.piescript.core.Exprs.lam;
+import static org.elasticsearch.xpack.piescript.core.Exprs.let;
+import static org.elasticsearch.xpack.piescript.core.Exprs.lit;
+import static org.elasticsearch.xpack.piescript.core.Exprs.proj;
+import static org.elasticsearch.xpack.piescript.core.Exprs.query;
+import static org.elasticsearch.xpack.piescript.core.Exprs.rec;
+import static org.elasticsearch.xpack.piescript.core.Exprs.send;
+import static org.elasticsearch.xpack.piescript.core.Exprs.spawn;
+import static org.elasticsearch.xpack.piescript.core.Exprs.spawnBang;
+import static org.elasticsearch.xpack.piescript.core.Exprs.typeAbs;
+import static org.elasticsearch.xpack.piescript.core.Exprs.typeApp;
+import static org.elasticsearch.xpack.piescript.core.Exprs.update;
+import static org.elasticsearch.xpack.piescript.core.Exprs.var;
+import static org.elasticsearch.xpack.piescript.core.Exprs.when;
+import static org.elasticsearch.xpack.piescript.eval.Values.bool;
+import static org.elasticsearch.xpack.piescript.eval.Values.builtin;
+import static org.elasticsearch.xpack.piescript.eval.Values.channelVal;
+import static org.elasticsearch.xpack.piescript.eval.Values.closure;
+import static org.elasticsearch.xpack.piescript.eval.Values.doubleVal;
+import static org.elasticsearch.xpack.piescript.eval.Values.intVal;
+import static org.elasticsearch.xpack.piescript.eval.Values.keyword;
+import static org.elasticsearch.xpack.piescript.eval.Values.longVal;
+import static org.elasticsearch.xpack.piescript.eval.Values.nullVal;
+import static org.elasticsearch.xpack.piescript.types.Types.BOOLEAN;
+import static org.elasticsearch.xpack.piescript.types.Types.INTEGER;
+import static org.elasticsearch.xpack.piescript.types.Types.KEYWORD;
+import static org.elasticsearch.xpack.piescript.types.Types.arrow;
+import static org.elasticsearch.xpack.piescript.types.Types.channel;
+import static org.elasticsearch.xpack.piescript.types.Types.list;
+import static org.elasticsearch.xpack.piescript.types.Types.record;
+import static org.elasticsearch.xpack.piescript.types.Types.rigid;
+
 /**
  * Round-trip serialization tests for all piescript wire types:
- * {@link MonoType}, {@link RowType}, {@link LitVal}, {@link Op},
+ * {@link MonoType}, {@link org.elasticsearch.xpack.piescript.types.RowType}, {@link LitVal}, {@link Op},
  * {@link CoreExpr} (16 variants), and {@link Value} (11 variants).
  */
 public class SerializationRoundTripTests extends ESTestCase {
-
-    private static final Source SRC = new Source(new Location(1, 0), "test");
-    private static final MonoType INTEGER = new MonoType.TCon("Integer");
-    private static final MonoType BOOLEAN = new MonoType.TCon("Boolean");
-    private static final MonoType KEYWORD = new MonoType.TCon("Keyword");
 
     // ──── MonoType ────
 
@@ -63,21 +91,20 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testMonoTypeArrow() throws IOException {
-        assertMonoTypeRoundTrip(new MonoType.Arrow(INTEGER, BOOLEAN));
+        assertMonoTypeRoundTrip(arrow(INTEGER, BOOLEAN));
     }
 
     public void testMonoTypeRecordClosed() throws IOException {
-        var row = RowType.closed(Map.of("x", INTEGER, "y", BOOLEAN));
-        assertMonoTypeRoundTrip(new MonoType.RecordType(row));
+        assertMonoTypeRoundTrip(record(Map.of("x", INTEGER, "y", BOOLEAN)));
     }
 
     public void testMonoTypeRecordOpen() throws IOException {
-        var row = RowType.open(Map.of("x", INTEGER), new MonoType.Meta(42, 1, Kind.ROW));
+        var row = org.elasticsearch.xpack.piescript.types.RowType.open(Map.of("x", INTEGER), new MonoType.Meta(42, 1, Kind.ROW));
         assertMonoTypeRoundTrip(new MonoType.RecordType(row));
     }
 
     public void testMonoTypeApp() throws IOException {
-        assertMonoTypeRoundTrip(new MonoType.AppType(new MonoType.TCon("List"), INTEGER));
+        assertMonoTypeRoundTrip(list(INTEGER));
     }
 
     public void testMonoTypeMeta() throws IOException {
@@ -85,12 +112,11 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testMonoTypeRigid() throws IOException {
-        assertMonoTypeRoundTrip(new MonoType.Rigid(3, Kind.TYPE));
+        assertMonoTypeRoundTrip(rigid(3));
     }
 
     public void testMonoTypeNestedArrow() throws IOException {
-        var type = new MonoType.Arrow(new MonoType.Arrow(INTEGER, BOOLEAN), new MonoType.Arrow(KEYWORD, INTEGER));
-        assertMonoTypeRoundTrip(type);
+        assertMonoTypeRoundTrip(arrow(arrow(INTEGER, BOOLEAN), arrow(KEYWORD, INTEGER)));
     }
 
     // ──── LitVal ────
@@ -108,7 +134,7 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testLitValKeyword() throws IOException {
-        assertLitValRoundTrip(new LitVal.KeywordLit(new BytesRef("hello")));
+        assertLitValRoundTrip(new LitVal.KeywordLit(new org.apache.lucene.util.BytesRef("hello")));
     }
 
     public void testLitValBoolean() throws IOException {
@@ -132,157 +158,135 @@ public class SerializationRoundTripTests extends ESTestCase {
     // ──── CoreExpr ────
 
     public void testCoreVar() throws IOException {
-        assertCoreExprRoundTrip(new CoreVar(SRC, 2, "x", INTEGER));
+        assertCoreExprRoundTrip(var(2, "x", INTEGER));
     }
 
     public void testCoreVarNullDebugName() throws IOException {
-        assertCoreExprRoundTrip(new CoreVar(SRC, 0, null, INTEGER));
+        assertCoreExprRoundTrip(var(0, INTEGER));
     }
 
     public void testCoreFree() throws IOException {
-        assertCoreExprRoundTrip(new CoreFree(SRC, "map", new MonoType.Arrow(INTEGER, INTEGER)));
+        assertCoreExprRoundTrip(free("map", arrow(INTEGER, INTEGER)));
     }
 
     public void testCoreLit() throws IOException {
-        assertCoreExprRoundTrip(new CoreLit(SRC, new LitVal.IntegerLit(42), INTEGER));
+        assertCoreExprRoundTrip(lit(42));
     }
 
     public void testCoreLam() throws IOException {
-        var body = new CoreVar(SRC, 0, "x", INTEGER);
-        assertCoreExprRoundTrip(new CoreLam(SRC, "x", INTEGER, body, new MonoType.Arrow(INTEGER, INTEGER)));
+        assertCoreExprRoundTrip(lam("x", INTEGER, var(0, "x", INTEGER)));
     }
 
     public void testCoreApp() throws IOException {
-        var fn = new CoreVar(SRC, 0, "f", new MonoType.Arrow(INTEGER, BOOLEAN));
-        var arg = new CoreLit(SRC, new LitVal.IntegerLit(42), INTEGER);
-        assertCoreExprRoundTrip(new CoreApp(SRC, fn, arg, BOOLEAN));
+        var fn = var(0, "f", arrow(INTEGER, BOOLEAN));
+        assertCoreExprRoundTrip(app(fn, lit(42)));
     }
 
     public void testCoreLet() throws IOException {
-        var rhs = new CoreLit(SRC, new LitVal.IntegerLit(42), INTEGER);
-        var body = new CoreVar(SRC, 0, "x", INTEGER);
-        assertCoreExprRoundTrip(new CoreLet(SRC, "x", INTEGER, rhs, body, INTEGER));
+        assertCoreExprRoundTrip(let("x", lit(42), var(0, "x", INTEGER)));
     }
 
     public void testCoreRecord() throws IOException {
-        var v1 = new CoreLit(SRC, new LitVal.IntegerLit(1), INTEGER);
-        var v2 = new CoreLit(SRC, new LitVal.BooleanLit(true), BOOLEAN);
-        assertCoreExprRoundTrip(
-            new CoreRecord(
-                SRC,
-                List.of("a", "b"),
-                List.of(v1, v2),
-                new MonoType.RecordType(RowType.closed(Map.of("a", INTEGER, "b", BOOLEAN)))
-            )
-        );
+        assertCoreExprRoundTrip(rec(field("a", lit(1)), field("b", lit(true))));
     }
 
     public void testCoreProject() throws IOException {
-        var rec = new CoreVar(SRC, 0, "r", new MonoType.RecordType(RowType.closed(Map.of("x", INTEGER))));
-        assertCoreExprRoundTrip(new CoreProject(SRC, rec, "x", INTEGER));
+        var recExpr = var(0, "r", record(Map.of("x", INTEGER)));
+        assertCoreExprRoundTrip(proj(recExpr, "x", INTEGER));
     }
 
     public void testCoreUpdate() throws IOException {
-        var rec = new CoreVar(SRC, 0, "r", new MonoType.RecordType(RowType.closed(Map.of("x", INTEGER))));
-        var newVal = new CoreLit(SRC, new LitVal.IntegerLit(99), INTEGER);
-        assertCoreExprRoundTrip(new CoreUpdate(SRC, List.of("x"), List.of(rec, newVal), rec.type()));
+        var recExpr = var(0, "r", record(Map.of("x", INTEGER)));
+        assertCoreExprRoundTrip(update(recExpr, field("x", lit(99))));
     }
 
     public void testCorePrimOp() throws IOException {
-        var a = new CoreLit(SRC, new LitVal.IntegerLit(1), INTEGER);
-        var b = new CoreLit(SRC, new LitVal.IntegerLit(2), INTEGER);
-        assertCoreExprRoundTrip(new CorePrimOp(SRC, Op.ADD, List.of(a, b), INTEGER));
+        assertCoreExprRoundTrip(add(lit(1), lit(2)));
     }
 
     public void testCoreTypeAbs() throws IOException {
-        var body = new CoreVar(SRC, 0, "x", new MonoType.Rigid(1, Kind.TYPE));
-        assertCoreExprRoundTrip(new CoreTypeAbs(SRC, 1, Kind.TYPE, body, body.type()));
+        var body = var(0, "x", rigid(1));
+        assertCoreExprRoundTrip(typeAbs(1, Kind.TYPE, body));
     }
 
     public void testCoreTypeApp() throws IOException {
-        var polyExpr = new CoreVar(SRC, 0, "id", new MonoType.Arrow(new MonoType.Rigid(1, Kind.TYPE), new MonoType.Rigid(1, Kind.TYPE)));
-        assertCoreExprRoundTrip(new CoreTypeApp(SRC, polyExpr, INTEGER, new MonoType.Arrow(INTEGER, INTEGER)));
+        var polyExpr = var(0, "id", arrow(rigid(1), rigid(1)));
+        assertCoreExprRoundTrip(typeApp(polyExpr, INTEGER, arrow(INTEGER, INTEGER)));
     }
 
     public void testCoreQuery() throws IOException {
-        var type = new MonoType.AppType(new MonoType.TCon("List"), new MonoType.RecordType(RowType.closed(Map.of("status", INTEGER))));
-        assertCoreExprRoundTrip(new CoreQuery(SRC, "FROM logs-*", "logs-*", type));
+        var type = list(record(Map.of("status", INTEGER)));
+        assertCoreExprRoundTrip(query("FROM logs-*", "logs-*", type));
     }
 
     public void testCoreSpawnWithBody() throws IOException {
-        var body = new CoreLit(SRC, new LitVal.IntegerLit(42), INTEGER);
-        assertCoreExprRoundTrip(new CoreSpawn(SRC, body, new MonoType.AppType(new MonoType.TCon("Channel"), INTEGER)));
+        assertCoreExprRoundTrip(spawn(lit(42)));
     }
 
     public void testCoreSpawnBare() throws IOException {
-        assertCoreExprRoundTrip(new CoreSpawn(SRC, null, new MonoType.AppType(new MonoType.TCon("Channel"), INTEGER)));
+        assertCoreExprRoundTrip(spawnBang(INTEGER));
     }
 
     public void testCoreWhen() throws IOException {
-        var ch = new CoreVar(SRC, 0, "ch", new MonoType.AppType(new MonoType.TCon("Channel"), INTEGER));
-        var body = new CoreVar(SRC, 1, "x", INTEGER);
-        var bindings = List.of(new CoreWhen.WhenBinding(ch, "x"));
-        assertCoreExprRoundTrip(new CoreWhen(SRC, bindings, body, INTEGER));
+        var ch = var(0, "ch", channel(INTEGER));
+        var body = var(1, "x", INTEGER);
+        assertCoreExprRoundTrip(when(List.of(binding(ch, "x")), body));
     }
 
     public void testCoreWhenMultipleBindings() throws IOException {
-        var ch1 = new CoreVar(SRC, 0, "a", new MonoType.AppType(new MonoType.TCon("Channel"), INTEGER));
-        var ch2 = new CoreVar(SRC, 1, "b", new MonoType.AppType(new MonoType.TCon("Channel"), BOOLEAN));
-        var body = new CoreLit(SRC, new LitVal.IntegerLit(1), INTEGER);
-        var bindings = List.of(new CoreWhen.WhenBinding(ch1, "x"), new CoreWhen.WhenBinding(ch2, "y"));
-        assertCoreExprRoundTrip(new CoreWhen(SRC, bindings, body, INTEGER));
+        var ch1 = var(0, "a", channel(INTEGER));
+        var ch2 = var(1, "b", channel(BOOLEAN));
+        var bindings = List.of(binding(ch1, "x"), binding(ch2, "y"));
+        assertCoreExprRoundTrip(when(bindings, lit(1)));
     }
 
     public void testCoreSend() throws IOException {
-        var ch = new CoreVar(SRC, 0, "ch", new MonoType.AppType(new MonoType.TCon("Channel"), INTEGER));
-        var val = new CoreLit(SRC, new LitVal.IntegerLit(42), INTEGER);
-        assertCoreExprRoundTrip(new CoreSend(SRC, ch, val, new MonoType.TCon("Null")));
+        var ch = var(0, "ch", channel(INTEGER));
+        assertCoreExprRoundTrip(send(ch, lit(42)));
     }
 
     public void testCoreExprNestedLet() throws IOException {
-        var lit = new CoreLit(SRC, new LitVal.IntegerLit(1), INTEGER);
-        var inner = new CoreLet(SRC, "y", INTEGER, lit, new CoreVar(SRC, 0, "y", INTEGER), INTEGER);
-        var outer = new CoreLet(SRC, "x", INTEGER, inner, new CoreVar(SRC, 0, "x", INTEGER), INTEGER);
-        assertCoreExprRoundTrip(outer);
+        var inner = let("y", lit(1), var(0, "y", INTEGER));
+        assertCoreExprRoundTrip(let("x", inner, var(0, "x", INTEGER)));
     }
 
     // ──── Value ────
 
     public void testValueInteger() throws IOException {
-        assertValueRoundTrip(new Value.IntegerVal(42));
+        assertValueRoundTrip(intVal(42));
     }
 
     public void testValueLong() throws IOException {
-        assertValueRoundTrip(new Value.LongVal(9999999999L));
+        assertValueRoundTrip(longVal(9999999999L));
     }
 
     public void testValueDouble() throws IOException {
-        assertValueRoundTrip(new Value.DoubleVal(3.14));
+        assertValueRoundTrip(doubleVal(3.14));
     }
 
     public void testValueKeyword() throws IOException {
-        assertValueRoundTrip(new Value.KeywordVal("hello"));
+        assertValueRoundTrip(keyword("hello"));
     }
 
     public void testValueBoolean() throws IOException {
-        assertValueRoundTrip(new Value.BooleanVal(true));
+        assertValueRoundTrip(bool(true));
     }
 
     public void testValueNull() throws IOException {
-        assertValueRoundTrip(new Value.NullVal());
+        assertValueRoundTrip(nullVal());
     }
 
     public void testValueRecord() throws IOException {
-        assertValueRoundTrip(new Value.RecordVal(Map.of("x", new Value.IntegerVal(1), "y", new Value.BooleanVal(true))));
+        assertValueRoundTrip(new Value.RecordVal(Map.of("x", intVal(1), "y", bool(true))));
     }
 
     public void testValueNestedRecord() throws IOException {
-        var inner = new Value.RecordVal(Map.of("a", new Value.IntegerVal(1)));
-        assertValueRoundTrip(new Value.RecordVal(Map.of("nested", inner, "flat", new Value.KeywordVal("hello"))));
+        var inner = new Value.RecordVal(Map.of("a", intVal(1)));
+        assertValueRoundTrip(new Value.RecordVal(Map.of("nested", inner, "flat", keyword("hello"))));
     }
 
     public void testValueList() throws IOException {
-        assertValueRoundTrip(new Value.ListVal(List.of(new Value.IntegerVal(1), new Value.IntegerVal(2), new Value.IntegerVal(3))));
+        assertValueRoundTrip(new Value.ListVal(List.of(intVal(1), intVal(2), intVal(3))));
     }
 
     public void testValueEmptyList() throws IOException {
@@ -290,56 +294,44 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testValueListOfRecords() throws IOException {
-        var r1 = new Value.RecordVal(Map.of("x", new Value.IntegerVal(1)));
-        var r2 = new Value.RecordVal(Map.of("x", new Value.IntegerVal(2)));
+        var r1 = new Value.RecordVal(Map.of("x", intVal(1)));
+        var r2 = new Value.RecordVal(Map.of("x", intVal(2)));
         assertValueRoundTrip(new Value.ListVal(List.of(r1, r2)));
     }
 
     public void testValueChannel() throws IOException {
-        assertValueRoundTrip(new Value.ChannelVal("node-1", "ch-42"));
+        assertValueRoundTrip(channelVal("node-1", "ch-42"));
     }
 
     public void testValueBuiltin() throws IOException {
-        assertValueRoundTrip(new Value.BuiltinVal("map", 2, List.of()));
+        assertValueRoundTrip(builtin("map", 2));
     }
 
     public void testValueBuiltinPartiallyApplied() throws IOException {
-        assertValueRoundTrip(new Value.BuiltinVal("map", 2, List.of(new Value.IntegerVal(1))));
+        assertValueRoundTrip(builtin("map", 2, List.of(intVal(1))));
     }
 
     public void testValueClosure() throws IOException {
-        var body = new CoreVar(SRC, 0, "x", INTEGER);
-        var env = new Value[] { new Value.IntegerVal(42), new Value.BooleanVal(true) };
-        assertValueRoundTrip(new Value.ClosureVal(body, env));
+        assertValueRoundTrip(closure(var(0, "x", INTEGER), intVal(42), bool(true)));
     }
 
     public void testValueClosureEmptyEnv() throws IOException {
-        var body = new CoreLit(SRC, new LitVal.IntegerLit(1), INTEGER);
-        assertValueRoundTrip(new Value.ClosureVal(body, new Value[0]));
+        assertValueRoundTrip(closure(lit(1)));
     }
 
     public void testValueClosureNestedInRecord() throws IOException {
-        var body = new CoreVar(SRC, 0, "x", INTEGER);
-        var closure = new Value.ClosureVal(body, new Value[] { new Value.IntegerVal(10) });
-        assertValueRoundTrip(new Value.RecordVal(Map.of("fn", closure, "name", new Value.KeywordVal("test"))));
+        var cl = closure(var(0, "x", INTEGER), intVal(10));
+        assertValueRoundTrip(new Value.RecordVal(Map.of("fn", cl, "name", keyword("test"))));
     }
 
     public void testValueClosureCapturingClosure() throws IOException {
-        var innerBody = new CoreVar(SRC, 0, "y", INTEGER);
-        var innerClosure = new Value.ClosureVal(innerBody, new Value[] { new Value.IntegerVal(1) });
-        var outerBody = new CoreApp(
-            SRC,
-            new CoreVar(SRC, 0, "f", new MonoType.Arrow(INTEGER, INTEGER)),
-            new CoreVar(SRC, 1, "x", INTEGER),
-            INTEGER
-        );
-        assertValueRoundTrip(new Value.ClosureVal(outerBody, new Value[] { innerClosure, new Value.IntegerVal(2) }));
+        var innerClosure = closure(var(0, "y", INTEGER), intVal(1));
+        var outerBody = app(var(0, "f", arrow(INTEGER, INTEGER)), var(1, "x", INTEGER));
+        assertValueRoundTrip(closure(outerBody, innerClosure, intVal(2)));
     }
 
     public void testValueChannelInClosureEnv() throws IOException {
-        var body = new CoreVar(SRC, 0, "ch", new MonoType.AppType(new MonoType.TCon("Channel"), INTEGER));
-        var env = new Value[] { new Value.ChannelVal("node-2", "ch-99") };
-        assertValueRoundTrip(new Value.ClosureVal(body, env));
+        assertValueRoundTrip(closure(var(0, "ch", channel(INTEGER)), channelVal("node-2", "ch-99")));
     }
 
     // ──── Helpers ────

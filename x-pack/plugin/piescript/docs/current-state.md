@@ -3,24 +3,24 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-17 (Block C sub-blocks C.1–C.3 complete — `spawn!`, `send`, channel
-> registry, Value/CoreExpr/type serialization, transport handler, inbox with fire-and-forget
-> semantics, remote closure evaluation. See D-045, D-046, D-047.)
+> **Last updated**: 2026-03-18 (Block C sub-block C.4 complete — builder DSL for `CoreExpr`,
+> `Value`, and `MonoType` construction via `Exprs`, `Values`, and `Types` utility classes.)
 
 ## Summary
 
 **Phase 0 is complete. Phase 1 (sub-phases 1a–1d + D-035) is complete. Phase 2 (Index Resolution +
 Concrete-Row Constraints + Eager Evaluation) is complete. Block A (spawn + single-value when) is
 complete. Block B (ES topology, `List` type rename, list utilities) is complete. Block C
-sub-blocks C.1–C.3 (cross-node code execution) are complete.** Piescript can now create bare
-channels (`spawn!`), send values to local and remote channels (`send`), serialize closures and all
-value/type variants over the wire, route messages to remote nodes via a transport handler
-(`piescript/send`), and evaluate closures on remote nodes via the inbox mechanism. The inbox
-handler is fire-and-forget (D-047): the transport response returns immediately; closure evaluation
-runs asynchronously on the target node; evaluation errors are logged locally, never propagated
-back to the sender. The elaborator enforces the value restriction (D-046) to prevent unsound
-polymorphism from `spawn!`. Remaining for Block C: a builder DSL for concise `CoreExpr`/`Value`/
-`MonoType` construction (C.4) and multi-node integration tests (C.5).
+sub-blocks C.1–C.4 (cross-node code execution + builder DSL) are complete.** Piescript can now
+create bare channels (`spawn!`), send values to local and remote channels (`send`), serialize
+closures and all value/type variants over the wire, route messages to remote nodes via a transport
+handler (`piescript/send`), and evaluate closures on remote nodes via the inbox mechanism. The
+inbox handler is fire-and-forget (D-047): the transport response returns immediately; closure
+evaluation runs asynchronously on the target node; evaluation errors are logged locally, never
+propagated back to the sender. The elaborator enforces the value restriction (D-046) to prevent
+unsound polymorphism from `spawn!`. Block C.4 adds `Exprs`, `Values`, and `Types` utility
+classes with static factory methods and type constants for concise IR/value/type construction.
+Remaining for Block C: multi-node integration tests (C.5).
 
 **Phase 1e (Pattern Matching) is deferred** — not blocking the MVP-critical path. The execution
 model is the Join Calculus (D-040), with `spawn`/`when`/`send`/channels as coordination primitives.
@@ -41,6 +41,7 @@ for Phase 1 items carried forward.
 | `spawn!` (Block C) | Bare channel creation — `spawn!` creates a channel without executing a body. Returns `ChannelVal(localNodeId, channelId)`. The user completes the channel via explicit `send`. Subject to value restriction (D-046): `let ch = spawn!` stays monomorphic. |
 | `send` (Block C) | `send <channel> <value>` delivers a value to a channel. Local channels: completes the `SubscribableListener` in the `ChannelRegistry`. Remote channels: serializes the value and sends a transport message to the owner node. Inbox channels always go through the transport layer. Fire-and-forget: returns `Null` immediately (D-047). |
 | Cross-node closure evaluation (Block C) | Closures can be sent to remote nodes via the inbox mechanism. `send node.inbox (fn info -> ...)` serializes the closure over the wire, the target node evaluates it asynchronously with local node info as the argument. Transport response is fire-and-forget — evaluation errors stay on the target node (D-047). |
+| Builder DSL (Block C.4) | `Exprs`, `Values`, and `Types` utility classes in `piescript.core`, `piescript.eval`, and `piescript.types` respectively. Static factory methods for concise construction: `lit(42)`, `lam("x", INTEGER, body)`, `app(fn, arg)`, `rec(field(...))`, `intVal(n)`, `keyword(s)`, `record("k", v)`, `arrow(a, b)`, `list(t)`, `channel(t)`. Type inference where possible (e.g., `lam` computes arrow type, `rec` builds record type from fields). Reduces test and production verbosity. |
 | `EvalTopology` (Block B + Block C) | Implements the `topology` builtin. Reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting` → `DiscoveryNode` and converts to typed `RecordVal`/`ListVal` records. Node records include an `inbox` field (`ChannelVal(nodeId, "inbox")`) for sending closures to remote nodes. |
 | `Channel τ` type + `ChannelVal` (Block A + Block C) | `Channel` is a type constructor (`AppType(TCon("Channel"), tau)`). `ChannelVal(nodeId, channelId)` is a serializable channel reference (D-045). The actual `SubscribableListener<Value>` lives in the per-node `ChannelRegistry`. |
 | Serialization (Block C) | Full-fidelity serialization for all 11 `Value` variants (`ValueSerialization`), all 16 `CoreExpr` variants (`CoreExprSerialization`), and all `MonoType`, `RowType`, `LitVal`, `Op`, `Kind` types (`TypeSerialization`). `ClosureVal` serializes its `CoreExpr` body and `Value[]` environment recursively. `BuiltinVal` serializes name, arity, and partial args. 47 round-trip tests. |
@@ -91,7 +92,7 @@ for Phase 1 items carried forward.
 | `sort` / `take` combinators | Block D+ | No sorting or top-N selection within piescript. Must push into ESQL. |
 | `groupBy` combinator | Block D+ | No grouping/aggregation semantics within piescript. Must push into ESQL. |
 | Multi-value channels | Deferred | Block A/C channels are single-value only |
-| Builder DSL for CoreExpr/Value/MonoType | Block C.4 | Verbose construction of IR nodes, values, and types. Factory methods planned. |
+| ~~Builder DSL for CoreExpr/Value/MonoType~~ | ~~Block C.4~~ | Complete — `Exprs`, `Values`, `Types` utility classes. |
 | String / list concat operators | Phase 1 tech debt | No `<>` (string concat) or `++` (list concat). See roadmap. |
 | Multi-node integration tests | Block C.5 | No tests proving cross-node execution works end-to-end. |
 | Wildcard / alias / data stream patterns in `topology` | Deferred | `topology` accepts exact index name only (D-044) |
@@ -199,18 +200,17 @@ superset of the distributed vertical slice — it requires `writeTo` (Block E st
 
 ## Immediate Next Steps
 
-Phases 0–2, Block A, Block B, and Block C (C.1–C.3) are complete. The language supports concurrent
+Phases 0–2, Block A, Block B, and Block C (C.1–C.4) are complete. The language supports concurrent
 multi-index queries via `spawn`/`when`, cross-node code execution via `send`/inbox, typed
 functional composition over query results, structured record output, cluster topology discovery
-via `topology`, and list utilities (`head`/`tail`/`length`/`isEmpty`).
+via `topology`, list utilities (`head`/`tail`/`length`/`isEmpty`), and concise IR construction
+via the `Exprs`/`Values`/`Types` builder DSL.
 See [mvp.md](mvp.md) for concrete examples.
 
 **Next on the MVP critical path** (distributed vertical slice):
 
-1. **Block C.4** — Builder DSL for `CoreExpr`/`Value`/`MonoType` (quality-of-life, reduces test
-   and production verbosity).
-2. **Block C.5** — Multi-node integration tests proving cross-node execution end-to-end.
-3. **Block D** — Local data access (`scan`). Lucene queries on data nodes inside shipped closures.
+1. **Block C.5** — Multi-node integration tests proving cross-node execution end-to-end.
+2. **Block D** — Local data access (`scan`). Lucene queries on data nodes inside shipped closures.
 
 **High-impact small items** (can be addressed opportunistically alongside blocks):
 

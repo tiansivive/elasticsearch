@@ -431,7 +431,7 @@ The core distributed computing story. Ship a closure to a remote node, get a res
 | Remote send routing in `Evaluator` (local vs remote dispatch) | :white_check_mark: |
 | `when` locality check — reject remote channels | :white_check_mark: |
 | Inbox field in topology node records (`EvalTopology` + `Prelude`) | :white_check_mark: |
-| Builder DSL for `CoreExpr`/`Value`/`MonoType` | :memo: |
+| Builder DSL for `CoreExpr`/`Value`/`MonoType` (`Exprs`, `Values`, `Types`) | :white_check_mark: |
 | Multi-node integration tests (ping/pong, channel passing, errors) | :memo: |
 
 ---
