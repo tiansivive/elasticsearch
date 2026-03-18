@@ -13,6 +13,9 @@ import org.elasticsearch.xpack.piescript.types.Op;
 
 /**
  * Primitive operation evaluation: arithmetic, comparison, and boolean operators.
+ *
+ * <p>EQ/NEQ use polymorphic structural equality via {@link Object#equals} on {@code Value}
+ * records (D-049). Ordering operators (LT, GT, LTE, GTE) remain integer-only.
  */
 final class EvalPrimOps {
 
@@ -51,7 +54,22 @@ final class EvalPrimOps {
                 )
             );
 
-            case EQ, NEQ, LT, GT, LTE, GTE -> eval.evaluate(
+            case EQ, NEQ -> eval.evaluate(
+                args.get(0),
+                env,
+                listener.delegateFailureAndWrap(
+                    (l1, leftVal) -> eval.evaluate(
+                        args.get(1),
+                        env,
+                        l1.delegateFailureAndWrap((l2, rightVal) -> {
+                            boolean equal = leftVal.equals(rightVal);
+                            l2.onResponse(new Value.BooleanVal(op == Op.EQ ? equal : !equal));
+                        })
+                    )
+                )
+            );
+
+            case LT, GT, LTE, GTE -> eval.evaluate(
                 args.get(0),
                 env,
                 listener.delegateFailureAndWrap(
@@ -106,13 +124,11 @@ final class EvalPrimOps {
 
     static boolean intComparison(Op op, int left, int right) {
         return switch (op) {
-            case EQ -> left == right;
-            case NEQ -> left != right;
             case LT -> left < right;
             case GT -> left > right;
             case LTE -> left <= right;
             case GTE -> left >= right;
-            default -> throw new AssertionError("not a comparison op: " + op);
+            default -> throw new AssertionError("not an ordering op: " + op);
         };
     }
 

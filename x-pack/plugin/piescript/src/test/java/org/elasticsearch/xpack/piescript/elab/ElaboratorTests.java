@@ -294,6 +294,21 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(resolveType(result), is(BOOLEAN));
     }
 
+    public void testKeywordEquality() {
+        assertThat(resolveType(elaborate("\"a\" == \"b\"")), is(BOOLEAN));
+        assertThat(resolveType(elaborate("\"a\" != \"b\"")), is(BOOLEAN));
+    }
+
+    public void testBooleanEquality() {
+        assertThat(resolveType(elaborate("true == false")), is(BOOLEAN));
+        assertThat(resolveType(elaborate("true != false")), is(BOOLEAN));
+    }
+
+    public void testEqualityTypeMismatchFails() {
+        var e = expectThrows(ElaborationException.class, () -> elaborate("1 == \"hello\""));
+        assertThat(e.getMessage(), containsString("type mismatch"));
+    }
+
     public void testLessThan() {
         var result = elaborate("1 < 2");
         assertThat(result, instanceOf(CorePrimOp.class));
