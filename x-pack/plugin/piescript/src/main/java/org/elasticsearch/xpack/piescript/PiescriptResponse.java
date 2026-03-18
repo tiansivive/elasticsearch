@@ -16,6 +16,7 @@ import org.elasticsearch.core.Nullable;
 import org.elasticsearch.xcontent.ToXContent;
 import org.elasticsearch.xcontent.XContentBuilder;
 import org.elasticsearch.xpack.piescript.eval.Value;
+import org.elasticsearch.xpack.piescript.eval.ValueSerialization;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -231,61 +232,10 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
     }
 
     private static void writeValue(StreamOutput out, Value val) throws IOException {
-        switch (val) {
-            case Value.IntegerVal v -> {
-                out.writeByte((byte) 0);
-                out.writeInt(v.value());
-            }
-            case Value.LongVal v -> {
-                out.writeByte((byte) 1);
-                out.writeLong(v.value());
-            }
-            case Value.DoubleVal v -> {
-                out.writeByte((byte) 2);
-                out.writeDouble(v.value());
-            }
-            case Value.KeywordVal v -> {
-                out.writeByte((byte) 3);
-                out.writeString(v.value());
-            }
-            case Value.BooleanVal v -> {
-                out.writeByte((byte) 4);
-                out.writeBoolean(v.value());
-            }
-            case Value.NullVal ignored -> out.writeByte((byte) 5);
-            case Value.RecordVal v -> {
-                out.writeByte((byte) 6);
-                out.writeMap(v.fields(), (o, value) -> writeValue(o, value));
-            }
-            case Value.ListVal s -> {
-                out.writeByte((byte) 9);
-                out.writeCollection(s.elements(), (o, element) -> writeValue(o, element));
-            }
-            case Value.ClosureVal ignored -> out.writeByte((byte) 7);
-            case Value.BuiltinVal ignored -> out.writeByte((byte) 8);
-            case Value.ChannelVal ch -> {
-                out.writeByte((byte) 10);
-                out.writeString(ch.nodeId());
-                out.writeString(ch.channelId());
-            }
-        }
+        ValueSerialization.writeValue(out, val);
     }
 
     private static Value readValue(StreamInput in) throws IOException {
-        byte tag = in.readByte();
-        return switch (tag) {
-            case 0 -> new Value.IntegerVal(in.readInt());
-            case 1 -> new Value.LongVal(in.readLong());
-            case 2 -> new Value.DoubleVal(in.readDouble());
-            case 3 -> new Value.KeywordVal(in.readString());
-            case 4 -> new Value.BooleanVal(in.readBoolean());
-            case 5 -> new Value.NullVal();
-            case 6 -> new Value.RecordVal(in.readMap(PiescriptResponse::readValue));
-            case 7 -> new Value.ClosureVal(null, null);
-            case 8 -> new Value.BuiltinVal("?", 0, List.of());
-            case 9 -> new Value.ListVal(in.readCollectionAsList(PiescriptResponse::readValue));
-            case 10 -> new Value.ChannelVal(in.readString(), in.readString());
-            default -> throw new IOException("unknown Value tag: " + tag);
-        };
+        return ValueSerialization.readValue(in);
     }
 }

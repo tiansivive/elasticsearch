@@ -15,6 +15,8 @@ import org.elasticsearch.xpack.piescript.types.TypeScheme;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+import static java.util.Map.entry;
+
 /**
  * The Piescript prelude: built-in functions available as module-level free
  * variables. These are wired into the {@link ElaborationContext} module map
@@ -34,8 +36,15 @@ import java.util.Map;
  *   tail     : ∀a. List a → List a
  *   length   : ∀a. List a → Integer
  *   isEmpty  : ∀a. List a → Boolean
- *   topology : Keyword → { shards: List ShardRecord, nodes: List NodeRecord }
+ *   topology : Keyword → { local: NodeBase, nodes: List NodeBase }
+ *   routing  : Keyword → { shards: List ShardRecord, nodes: List NodeRecord }
+ *   shards   : Keyword → List ShardRecord
+ *   nodes    : Keyword → List NodeRecord
  * </pre>
+ *
+ * <p>{@code topology "cluster"} returns cluster-level info: the local (coordinator) node and
+ * all nodes with their inboxes. {@code routing "index"} returns index-level shard placement.
+ * {@code shards} and {@code nodes} are conveniences over {@code routing}. See D-048.
  */
 public final class Prelude {
 
@@ -46,6 +55,7 @@ public final class Prelude {
     private static final MonoType KW = Elaborator.KEYWORD;
     private static final MonoType INT = Elaborator.INTEGER;
     private static final MonoType BOOL = Elaborator.BOOLEAN;
+    private static final MonoType NULL = Elaborator.NULL_TYPE;
 
     /**
      * The module map containing all built-in function type schemes.
@@ -55,23 +65,18 @@ public final class Prelude {
     public static final Map<String, TypeScheme> MODULE = buildModule();
 
     /** Arity (number of term-level arguments) for each built-in function. */
-    public static final Map<String, Integer> ARITY = Map.of(
-        "map",
-        2,
-        "filter",
-        2,
-        "reduce",
-        3,
-        "head",
-        1,
-        "tail",
-        1,
-        "length",
-        1,
-        "isEmpty",
-        1,
-        "topology",
-        1
+    public static final Map<String, Integer> ARITY = Map.ofEntries(
+        entry("map", 2),
+        entry("filter", 2),
+        entry("reduce", 3),
+        entry("head", 1),
+        entry("tail", 1),
+        entry("length", 1),
+        entry("isEmpty", 1),
+        entry("topology", 1),
+        entry("routing", 1),
+        entry("shards", 1),
+        entry("nodes", 1)
     );
 
     private static Map<String, TypeScheme> buildModule() {
@@ -83,7 +88,10 @@ public final class Prelude {
         module.put("tail", listToList());        // ∀a. List a → List a
         module.put("length", listToInt());       // ∀a. List a → Integer
         module.put("isEmpty", listToBool());     // ∀a. List a → Boolean
-        module.put("topology", topologyScheme());
+        module.put("topology", clusterTopologyScheme());
+        module.put("routing", routingScheme());
+        module.put("shards", shardsScheme());
+        module.put("nodes", nodesScheme());
         return Map.copyOf(module);
     }
 
@@ -147,29 +155,66 @@ public final class Prelude {
         return new TypeScheme(quantified, new MonoType.Arrow(list(A0), BOOL));
     }
 
-    // topology : Keyword → { shards: List ShardRecord, nodes: List NodeRecord }
-    // where ShardRecord = { index: Keyword, shard_id: Integer, primary: Boolean, state: Keyword,
-    // node: { id: Keyword, name: Keyword, address: Keyword } }
-    // NodeRecord = { id: Keyword, name: Keyword, address: Keyword,
-    // shards: List { index: Keyword, shard_id: Integer, primary: Boolean, state: Keyword } }
-    private static TypeScheme topologyScheme() {
-        var nodeRecord = record(Map.of("id", KW, "name", KW, "address", KW));
-        var shardCore = Map.of("index", KW, "shard_id", INT, "primary", BOOL, "state", KW);
+    // Shared type building blocks for topology/routing:
+    // NodeInfoArg = { id: Keyword, name: Keyword, address: Keyword } — what inbox closures receive
+    // NodeBase = NodeInfoArg & { inbox: Channel (NodeInfoArg → Null) }
+    // ShardCore = { index: Keyword, shard_id: Integer, primary: Boolean, state: Keyword }
+    // ShardRecord = ShardCore & { node: NodeBase }
+    // NodeRecord = NodeBase & { shards: List ShardCore }
+
+    private static MonoType.RecordType nodeBase() {
+        var nodeInfoArg = record(Map.of("id", KW, "name", KW, "address", KW));
+        var inboxType = channel(new MonoType.Arrow(nodeInfoArg, NULL));
+        var fields = new LinkedHashMap<String, MonoType>();
+        fields.put("id", KW);
+        fields.put("name", KW);
+        fields.put("address", KW);
+        fields.put("inbox", inboxType);
+        return record(fields);
+    }
+
+    private static Map<String, MonoType> shardCoreFields() {
+        return Map.of("index", KW, "shard_id", INT, "primary", BOOL, "state", KW);
+    }
+
+    // topology : Keyword → { local: NodeBase, nodes: List NodeBase } (D-048)
+    private static TypeScheme clusterTopologyScheme() {
+        var nb = nodeBase();
+        var resultType = record(Map.of("local", nb, "nodes", list(nb)));
+        return TypeScheme.mono(new MonoType.Arrow(KW, resultType));
+    }
+
+    // routing : Keyword → { shards: List ShardRecord, nodes: List NodeRecord } (D-048)
+    private static TypeScheme routingScheme() {
+        var nb = nodeBase();
+        var shardCore = shardCoreFields();
 
         var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCore);
-        shardRecordFields.put("node", nodeRecord);
+        shardRecordFields.put("node", nb);
         var shardRecord = record(shardRecordFields);
 
-        var nodeRecordFields = new LinkedHashMap<String, MonoType>();
-        nodeRecordFields.put("id", KW);
-        nodeRecordFields.put("name", KW);
-        nodeRecordFields.put("address", KW);
+        var nodeRecordFields = new LinkedHashMap<>(nb.row().fields());
         nodeRecordFields.put("shards", list(record(shardCore)));
         var nodeRecordFull = record(nodeRecordFields);
 
         var resultType = record(Map.of("shards", list(shardRecord), "nodes", list(nodeRecordFull)));
-        var body = new MonoType.Arrow(KW, resultType);
-        return TypeScheme.mono(body);
+        return TypeScheme.mono(new MonoType.Arrow(KW, resultType));
+    }
+
+    // shards : Keyword → List ShardRecord (convenience over routing)
+    private static TypeScheme shardsScheme() {
+        var nb = nodeBase();
+        var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
+        shardRecordFields.put("node", nb);
+        return TypeScheme.mono(new MonoType.Arrow(KW, list(record(shardRecordFields))));
+    }
+
+    // nodes : Keyword → List NodeRecord (convenience over routing)
+    private static TypeScheme nodesScheme() {
+        var nb = nodeBase();
+        var nodeRecordFields = new LinkedHashMap<>(nb.row().fields());
+        nodeRecordFields.put("shards", list(record(shardCoreFields())));
+        return TypeScheme.mono(new MonoType.Arrow(KW, list(record(nodeRecordFields))));
     }
 
     static MonoType.RecordType record(Map<String, MonoType> fields) {
@@ -178,5 +223,9 @@ public final class Prelude {
 
     static MonoType.AppType list(MonoType element) {
         return new MonoType.AppType(Elaborator.LIST, element);
+    }
+
+    static MonoType.AppType channel(MonoType element) {
+        return new MonoType.AppType(Elaborator.CHANNEL, element);
     }
 }

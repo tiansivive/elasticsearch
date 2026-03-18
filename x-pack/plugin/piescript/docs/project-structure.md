@@ -2,8 +2,9 @@
 
 > **Living doc** — update whenever files or packages are added/removed/renamed.
 >
-> **Last updated**: 2026-03-17 (Block B complete — `topology` builtin, `Stream` → `List` rename,
-> `EvalDependencies`, `EvalTopology`). **Ref**: Block B implementation session
+> **Last updated**: 2026-03-17 (Block C C.1–C.3 complete — `spawn!`, `send`, channel registry,
+> serialization, transport handler, inbox. See D-045, D-046, D-047.)
+> **Ref**: Block C implementation session
 
 ## Directory Layout
 
@@ -26,23 +27,28 @@ x-pack/plugin/piescript/
     │   │   ├── PiescriptLexer.g4           # ANTLR lexer grammar (Phase 1a)
     │   │   └── PiescriptAntlrParser.g4     # ANTLR parser grammar (Phase 1a)
     │   └── java/org/elasticsearch/xpack/piescript/
-    │       ├── PiescriptAction.java        # ActionType definition
-    │       ├── PiescriptPlugin.java        # Plugin entry point
+    │       ├── PiescriptAction.java        # ActionType definition (main eval)
+    │       ├── PiescriptPlugin.java        # Plugin entry point + ChannelRegistry singleton
     │       ├── PiescriptRequest.java       # Request object (program carrier)
-│       ├── RestPiescriptAction.java    # REST handler (eval)
-│       ├── RestPiescriptDevAction.java # REST handler (dev — CST inspection)
-│       ├── TransportPiescriptAction.java   # Transport handler (ESQL bridge)
+    │       ├── PiescriptResponse.java      # Response wrapper (delegates to ValueSerialization)
+    │       ├── PiescriptSendAction.java    # ActionType for cross-node sends (Block C)
+    │       ├── PiescriptSendRequest.java   # Send request: channelId + Value payload (Block C)
+    │       ├── RestPiescriptAction.java    # REST handler (eval)
+    │       ├── RestPiescriptDevAction.java # REST handler (dev — CST inspection)
+    │       ├── TransportPiescriptAction.java   # Transport handler (main eval pipeline)
+    │       ├── TransportPiescriptSendAction.java # Transport handler: cross-node sends + inbox (Block C)
     │       ├── parser/                     # Phase 1a: lexer/parser
     │       │   ├── PiescriptParser.java         # Parser entry point (CST → parse tree)
     │       │   ├── PiescriptParsingException.java  # Parse error wrapper
     │       │   ├── PiescriptLexer.java          # (generated from PiescriptLexer.g4)
     │       │   ├── PiescriptAntlrParser.java    # (generated from PiescriptAntlrParser.g4)
     │       │   └── ...Visitor/Listener classes  # (generated ANTLR infrastructure)
-    │       ├── types/                     # Phase 1b: type system data structures
+    │       ├── types/                     # Phase 1b + Block C: type system data structures
     │       │   ├── Kind.java                    # Meta kind enum (TYPE, ROW)
     │       │   ├── MonoType.java                # Monomorphic types (sealed interface)
     │       │   ├── RowType.java                 # Row type (fields + optional row variable)
     │       │   ├── TypeScheme.java              # Polymorphic type scheme (∀-quantified)
+    │       │   ├── TypeSerialization.java        # Serialization for MonoType, RowType, Kind, LitVal, Op (Block C)
     │       │   ├── LitVal.java                  # Literal values for Core IR
     │       │   └── Op.java                      # Primitive operator enum
     │       ├── core/                      # Phase 1b: Core IR (typed, elaborated)
@@ -57,7 +63,11 @@ x-pack/plugin/piescript/
     │       │   ├── CoreProject.java             # Field projection
     │       │   ├── CoreUpdate.java              # Record update
     │       │   ├── CorePrimOp.java              # Primitive operation
-    │       │   └── CorePrinter.java             # Pretty-printer for Core IR + types
+    │       │   ├── CorePrinter.java             # Pretty-printer for Core IR + types
+    │       │   ├── CoreExprSerialization.java   # Serialization for all 16 CoreExpr variants (Block C)
+    │       │   ├── CoreSpawn.java               # spawn/spawn! (nullable body) (Block A + C)
+    │       │   ├── CoreSend.java                # send channel value (Block C)
+    │       │   └── CoreWhen.java                # when synchronization (Block A)
     │       ├── elab/                      # Phase 1b: Elaboration machinery
     │       │   ├── ElaborationContext.java       # Immutable typing context (Γ + binding level)
     │       │   ├── ElaborationState.java        # Mutable global state (metavar supply + zonker)
@@ -71,11 +81,16 @@ x-pack/plugin/piescript/
     │       │   ├── EsqlBodyParser.java          # Extract index patterns from ESQL body (Phase 2)
     │       │   ├── DataTypeMapping.java         # ES DataType → piescript MonoType (Phase 2)
     │       │   └── Polymorphism.java            # Generalization + instantiation helpers (Phase 2)
-    │       └── eval/                      # Phase 1c + Phase 2 + Block B: Evaluation
+    │       └── eval/                      # Phase 1c + Phase 2 + Block B + Block C: Evaluation
     │           ├── Value.java                   # Runtime value sealed interface (11 variants)
+    │           ├── ValueSerialization.java       # Serialization for all 11 Value variants (Block C)
     │           ├── Evaluator.java               # Tree-walking de Bruijn environment machine
-    │           ├── EvalDependencies.java         # Context record bundling Client, Executor, ClusterService (Block B)
-    │           ├── EvalTopology.java             # `topology` builtin implementation (Block B)
+    │           ├── EvalDependencies.java         # Context record: Client, Executor, ClusterService, TransportService, ChannelRegistry, localNodeId
+    │           ├── EvalTopology.java             # `topology` builtin implementation (Block B + C: inbox field)
+    │           ├── EvalCoordination.java         # `when` evaluation + locality check (Block A + C)
+    │           ├── EvalBuiltins.java             # List builtins: map, filter, reduce, head, tail, length, isEmpty
+    │           ├── EvalPrimOps.java              # Arithmetic, comparison, boolean operations
+    │           ├── ChannelRegistry.java          # Per-node ConcurrentHashMap<String, ActionListener<Value>> (Block C)
     │           ├── EsqlValueConverter.java      # ESQL response → ListVal converter
     │           └── EvaluationException.java     # Runtime evaluation error
     ├── test/java/org/elasticsearch/xpack/piescript/
@@ -89,11 +104,13 @@ x-pack/plugin/piescript/
     │   │   ├── ElaborationContextTests.java # Unit tests for immutable context
     │   │   ├── ElaborationStateTests.java  # Unit tests for mutable state + integrated scenarios
     │   │   ├── UnifierTests.java           # Unit tests for unification
-    │   │   └── ElaboratorTests.java        # Unit tests for elaborator (72 tests)
-    │   └── eval/
-    │       └── EvaluatorTests.java        # Unit tests for evaluator (59 tests)
+    │   │   └── ElaboratorTests.java        # Unit tests for elaborator
+    │   ├── eval/
+    │   │   └── EvaluatorTests.java        # Unit tests for evaluator
+    │   └── serial/
+    │       └── SerializationRoundTripTests.java  # Round-trip tests: all Value, CoreExpr, MonoType variants (47 tests, Block C)
     └── javaRestTest/java/org/elasticsearch/xpack/piescript/
-        └── PiescriptIT.java           # Integration tests (15 test methods)
+        └── PiescriptIT.java           # Integration tests (single-node)
 ```
 
 ## File Responsibilities
@@ -109,8 +126,11 @@ x-pack/plugin/piescript/
 | File | Purpose |
 |------|---------|
 | `PiescriptAction.java` | Defines the `ActionType` singleton (`indices:data/read/piescript`) with response type `PiescriptResponse`. This is the handle used to dispatch and route the action through the transport layer. |
-| `PiescriptResponse.java` | Response wrapper: holds a `Value` + type string (expression result), including `ListVal` serialized as JSON arrays. Implements `ChunkedToXContentObject` and `Releasable`. Serializable for transport (D-023). |
-| `PiescriptPlugin.java` | Plugin registration. Implements `ActionPlugin` to register the action handler (`PiescriptAction → TransportPiescriptAction`) and the REST handler (`RestPiescriptAction`). |
+| `PiescriptSendAction.java` | Defines the `ActionType` for cross-node channel sends (`indices:data/read/piescript/send`). Returns `ActionResponse.Empty` (fire-and-forget). Block C — D-045. |
+| `PiescriptSendRequest.java` | Request for cross-node sends: carries `channelId` (String) and `payload` (Value). Defines `INBOX_CHANNEL_ID = "inbox"`. Extends `ActionRequest`. Block C — D-045. |
+| `PiescriptResponse.java` | Response wrapper: holds a `Value` + type string (expression result), including `ListVal` serialized as JSON arrays. Delegates to `ValueSerialization`. Implements `ChunkedToXContentObject` and `Releasable`. |
+| `PiescriptPlugin.java` | Plugin registration. Implements `ActionPlugin` + `createComponents`. Instantiates singleton `ChannelRegistry` per node. Registers both `PiescriptAction` and `PiescriptSendAction` handlers. |
+| `TransportPiescriptSendAction.java` | Handles inbound cross-node sends. Dispatches to `ChannelRegistry` for regular channels; evaluates closures asynchronously for inbox sends (fire-and-forget — D-047). Block C. |
 | `PiescriptRequest.java` | Immutable request object carrying the `program` string. Implements `CompositeIndicesRequest` for security delegation. Validates that `program` is non-blank. Serializable for transport. |
 | `RestPiescriptAction.java` | HTTP entry point. Registers `POST /_piescript/eval`, parses the JSON body to extract `program`, and dispatches a `PiescriptRequest` to the transport layer. |
 | `RestPiescriptDevAction.java` | Development endpoint. Registers `POST /_piescript/dev`, runs the full parse → elaborate → evaluate pipeline and returns `tree` (CST), `core` (pretty-printed Core IR), `type` (resolved type), and `eval` (evaluated result). Parse errors return `parse_error`; type errors return `tree` + `type_error`; eval errors return `eval_error`. |
@@ -174,6 +194,10 @@ x-pack/plugin/piescript/
 | `elab/EsqlBodyParser.java` | Parses an ESQL body string to extract the index pattern (the `FROM` target). Used by `IndexResolutionPrePass` during query collection. |
 | `elab/DataTypeMapping.java` | Maps ES `DataType` values (from field caps) to piescript `MonoType`. Used when building the row type for a resolved query expression. |
 | `elab/Polymorphism.java` | Extracted generalization and instantiation logic. `generalize` collects unsolved metas and quantifies them with `CoreTypeAbs` wrappers. `instantiateAndWrap` replaces quantified rigids with fresh metas and wraps with `CoreTypeApp`. |
+| `elab/Sends.java` | Elaborates `SendExpr` — constrains channel to `Channel α`, value to `α`, result type `Null`. Emits `CoreSend(channel, value)`. Block C. |
+| `elab/Spawns.java` | Elaborates `SpawnExpr` and `SpawnBangExpr`. `spawnBang()` produces `CoreSpawn(null)` with type `Channel α` (fresh meta). Block A + C. |
+| `elab/Whens.java` | Elaborates `WhenExpr` — resolves channel types, binds variables, produces `CoreWhen`. Block A. |
+| `elab/Let.java` | Elaborates let-bindings and top-level bindings. Implements value restriction (D-046): `isSyntacticValue` check gates generalization. |
 
 ### Source (`src/main`) — Evaluation (Phase 1c)
 

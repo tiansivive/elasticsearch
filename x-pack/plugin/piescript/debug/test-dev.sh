@@ -95,3 +95,27 @@ echo "=== parse error ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
   -d '{"program": "let = in"}' | jq
+
+echo ""
+echo "=== spawn! (bare channel) ==="
+curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let ch = spawn! in let u = send ch 42 in when (ch x) -> x + 1"}' | jq
+
+echo ""
+echo "=== cluster topology ==="
+curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "topology \"cluster\""}' | jq
+
+echo ""
+echo "=== index routing ==="
+curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "routing \"piescript-test\""}' | jq
+
+echo ""
+echo "=== send closure to local inbox via topology.local ==="
+curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let topo = topology \"cluster\" in let ch = spawn! in let u = send topo.local.inbox (fn info -> send ch info.id) in when (ch result) -> result"}' | jq

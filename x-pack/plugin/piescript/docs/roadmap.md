@@ -46,7 +46,7 @@ distributed computing with code mobility, coordinated by the Join Calculus.
 | Phase 2 | Index resolution — typed query results, field-level type checking, eager evaluation | :white_check_mark: |
 | Block A | `spawn` + single-value `when` — local async coordination | :white_check_mark: |
 | Block B | ES topology as typed values — `topology`, node/shard records, `List` type rename, list utilities | :white_check_mark: |
-| Block C | Cross-node code execution — `send`, `spawn!`, closure serialization, channel registry | :memo: |
+| Block C | Cross-node code execution — `send`, `spawn!`, closure serialization, channel registry | :construction: |
 | Block D | Local data access — `scan` on data nodes inside shipped closures | :memo: |
 
 **Stretch goal** (valuable but not required for the vertical slice):
@@ -57,7 +57,7 @@ distributed computing with code mobility, coordinated by the Join Calculus.
 
 **Post-MVP enhancements**:
 
-- Multi-value channels (streaming patterns, fold-as-join)
+- Multi-value channels (streaming patterns, fold-as-join, functional-pattern matching)
 - Scheduled execution (persistent tasks)
 - Typeclasses + RawData → Lucene push-down (principled optimization via type system)
 - Exchange streaming (scale via compute engine, orchestrated explicitly by piescript)
@@ -381,52 +381,57 @@ code anywhere.
 
 ---
 
-## Block C — Cross-Node Code Execution (`send` + `spawn!`) :memo:
+## Block C — Cross-Node Code Execution (`send` + `spawn!`) :construction:
 
-> **Revised**: 2026-03-17. Replaces old Block C (`writeTo` + scheduler). See D-042.
+> **Revised**: 2026-03-17. Sub-blocks C.1–C.3 complete. See D-045, D-046, D-047.
 
-The core distributed computing story. Ship a closure to a remote node, get a result back. This is
-the hardest and most important block.
+The core distributed computing story. Ship a closure to a remote node, get a result back.
 
 **What it delivers:**
-- `spawn!` — bare channel creation (`new SubscribableListener<>()` in a `SpawnVal`). Creates a
-  channel without executing a body. User completes it via explicit `send`.
-- `send` primitive — locally: `listener.onResponse(value)`. Cross-node: transport message routed
-  to the channel's owner node via the channel registry.
-- Closure serialization — `(CoreExpr body, Value[] captured_env)` over the wire. Core IR is a tree
-  of records. Values are recursively serializable. Channel references serialize as
-  `ChannelRef(ownerNodeId, channelId)`.
-- Channel registry — `ConcurrentHashMap<String, SubscribableListener<Value>>` per node. Channels
-  named as `<ownerNodeId>:<channelUuid>`.
-- Remote evaluator — transport action on data nodes: accept serialized closure, evaluate, send
-  result on specified channel.
-- Two transport handlers:
-  - `piescript/execute_closure` — coordinator → data node
-  - `piescript/channel_message` — data node → coordinator (or any node → channel owner)
+- `spawn!` — bare channel creation. Returns `ChannelVal(localNodeId, channelId)`. User completes
+  it via explicit `send`. Subject to value restriction (D-046).
+- `send` primitive — locally: completes the `SubscribableListener` in the `ChannelRegistry`.
+  Cross-node: transport message routed to the channel's owner node. Inbox sends always go through
+  transport (even local). Fire-and-forget: returns `Null` immediately (D-047).
+- Closure serialization — full-fidelity `ValueSerialization`, `CoreExprSerialization`,
+  `TypeSerialization` with recursive `ClosureVal` (body + env) and `BuiltinVal` (name + arity +
+  partial args) support. 47 round-trip tests.
+- Channel registry — `ConcurrentHashMap<String, ActionListener<Value>>` per node. Singleton
+  shared across transport actions via Guice injection.
+- Inbox — well-known `"inbox"` channel on every node. Receives closures, evaluates them
+  asynchronously with local node info as the argument. Fire-and-forget: transport response
+  returns immediately; evaluation errors logged locally on target node (D-047).
+- Single transport handler: `piescript/send` — dispatches to regular channels or inbox based on
+  channel ID.
 
-**Verification:** A `local_node` builtin returns the current node's identity. Remote closures
-return `{ ran_on: local_node, result: ... }` to prove code crossed nodes. Integration tests use
-multi-node clusters.
+**Error responsibility model (D-047):**
+- Delivery errors (transport failure): initiator's concern. Future: `send` returns `Result` value.
+- Closure evaluation errors: target node's concern. Never propagated to sender.
 
-**Likely sub-blocks** (to be detailed when implementation begins):
-- C.1: `spawn!` + local `send` (semantics without transport)
-- C.2: `Value` serialization (`Writeable` for all `Value` variants)
-- C.3: `CoreExpr` serialization (Core IR over the wire)
-- C.4: Transport handlers + channel registry (cross-node wiring)
-- C.5: Multi-node integration test
+**Sub-blocks:**
+- C.1: `spawn!` + local `send` + ChannelRegistry + value restriction (D-046)
+- C.2: Value/CoreExpr/type serialization with round-trip tests
+- C.3: Transport handler + inbox + remote send routing + topology inbox field
+- C.4: Builder DSL for `CoreExpr`/`Value`/`MonoType` construction
+- C.5: Multi-node integration tests
 
 | Task | Status |
 |------|--------|
-| `spawn!` — bare channel creation (grammar + Core IR + evaluator) | :memo: |
-| `send` primitive — local channel completion | :memo: |
-| `Value` serialization (`Writeable` implementations) | :memo: |
-| `CoreExpr` serialization (Core IR tree over transport) | :memo: |
-| Channel registry (`ConcurrentHashMap` per node) | :memo: |
-| Transport handler: `piescript/execute_closure` | :memo: |
-| Transport handler: `piescript/channel_message` | :memo: |
-| Remote evaluator (evaluate closure on data node) | :memo: |
-| `local_node` builtin (for verification) | :memo: |
-| Multi-node integration tests (prove cross-node execution) | :memo: |
+| `spawn!` — bare channel creation (grammar + Core IR + evaluator) | :white_check_mark: |
+| `send` primitive — local channel completion + elaboration | :white_check_mark: |
+| `ChannelVal(nodeId, channelId)` + `ChannelRegistry` | :white_check_mark: |
+| Value restriction for let-generalization (D-046) | :white_check_mark: |
+| `Value` serialization (`ValueSerialization` — all 11 variants) | :white_check_mark: |
+| `CoreExpr` serialization (`CoreExprSerialization` — all 16 variants) | :white_check_mark: |
+| `MonoType`/`RowType`/`LitVal`/`Op`/`Kind` serialization (`TypeSerialization`) | :white_check_mark: |
+| Serialization round-trip tests (47 tests) | :white_check_mark: |
+| Transport handler: `PiescriptSendAction` + `TransportPiescriptSendAction` | :white_check_mark: |
+| Inbox: fire-and-forget closure evaluation on target node (D-047) | :white_check_mark: |
+| Remote send routing in `Evaluator` (local vs remote dispatch) | :white_check_mark: |
+| `when` locality check — reject remote channels | :white_check_mark: |
+| Inbox field in topology node records (`EvalTopology` + `Prelude`) | :white_check_mark: |
+| Builder DSL for `CoreExpr`/`Value`/`MonoType` | :memo: |
+| Multi-node integration tests (ping/pong, channel passing, errors) | :memo: |
 
 ---
 
@@ -495,13 +500,20 @@ messages over time — needed for streaming patterns, fold-as-join, and event ha
 `send` (completing a `spawn!`) is covered by Block C. Multi-value channels are about repeated
 messages on the same channel.
 
+Multi-value channels are also the prerequisite for **functional-pattern matching on channels** — a
+further generalization where `when` reaction rules use Curry-style functional patterns over the
+channel's accumulated message store, with narrowing-based search and CHAM maximal parallel firing.
+See [vision.md § Functional-Pattern Matching on Channels](vision.md) for the full design direction.
+
 | Task | Status |
 |------|--------|
 | `newchan` primitive (explicit multi-value channel creation) | :thought_balloon: |
-| Multi-value channel implementation (concurrent queue + notification) | :thought_balloon: |
+| Multi-value channel implementation (multiset message store + notification) | :thought_balloon: |
 | Join automaton for pattern matching over multi-value channels | :thought_balloon: |
 | Channel completion / close semantics | :thought_balloon: |
 | Backpressure mechanism | :thought_balloon: |
+| Functional-pattern matching (Curry-style narrowing over message stores) | :thought_balloon: |
+| Maximal parallel firing (CHAM semantics — all non-overlapping matches fire concurrently) | :thought_balloon: |
 
 ---
 
@@ -584,6 +596,48 @@ Stored, reusable piescript definitions.
 - Named program storage (cluster state or dedicated index)
 - Import/reference between programs
 - Versioning and backwards compatibility
+
+### Brainstorming: Persistent Functions
+> **Caveat:** These are exploratory notes, not active design work. They capture interesting
+> directions that the existing infrastructure could support, recorded here to inform future
+> thinking.
+
+**Storing compiled closures, not just source text.** Piescript already serializes closures
+(`CoreExpr` body + `Value[]` environment) for cross-node shipping via `ValueSerialization` and
+`CoreExprSerialization`. The same serialization could persist function definitions to cluster state
+(like stored scripts / ES|QL views) or a system index (like Transforms / Watcher). Because the
+language is pure and referentially transparent, a stored closure is safe to evaluate at any time on
+any node — there is no risk of stale mutable state. Top-level function definitions (empty captured
+environment) are the simplest case.
+
+**What a stored definition would contain:**
+- Name (lookup key)
+- `TypeScheme` (so the elaborator can type-check call sites without re-elaborating the body)
+- `CoreExpr` (the compiled IR, serialized)
+- `Value[]` environment (empty for top-level definitions)
+- Original source text (for display, editing, debugging)
+
+**Lookup integration.** The elaboration context already has a two-tier lookup: local de Bruijn
+bindings, then `Prelude.MODULE` (module-level free variables via `lookupModule()`). A stored
+function registry would be a third tier — extending `lookupModule()` to check persistent storage.
+The evaluator already handles `ClosureVal` application; no changes needed on the eval side.
+
+**Content-addressed code (Unison-inspired).** Hashing a serialized `CoreExpr` would produce a content address — two
+independently-written functions with the same structure get the same hash. This is the model
+pioneered by the Unison language, where code is stored as content-addressed AST nodes and names
+are just metadata pointing to hashes. 
+
+**Elasticsearch storage patterns.** Two established patterns exist: cluster state
+(`Metadata.ProjectCustom`, used by stored scripts, ES|QL views, ingest pipelines — small, few
+definitions) and system indices (used by Transforms, Watcher, Synonyms — larger or more numerous
+definitions, versioning, searchability). A first cut would likely follow the stored scripts
+pattern; a system index could come later if the number of stored functions grows.
+
+**Open questions:** dependency graphs between stored functions (if A calls B, elaborate A in a
+context that includes B), versioning semantics (immutable definitions vs. mutable with version
+history), security model (who can store/overwrite/delete), whether closures that capture channels
+or node-specific state should be rejected at storage time (top-level definitions with empty
+environments are always safe).
 
 ---
 

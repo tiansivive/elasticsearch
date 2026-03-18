@@ -950,4 +950,19 @@ public class ElaboratorTests extends ESTestCase {
         var result = elaborate("topology");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
+
+    public void testRoutingTypeIsArrow() {
+        var result = elaborate("routing");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testShardsTypeIsArrow() {
+        var result = elaborate("shards");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testNodesTypeIsArrow() {
+        var result = elaborate("nodes");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
 }

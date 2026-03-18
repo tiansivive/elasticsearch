@@ -7,9 +7,15 @@
 
 package org.elasticsearch.xpack.piescript.eval;
 
+import org.elasticsearch.TransportVersion;
 import org.elasticsearch.action.support.PlainActionFuture;
+import org.elasticsearch.cluster.node.VersionInformation;
+import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.util.concurrent.EsExecutors;
 import org.elasticsearch.test.ESTestCase;
+import org.elasticsearch.test.transport.MockTransportService;
+import org.elasticsearch.threadpool.TestThreadPool;
+import org.elasticsearch.transport.TransportService;
 import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
@@ -23,6 +29,8 @@ import org.elasticsearch.xpack.piescript.elab.Elaborator;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.Op;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -37,6 +45,30 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 
 public class EvaluatorTests extends ESTestCase {
+
+    private static TestThreadPool threadPool;
+    private static TransportService transportService;
+
+    @BeforeClass
+    public static void startTransport() {
+        threadPool = new TestThreadPool(EvaluatorTests.class.getSimpleName());
+        transportService = MockTransportService.createNewService(
+            Settings.EMPTY,
+            VersionInformation.CURRENT,
+            TransportVersion.current(),
+            threadPool
+        );
+        transportService.start();
+    }
+
+    @AfterClass
+    public static void stopTransport() {
+        transportService.stop();
+        transportService.close();
+        transportService = null;
+        threadPool.close();
+        threadPool = null;
+    }
 
     private Value evaluate(String source) {
         var parser = new PiescriptParser();
@@ -760,7 +792,21 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testTopologyWithoutClusterServiceThrows() {
         var topologyFree = new CoreFree(SRC, "topology", INT);
-        var fullExpr = new CoreApp(SRC, topologyFree, new CoreVar(SRC, 0, "index", INT), INT);
+        var fullExpr = new CoreApp(SRC, topologyFree, new CoreVar(SRC, 0, "arg", INT), INT);
+
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(
+            fullExpr,
+            new Value[] { new Value.KeywordVal("cluster") },
+            future
+        );
+        var ex = expectThrows(EvaluationException.class, future::actionGet);
+        assertThat(ex.getMessage(), containsString("requires cluster service"));
+    }
+
+    public void testRoutingWithoutClusterServiceThrows() {
+        var routingFree = new CoreFree(SRC, "routing", INT);
+        var fullExpr = new CoreApp(SRC, routingFree, new CoreVar(SRC, 0, "index", INT), INT);
 
         var future = new PlainActionFuture<Value>();
         new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(
@@ -773,6 +819,13 @@ public class EvaluatorTests extends ESTestCase {
     }
 
     private static EvalDependencies testDeps(java.util.concurrent.Executor executor) {
-        return new EvalDependencies(null, executor, null, new ChannelRegistry(), "test-node");
+        return new EvalDependencies(
+            null,
+            executor,
+            null,
+            transportService,
+            new ChannelRegistry(),
+            transportService.getLocalNode().getId()
+        );
     }
 }

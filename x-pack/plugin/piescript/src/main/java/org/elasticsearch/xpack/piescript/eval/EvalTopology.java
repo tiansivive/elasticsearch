@@ -13,6 +13,7 @@ import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.routing.IndexRoutingTable;
 import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.cluster.routing.ShardRoutingState;
+import org.elasticsearch.xpack.piescript.PiescriptSendRequest;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,27 +21,55 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Topology builtin evaluation: reads cluster state and converts index
- * routing information into typed piescript records. See D-044.
+ * Topology and routing builtin evaluation (D-044, D-048).
  *
- * <p>Returns a record with two views of the same topology data:
+ * <p>Two distinct builtins:
  * <ul>
- *   <li>{@code shards} — a list of shard records, each with a nested node record</li>
- *   <li>{@code nodes} — a list of node records, each with a nested list of shard records</li>
+ *   <li>{@code topology "cluster"} — cluster-level: returns the local (coordinator) node
+ *       and all nodes with their inboxes. The argument is currently ignored (placeholder
+ *       until nullary application is supported).</li>
+ *   <li>{@code routing "index"} — index-level: returns shard-centric and node-centric
+ *       views of shard placement for a specific index. Only
+ *       {@link ShardRoutingState#STARTED} shards are included.</li>
  * </ul>
  *
- * <p>Only {@link ShardRoutingState#STARTED} shards are included — unassigned
- * and initializing shards have no node and are not useful for the distributed
- * vertical slice (Block C: shipping code to data nodes).
+ * <p>{@code shards} and {@code nodes} builtins are handled in {@link EvalBuiltins} as
+ * convenience wrappers that call {@code routing} and extract the relevant field.
  */
 final class EvalTopology {
 
     private EvalTopology() {}
 
-    static void resolveTopology(Evaluator eval, Value indexArg, ActionListener<Value> listener) {
+    /**
+     * {@code topology "cluster"} — returns {@code { local: NodeBase, nodes: List NodeBase }}.
+     */
+    static void resolveClusterTopology(Evaluator eval, ActionListener<Value> listener) {
         var clusterService = eval.deps.clusterService();
         if (clusterService == null) {
             listener.onFailure(new EvaluationException("topology evaluation requires cluster service"));
+            return;
+        }
+
+        var clusterState = clusterService.state();
+        var localNode = clusterState.nodes().getLocalNode();
+        var localRecord = buildNodeRecord(localNode);
+
+        var nodeRecords = new ArrayList<Value>();
+        for (var node : clusterState.nodes()) {
+            nodeRecords.add(buildNodeRecord(node));
+        }
+
+        var result = new Value.RecordVal(Map.of("local", localRecord, "nodes", new Value.ListVal(nodeRecords)));
+        listener.onResponse(result);
+    }
+
+    /**
+     * {@code routing "index"} — returns {@code { shards: List ShardRecord, nodes: List NodeRecord }}.
+     */
+    static void resolveRouting(Evaluator eval, Value indexArg, ActionListener<Value> listener) {
+        var clusterService = eval.deps.clusterService();
+        if (clusterService == null) {
+            listener.onFailure(new EvaluationException("routing evaluation requires cluster service"));
             return;
         }
 
@@ -91,16 +120,12 @@ final class EvalTopology {
     }
 
     private static Value.RecordVal buildNodeRecord(DiscoveryNode node) {
-        return new Value.RecordVal(
-            Map.of(
-                "id",
-                new Value.KeywordVal(node.getId()),
-                "name",
-                new Value.KeywordVal(node.getName()),
-                "address",
-                new Value.KeywordVal(node.getHostAddress())
-            )
-        );
+        var fields = new LinkedHashMap<String, Value>();
+        fields.put("id", new Value.KeywordVal(node.getId()));
+        fields.put("name", new Value.KeywordVal(node.getName()));
+        fields.put("address", new Value.KeywordVal(node.getHostAddress()));
+        fields.put("inbox", new Value.ChannelVal(node.getId(), PiescriptSendRequest.INBOX_CHANNEL_ID));
+        return new Value.RecordVal(fields);
     }
 
     private static Map<String, Value> buildShardCoreFields(String indexName, ShardRouting shard) {
