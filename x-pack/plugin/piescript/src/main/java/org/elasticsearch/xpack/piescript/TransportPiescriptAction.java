@@ -62,7 +62,14 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
     }
 
     private EvalDependencies buildEvalDeps() {
-        return new EvalDependencies(client, executor, clusterService, transportService, channelRegistry, transportService.getLocalNode().getId());
+        return new EvalDependencies(
+            client,
+            executor,
+            clusterService,
+            transportService,
+            channelRegistry,
+            transportService.getLocalNode().getId()
+        );
     }
 
     @Override

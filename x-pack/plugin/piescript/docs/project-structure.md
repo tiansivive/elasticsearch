@@ -2,8 +2,7 @@
 
 > **Living doc** — update whenever files or packages are added/removed/renamed.
 >
-> **Last updated**: 2026-03-17 (Block C C.1–C.3 complete — `spawn!`, `send`, channel registry,
-> serialization, transport handler, inbox. See D-045, D-046, D-047.)
+> **Last updated**: 2026-03-18 (Block C C.4 complete — `Exprs`, `Values`, `Types` builder DSL.)
 > **Ref**: Block C implementation session
 
 ## Directory Layout
@@ -49,11 +48,13 @@ x-pack/plugin/piescript/
     │       │   ├── RowType.java                 # Row type (fields + optional row variable)
     │       │   ├── TypeScheme.java              # Polymorphic type scheme (∀-quantified)
     │       │   ├── TypeSerialization.java        # Serialization for MonoType, RowType, Kind, LitVal, Op (Block C)
+    │       │   ├── Types.java                   # Static factory methods + constants for MonoType construction (Block C.4)
     │       │   ├── LitVal.java                  # Literal values for Core IR
     │       │   └── Op.java                      # Primitive operator enum
     │       ├── core/                      # Phase 1b: Core IR (typed, elaborated)
     │       │   ├── CoreExpr.java                # Abstract sealed base (extends Node)
     │       │   ├── CoreField.java               # Helper record (label + value pair)
+    │       │   ├── Exprs.java                   # Static factory methods for CoreExpr construction (Block C.4)
     │       │   ├── CoreVar.java                 # Variable (de Bruijn index)
     │       │   ├── CoreLit.java                 # Literal value
     │       │   ├── CoreLam.java                 # Lambda abstraction
@@ -83,6 +84,7 @@ x-pack/plugin/piescript/
     │       │   └── Polymorphism.java            # Generalization + instantiation helpers (Phase 2)
     │       └── eval/                      # Phase 1c + Phase 2 + Block B + Block C: Evaluation
     │           ├── Value.java                   # Runtime value sealed interface (11 variants)
+    │           ├── Values.java                  # Static factory methods for Value construction (Block C.4)
     │           ├── ValueSerialization.java       # Serialization for all 11 Value variants (Block C)
     │           ├── Evaluator.java               # Tree-walking de Bruijn environment machine
     │           ├── EvalDependencies.java         # Context record: Client, Executor, ClusterService, TransportService, ChannelRegistry, localNodeId
@@ -156,6 +158,7 @@ x-pack/plugin/piescript/
 | `types/MonoType.java` | Sealed interface for monomorphic types: `TCon` (type constructor), `Arrow` (function), `RecordType`, `AppType` (type application), `Meta` (unsolved metavariable). **Phase 1d adds `Rigid(int id, Kind kind)` for bound/skolemized type variables (D-031).** |
 | `types/RowType.java` | Record representing row structure: labeled fields (`Map<String, MonoType>`) plus optional row variable tail for row polymorphism. |
 | `types/TypeScheme.java` | Polymorphic type scheme `∀{α₁..αₙ}.body`. Quantified set contains meta IDs. Monomorphic types use empty quantified set. **Phase 1d changes `quantified` from `Set<Integer>` to `Map<Integer, Kind>` for kind-aware instantiation; Rigids replace Metas in the quantified set.** |
+| `types/Types.java` | Static factory methods and constants for concise `MonoType`/`RowType` construction (Block C.4). Exports common type constants (`INTEGER`, `BOOLEAN`, `KEYWORD`, etc.) and builders (`arrow`, `record`, `list`, `channel`, `meta`, `rigid`). Intended for `import static` use. |
 | `types/LitVal.java` | Sealed interface for literal values carried by Core IR `Lit` nodes. Variants aligned with ES DataType: `IntegerLit`, `LongLit`, `DoubleLit`, `KeywordLit` (BytesRef), `BooleanLit`, `NullLit`. |
 | `types/Op.java` | Enum for primitive operators used in Core IR `PrimOp` nodes: arithmetic, comparison, boolean, and unary operators. |
 
@@ -165,6 +168,7 @@ x-pack/plugin/piescript/
 |------|---------|
 | `core/CoreExpr.java` | Abstract sealed base class extending `Node<CoreExpr>`. Provides default `writeTo`/`getWriteableName` (throws — Core IR is not serialized). All concrete node types are permitted subclasses. |
 | `core/CoreField.java` | Helper record pairing a label with a value expression. Convenience for constructing and inspecting `CoreRecord` and `CoreUpdate` nodes. |
+| `core/Exprs.java` | Static factory methods for concise `CoreExpr` construction (Block C.4). Exports `SRC` (`Source.EMPTY`) and builders for all 16 `CoreExpr` variants: `lit`, `var`, `free`, `lam`, `app`, `let`, `rec`, `proj`, `update`, `prim`, `add`/`sub`/`mul`/`gt`/`eq`, `typeAbs`, `typeApp`, `query`, `spawn`, `spawnBang`, `send`, `when`, `binding`, `field`. Infers types where possible (e.g., `lam` computes arrow type, `rec` builds record type from fields). Intended for `import static` use. |
 | `core/CoreVar.java` | Variable reference by de Bruijn index. Leaf node (no children). |
 | `core/CoreFree.java` | Free variable reference (module-level). Carries name and type, no de Bruijn index. Emitted for built-in functions resolved from the module map. |
 | `core/CoreLit.java` | Literal value (`LitVal`). Leaf node (no children). |
@@ -203,6 +207,7 @@ x-pack/plugin/piescript/
 
 | File | Purpose |
 |------|---------|
+| `eval/Values.java` | Static factory methods for concise `Value` construction (Block C.4). Exports primitive factories (`intVal`, `longVal`, `doubleVal`, `keyword`, `bool`, `nullVal`), record factories with deterministic `LinkedHashMap` ordering (1–5 field overloads), `list`, `closure`, `builtin`, `channelVal`. Intended for `import static` use. |
 | `eval/Value.java` | Sealed interface for runtime values. 11 variants: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)` (D-026), `BooleanVal`, `NullVal`, `RecordVal(Map<String, Value>)`, `ListVal(List<Value>)`, `ClosureVal(CoreExpr body, Value[] env)`, `BuiltinVal(name, arity, partialArgs)`, `SpawnVal(SubscribableListener<Value>)`. `ListVal` is the eagerly materialized list (renamed from `StreamVal` in Block B — D-043). `BuiltinVal` supports curried partial application for built-in functions. `SpawnVal` wraps a single-completion channel (Block A). |
 | `eval/Evaluator.java` | Uniformly async tree-walking de Bruijn environment machine. Takes `EvalDependencies` (bundling `Client`, `Executor`, `ClusterService`). Evaluates all `CoreExpr` variants. `CoreQuery` fires `EsqlQueryAction` asynchronously and converts to `ListVal` via `EsqlValueConverter`. `CoreFree` produces `BuiltinVal`; `CoreApp` dispatches to closures or built-in partial application. Built-ins `map`/`filter`/`reduce`/`head`/`tail`/`length`/`isEmpty` operate over `ListVal` via `applyFunction`. `CoreLit` converts `BytesRef` to `String` at the boundary. `CorePrimOp` dispatches arithmetic (integer-only, D-020), comparison, and boolean operations. |
 | `eval/EsqlValueConverter.java` | Converts `EsqlQueryResponse` to `ListVal`. Each row becomes a `RecordVal` (column names as field keys). Cell conversion uses `instanceof` dispatch (`Integer`, `Long`, `Double`, `String`, `Boolean`, `null`, multi-value first-element). |
