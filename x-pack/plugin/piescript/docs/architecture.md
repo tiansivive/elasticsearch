@@ -2,15 +2,15 @@
 
 > **Living doc** — update when adding components, changing data flow, or making structural decisions.
 >
-> **Revised**: 2026-03-17. Distributed execution strategy refined (D-042): `spawn` is sugar over
-> channel creation + send; piescript gives explicit control over distributed computing; the compute
-> engine (Page/Block/Exchange) is infrastructure piescript orchestrates, not infrastructure piescript
-> is built on. Channel registry and transport actions for cross-node execution are documented.
+> **Revised**: 2026-03-17. Block C sub-blocks C.1–C.3 implemented: `spawn!`, `send`, channel
+> registry, Value/CoreExpr/type serialization, transport handler (`piescript/send`), inbox with
+> fire-and-forget semantics, remote closure evaluation. See D-045, D-046, D-047.
 >
-> Previous revision (2026-03-16): execution model redesigned around Join Calculus (D-040).
+> Previous revision (2026-03-17): Distributed execution strategy refined (D-042).
 >
 > **Ref**: [Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f),
-> [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef)
+> [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
+> [Block C implementation](83422573-c3e9-4815-9eb4-8f5a53f37705)
 
 ## System Overview
 
@@ -92,7 +92,12 @@ Client (JSON response)
 
 ### Plugin Registration — `PiescriptPlugin`
 
-- `ActionPlugin` that registers both the action handler and the REST handler.
+- `ActionPlugin` that registers action handlers and REST handlers.
+- Implements `createComponents(PluginServices)` to instantiate a singleton `ChannelRegistry` per
+  node, making it available for Guice injection into both `TransportPiescriptAction` and
+  `TransportPiescriptSendAction`.
+- Registers two action handlers: `PiescriptAction` (main evaluation) and `PiescriptSendAction`
+  (cross-node channel sends).
 - Declares `extendedPlugins = ['x-pack-esql']` in the build to access ESQL classes at compile time
   and ensure ESQL is loaded first at runtime.
 
@@ -161,20 +166,20 @@ functions, not extending the Core IR grammar.
 ## The Evaluator
 
 The evaluator is a uniformly async tree-walking de Bruijn environment machine (D-041), split
-across five classes for maintainability:
+across six classes for maintainability:
 
-- `Evaluator` — core dispatch (`evaluate`, `applyFunction`) and all `CoreExpr` cases
+- `Evaluator` — core dispatch (`evaluate`, `applyFunction`) and all `CoreExpr` cases including
+  `CoreSend` (local/remote routing) and `CoreSpawn` (channel creation + optional fork)
 - `EvalPrimOps` — arithmetic, comparison, and boolean operations
 - `EvalBuiltins` — list processing (`map`, `filter`, `reduce`, `head`, `tail`, `length`,
   `isEmpty`) via `SubscribableListener` chaining for stack-safe sequential iteration
 - `EvalCoordination` — `when` evaluation via `PositionalCollector` (encapsulates `AtomicArray` +
-  `CountDown` + failure propagation)
+  `CountDown` + failure propagation). Enforces locality: `when` on remote channels is rejected.
 - `EvalTopology` — `topology` builtin implementation (reads `ClusterState` → `RoutingTable` →
-  `ShardRouting` → `DiscoveryNode`, converts to typed `RecordVal`/`ListVal`)
-
-The evaluator takes an `EvalDependencies` record bundling `Client`, `Executor`, and
-`ClusterService` (D-044). This replaces the growing constructor parameter list and scales to
-Block C (which will add `TransportService` and a channel registry).
+  `ShardRouting` → `DiscoveryNode`, converts to typed `RecordVal`/`ListVal`). Node records
+  include an `inbox` field for cross-node closure dispatch.
+- `EvalDependencies` — context record bundling `Client`, `Executor`, `ClusterService`,
+  `TransportService`, `ChannelRegistry`, and `localNodeId` (D-044, D-045).
 
 Every `evaluate` call takes an `ActionListener<Value>`. It handles all `CoreExpr` variants:
 
@@ -204,7 +209,7 @@ computations. Built-in functions (`map`, `filter`, `reduce`) use `SubscribableLi
 
 ## Runtime Values
 
-`Value` is a sealed interface with variants:
+`Value` is a sealed interface with 11 variants:
 
 | Variant | Description |
 |---------|-------------|
@@ -216,9 +221,9 @@ computations. Built-in functions (`map`, `filter`, `reduce`) use `SubscribableLi
 | `NullVal` | Null value |
 | `RecordVal` | Record with named fields |
 | `ListVal(List<Value>)` | Eagerly materialized list of values (renamed from `StreamVal` in Block B — D-043) |
-| `ClosureVal` | Lambda closure (code + captured environment) |
-| `BuiltinVal` | Curried built-in function (name, arity, partial args) |
-| `SpawnVal(SubscribableListener<Value>)` | Channel carrying an async result (Block A) |
+| `ClosureVal(CoreExpr body, Value[] env)` | Lambda closure (code + captured environment). Fully serializable (D-045). |
+| `BuiltinVal(name, arity, partialArgs)` | Curried built-in function. Serializable (name + arity + partial args). |
+| `ChannelVal(nodeId, channelId)` | Serializable channel reference (Block C — D-045). The actual `SubscribableListener<Value>` lives in the per-node `ChannelRegistry`. |
 
 ## ES Infrastructure Mapping
 
@@ -226,38 +231,62 @@ The Join Calculus model maps directly to Elasticsearch's existing async infrastr
 
 | Piescript Concept | ES Infrastructure | Notes |
 |------------------|-------------------|-------|
-| Single-value channel (`Channel τ`) | `SubscribableListener<Value>` | Single-completion future; other listeners subscribe for the result |
+| Single-value channel (`Channel τ`) | `SubscribableListener<Value>` in `ChannelRegistry` | Single-completion future; late subscribers get cached result |
 | `spawn` (fork computation) | `threadPool.executor(GENERIC).execute(...)` | Sugar for channel + fork + auto-send |
-| `spawn!` (bare channel) | `new SubscribableListener<>()` | User completes via explicit `send` |
-| `send` (local) | `listener.onResponse(value)` | Completes a channel locally |
-| `send` (cross-node) | Transport message to channel owner | See channel registry below |
+| `spawn!` (bare channel) | `ChannelRegistry.register(id, new SubscribableListener<>())` | Returns `ChannelVal(localNodeId, channelId)` |
+| `send` (local) | `channelRegistry.complete(channelId, value)` | Direct listener completion, no transport |
+| `send` (inbox, any node) | `TransportService.sendRequest(...)` → `TransportPiescriptSendAction` | Always via transport, even local |
+| `send` (remote) | `TransportService.sendRequest(...)` → `TransportPiescriptSendAction` | Serialized value, fire-and-forget |
 | `when` (channel synchronization) | Positional collector (`AtomicArray` + `CountDown`) | Preserves binding order for de Bruijn indexing |
 | Error propagation | `ActionListener.onFailure(Exception)` | `SubscribableListener` propagates failures to all subscribers |
 | Query execution | `client.execute(EsqlQueryAction, request, listener)` | Async via ActionListener |
 | Topology discovery | `ClusterService.state()` → `RoutingTable` → `DiscoveryNode` | Reads existing cluster state |
 
-### Cross-Node Infrastructure (Block C)
+### Cross-Node Infrastructure (Block C — implemented)
 
-**Channel registry**: each node maintains a `ConcurrentHashMap<String, SubscribableListener<Value>>`
-mapping channel IDs to local listeners. When `spawn!` creates a channel, it generates a UUID and
-registers the listener. Channel references serialize as `ChannelRef(ownerNodeId, channelId)` —
-two strings, trivially serializable inside closures.
+**Channel registry** (`ChannelRegistry`): each node maintains a
+`ConcurrentHashMap<String, ActionListener<Value>>` mapping channel IDs to local listeners. When
+`spawn!` creates a channel, it generates a unique ID via `nextChannelId()`, registers a
+`SubscribableListener<Value>`, and returns `ChannelVal(localNodeId, channelId)`. Entries are not
+auto-removed — the `SubscribableListener` caches the result for late `when` subscribers. The
+registry is a Guice singleton instantiated in `PiescriptPlugin.createComponents()` and injected
+into both `TransportPiescriptAction` and `TransportPiescriptSendAction`.
 
-**Transport actions**:
-- `piescript/execute_closure` — coordinator → data node. Payload: serialized closure
-  `(CoreExpr, Value[])` + result channel reference. Data node deserializes, evaluates, sends
-  result on the specified channel.
-- `piescript/channel_message` — any node → channel owner. Payload: `(channelId, serialized Value)`.
-  Owner looks up the `SubscribableListener` in the channel registry and completes it.
+**Transport action** — a single handler: `PiescriptSendAction` (`indices:data/read/piescript/send`).
+`PiescriptSendRequest` carries `(String channelId, Value payload)` serialized via
+`ValueSerialization`. `TransportPiescriptSendAction` dispatches based on channel ID:
+- **Regular channels**: looks up the listener in `ChannelRegistry`, completes it with the payload.
+  Transport response returns immediately.
+- **Inbox** (`channelId == "inbox"`): validates payload is a `ClosureVal`, responds immediately
+  (fire-and-forget), then evaluates the closure asynchronously on the executor with local node
+  info (`{ id, name, address }`) as the argument.
+
+**Send routing in the evaluator** (`Evaluator.CoreSend` case):
+- Inbox sends (`channelId == "inbox"`): always routed through transport, even for the local node.
+  This ensures inbox handling logic stays in one place (`TransportPiescriptSendAction`).
+- Local regular channels (`nodeId == localNodeId`): `channelRegistry.complete(channelId, value)`
+  directly, no transport overhead.
+- Remote channels: serializes the value and sends a `PiescriptSendRequest` via
+  `TransportService.sendRequest()` to the target node.
 
 This implements the Join Calculus locality property: messages travel to their channel's definition
 site. A `send ch value` on a remote node routes the value to the node where `ch` was created.
 
-**Value serialization**: all `Value` variants need `Writeable` implementations for transport.
-Primitives (`IntegerVal`, `LongVal`, etc.) are trivial. `RecordVal` and `ListVal` are recursive.
-`ClosureVal` requires Core IR serialization (`CoreExpr` tree + captured `Value[]` environment).
-`SpawnVal` serializes as `ChannelRef(ownerNodeId, channelId)` — the deserializing side creates a
-remote proxy that sends transport messages when `send` is called on it.
+**Fire-and-forget semantics (D-047)**: `send` always returns `Null` immediately. Two error classes
+are distinguished:
+- **Delivery errors** (transport failure): the initiator's concern. Currently surface as exceptions.
+  Future: `send` returns a `Result` value once sum types land.
+- **Closure evaluation errors**: the target node's concern. Logged at WARN level on the target
+  node, never propagated back to the sender.
+
+**Serialization** — three centralized classes handle all wire format concerns:
+- `ValueSerialization`: all 11 `Value` variants with stable byte tags. `ClosureVal` serializes
+  `CoreExpr body` + `Value[] env` recursively. `BuiltinVal` serializes name + arity + partial args.
+- `CoreExprSerialization`: all 16 `CoreExpr` variants with stable byte tags. Deserialized nodes
+  use a synthetic `WIRE_SOURCE` (`<wire>` location) since original source info is not propagated.
+- `TypeSerialization`: all `MonoType` (6 variants), `RowType`, `Kind`, `LitVal` (6 variants),
+  and `Op` types.
+- `PiescriptResponse` delegates to `ValueSerialization` for the final result.
 
 ### The Type Stack: RawData / Page / Value
 

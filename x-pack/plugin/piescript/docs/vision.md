@@ -320,6 +320,13 @@ These are directional, not committed:
   that piescript talks to, not infrastructure piescript is built on.
 - **Multi-value channels** — streaming patterns, fold-as-join, event handling. Single-value `send`
   is covered by Block C; multi-value channels extend this to repeated messages over time.
+- **Functional-pattern matching on channels** — generalize `when` reaction rules from simple
+  presence ("fire when each channel has a message") to Curry-style functional patterns ("fire
+  when the channel's accumulated messages satisfy this function"). Narrowing over the message
+  store naturally enumerates all satisfying assignments, enabling maximal parallel firing (CHAM
+  semantics). The programmer declares the shape of a match; the runtime discovers and concurrently
+  executes all non-overlapping matches. Requires multi-value channels as a prerequisite.
+  See [references.md § CHAM, Functional-Logic](references.md).
 - **Linearity for channels** — QTT-style multiplicities (0, 1, ω) on bindings. Channel endpoints
   are linear (multiplicity 1), enabling session types with deadlock-freedom guarantees. Most values
   remain unrestricted (ω). See [references.md § Linear Haskell](references.md).
@@ -368,6 +375,67 @@ query invocations — materialized views, running aggregations, event-driven pro
 move piescript from "run a query, get results" toward "run persistent distributed computations
 with safe shared state." The supervision and fault tolerance patterns from Erlang/OTP would
 inform this design (see [references.md § BEAM / Erlang](references.md)).
+
+### Functional-Pattern Matching on Channels (CHAM + Curry Narrowing)
+
+Multi-value channels (deferred) accumulate messages in a store. The current `when` design fires
+when each participating channel has at least one message (standard join calculus presence check).
+A natural generalization: allow **functional patterns** (Curry-style) as `when` reaction rules.
+
+The programmer defines a function that describes what a "match" looks like over a channel's
+message store. The runtime inverts the function via narrowing — searching for subsets of
+accumulated messages that satisfy the pattern. This is fundamentally different from view patterns
+(deterministic extraction procedures): the programmer writes the *specification* of a match, not
+the *implementation* of the search.
+
+**Key properties:**
+
+- **Multi-variable binding from a single channel.** A functional pattern can destructure a channel's
+  message store into multiple bindings — e.g., "three ready tasks and a remainder" binds three
+  variables and a rest-list from one channel.
+- **Maximal parallel firing (CHAM semantics).** Narrowing naturally produces all satisfying
+  assignments. Instead of committing to one match, the runtime fires a `when` body for each
+  non-overlapping match concurrently. Multiple `when` clauses watching the same channels can fire
+  simultaneously from a single scheduler run. This is Berry & Boudol's Chemical Abstract Machine
+  (CHAM) semantics — the original model underlying the join calculus before Fournet & Gonthier
+  restricted it to simple presence for implementation efficiency.
+- **Non-deterministic workflows.** The combination of functional patterns and maximal parallel
+  firing enables declarative concurrent workflow definition. The programmer writes reaction rules;
+  the runtime discovers and executes the maximal set of concurrent reactions. This is hard to
+  express with deterministic pattern matching — view patterns return one result, requiring explicit
+  loops for multiple firings. Narrowing's multi-solution enumeration provides this for free.
+- **Control-plane performance model.** Narrowing over large data would be prohibitive, but channels
+  are coordination mechanisms (control plane), not data pipes (data plane). The Exchange/compute
+  engine handles high-throughput streaming. Channel message stores are small (tens to hundreds of
+  coordination messages), making narrowing-based search tractable. The performance constraint that
+  normally kills narrowing in production systems does not apply here.
+
+**Conceptual example:**
+
+```
+when (tasks | readyBatch 3) (t1, t2, t3) & (workers | available 3) (w1, w2, w3) ->
+  assign t1 w1; assign t2 w2; assign t3 w3
+```
+
+If there are 9 ready tasks and 9 available workers, the scheduler fires 3 concurrent `when`
+bodies (3 batches of 3), each consuming its matched messages atomically.
+
+**Prerequisites:** multi-value channels, channel message stores (multiset/bag semantics),
+a narrowing runtime for functional patterns, atomic consumption across channels in a `when`
+clause, scheduler re-evaluation on message arrival.
+
+**Theoretical lineage:** Berry & Boudol (CHAM, 1992) for multiset reactions and maximal
+parallelism. Antoy & Hanus (Curry) for functional patterns and narrowing. Frühwirth (CHR)
+for multi-headed rule scheduling. Fournet & Gonthier (join calculus) for the channel-based
+coordination substrate that this generalizes.
+
+**Open questions:** consumption semantics (the functional pattern implicitly partitions the store
+into consumed and remaining messages — this needs precise specification). Determinism of match
+selection when multiple overlapping matches exist (oldest-first bias? fairness rotation?).
+Surface syntax for functional patterns in `when` clauses. Whether full narrowing or a restricted
+combinator language provides the right trade-off between expressiveness and predictability.
+
+**Ref**: [references.md § CHAM, Functional-Logic, CHR](references.md)
 
 ### Linear Optimization Opportunities
 

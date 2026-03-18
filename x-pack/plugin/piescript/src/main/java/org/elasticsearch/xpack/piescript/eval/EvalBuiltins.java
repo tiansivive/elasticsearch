@@ -60,7 +60,16 @@ final class EvalBuiltins {
             }
             case "length" -> listener.onResponse(new Value.IntegerVal(requireList(args.get(0), name).elements().size()));
             case "isEmpty" -> listener.onResponse(new Value.BooleanVal(requireList(args.get(0), name).elements().isEmpty()));
-            case "topology" -> EvalTopology.resolveTopology(eval, args.get(0), listener);
+            case "topology" -> EvalTopology.resolveClusterTopology(eval, listener);
+            case "routing" -> EvalTopology.resolveRouting(eval, args.get(0), listener);
+            case "shards" -> EvalTopology.resolveRouting(eval, args.get(0), listener.map(v -> {
+                var rec = (Value.RecordVal) v;
+                return rec.fields().get("shards");
+            }));
+            case "nodes" -> EvalTopology.resolveRouting(eval, args.get(0), listener.map(v -> {
+                var rec = (Value.RecordVal) v;
+                return rec.fields().get("nodes");
+            }));
             default -> listener.onFailure(new EvaluationException("unknown built-in: " + name));
         }
     }

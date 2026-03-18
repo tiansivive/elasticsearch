@@ -8,10 +8,14 @@
 package org.elasticsearch.xpack.piescript.eval;
 
 import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.ActionListenerResponseHandler;
+import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.xpack.esql.action.EsqlQueryAction;
 import org.elasticsearch.xpack.esql.action.EsqlQueryRequest;
+import org.elasticsearch.xpack.piescript.PiescriptSendAction;
+import org.elasticsearch.xpack.piescript.PiescriptSendRequest;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreField;
@@ -151,22 +155,56 @@ public final class Evaluator {
                 listener.onResponse(new Value.ChannelVal(deps.localNodeId(), channelId));
             }
 
+            // Three-way dispatch for send (D-045, D-047):
+            //  1. Inbox — always via transport, even for the local node. The inbox is not in the
+            //     ChannelRegistry because it is reusable (not a single-shot SubscribableListener),
+            //     and keeping it out prevents `when` from accidentally subscribing to it. Inbox
+            //     handling (validate ClosureVal, fork evaluation) lives in TransportPiescriptSendAction.
+            //  2. Local regular channel — direct registry completion, no transport overhead.
+            //  3. Remote regular channel — serialized via transport to the owning node.
+            // This separation goes away when multi-value channels replace the current model.
             case CoreSend send -> evaluate(send.channel(), env, listener.delegateFailureAndWrap((l1, chanVal) -> {
                 var ch = (Value.ChannelVal) chanVal;
                 evaluate(send.value(), env, l1.delegateFailureAndWrap((l2, value) -> {
-                    if (ch.nodeId() != null && ch.nodeId().equals(deps.localNodeId())) {
+                    if (PiescriptSendRequest.INBOX_CHANNEL_ID.equals(ch.channelId())) {
+                        sendRemote(ch, value, l2);
+                    } else if (ch.nodeId() != null && ch.nodeId().equals(deps.localNodeId())) {
                         deps.channelRegistry().complete(ch.channelId(), value);
+                        l2.onResponse(new Value.NullVal());
                     } else {
-                        // TODO(C.3): remote send via TransportService
-                        l2.onFailure(new EvaluationException("remote send not yet implemented (target node: " + ch.nodeId() + ")"));
-                        return;
+                        sendRemote(ch, value, l2);
                     }
-                    l2.onResponse(new Value.NullVal());
                 }));
             }));
 
             case CoreWhen when -> EvalCoordination.evaluateWhen(this, when, env, listener);
         }
+    }
+
+    // ──── Remote send (D-045) ────
+
+    private void sendRemote(Value.ChannelVal target, Value value, ActionListener<Value> listener) {
+        if (deps.transportService() == null) {
+            listener.onFailure(new EvaluationException("remote send requires transport service"));
+            return;
+        }
+        var targetNode = deps.clusterService().state().nodes().get(target.nodeId());
+        if (targetNode == null) {
+            listener.onFailure(new EvaluationException("target node [" + target.nodeId() + "] not found in cluster state"));
+            return;
+        }
+        var request = new PiescriptSendRequest(target.channelId(), value);
+        deps.transportService()
+            .sendRequest(
+                targetNode,
+                PiescriptSendAction.NAME,
+                request,
+                new ActionListenerResponseHandler<>(
+                    listener.delegateFailureAndWrap((l, ignored) -> l.onResponse(new Value.NullVal())),
+                    in -> ActionResponse.Empty.INSTANCE,
+                    deps.executor()
+                )
+            );
     }
 
     // ──── Record construction (sequential field evaluation) ────
@@ -229,7 +267,7 @@ public final class Evaluator {
 
     // ──── Function application (shared by CoreApp dispatch and EvalBuiltins) ────
 
-    void applyFunction(Value fn, Value arg, ActionListener<Value> listener) {
+    public void applyFunction(Value fn, Value arg, ActionListener<Value> listener) {
         switch (fn) {
             case Value.ClosureVal closure -> evaluate(closure.body(), prepend(arg, closure.env()), listener);
             case Value.BuiltinVal builtin -> EvalBuiltins.applyBuiltin(this, builtin, arg, listener);
