@@ -37,8 +37,11 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
 
     private final PiescriptParser parser = new PiescriptParser();
     private final IndexResolutionPrePass indexResolutionPrePass;
-    private final EvalDependencies evalDeps;
+    private final Client client;
     private final Executor executor;
+    private final ClusterService clusterService;
+    private final TransportService transportService;
+    private final ChannelRegistry channelRegistry;
 
     @Inject
     public TransportPiescriptAction(
@@ -46,13 +49,20 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         ActionFilters actionFilters,
         Client client,
         ThreadPool threadPool,
-        ClusterService clusterService
+        ClusterService clusterService,
+        ChannelRegistry channelRegistry
     ) {
         super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, threadPool.executor(ThreadPool.Names.GENERIC));
         this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService);
+        this.client = client;
         this.executor = threadPool.executor(ThreadPool.Names.GENERIC);
-        var localNodeId = transportService.getLocalNode().getId();
-        this.evalDeps = new EvalDependencies(client, this.executor, clusterService, new ChannelRegistry(), localNodeId);
+        this.clusterService = clusterService;
+        this.transportService = transportService;
+        this.channelRegistry = channelRegistry;
+    }
+
+    private EvalDependencies buildEvalDeps() {
+        return new EvalDependencies(client, executor, clusterService, transportService, channelRegistry, transportService.getLocalNode().getId());
     }
 
     @Override
@@ -97,7 +107,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             var elaborator = new Elaborator(state);
             var coreExpr = elaborator.elaborateProgram(cst);
             var type = CorePrinter.printType(coreExpr.type(), state);
-            var evaluator = new Evaluator(evalDeps);
+            var evaluator = new Evaluator(buildEvalDeps());
             evaluator.evaluate(
                 coreExpr,
                 listener.delegateFailureAndWrap((l, value) -> l.onResponse(PiescriptResponse.fromValue(value, type)))
@@ -155,7 +165,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             String zonker = CorePrinter.printZonker(state);
             List<String> diagnostics = state.diagnostics();
 
-            var evaluator = new Evaluator(evalDeps);
+            var evaluator = new Evaluator(buildEvalDeps());
             evaluator.evaluate(
                 coreExpr,
                 ActionListener.wrap(

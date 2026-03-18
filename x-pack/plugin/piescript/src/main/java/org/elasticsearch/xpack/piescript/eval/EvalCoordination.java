@@ -45,6 +45,18 @@ final class EvalCoordination {
     private static void resolveChannel(Evaluator eval, CoreWhen.WhenBinding binding, Value[] env, ActionListener<Value> listener) {
         eval.evaluate(binding.channel(), env, listener.delegateFailureAndWrap((l, chanVal) -> {
             var ch = (Value.ChannelVal) chanVal;
+            if (ch.nodeId() != null && ch.nodeId().equals(eval.deps.localNodeId()) == false) {
+                l.onFailure(
+                    new EvaluationException(
+                        "when can only wait on local channels (channel on node ["
+                            + ch.nodeId()
+                            + "], local node ["
+                            + eval.deps.localNodeId()
+                            + "])"
+                    )
+                );
+                return;
+            }
             eval.deps.channelRegistry().lookupSubscribable(ch.channelId()).addListener(l);
         }));
     }

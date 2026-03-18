@@ -12,6 +12,7 @@ import org.elasticsearch.features.NodeFeature;
 import org.elasticsearch.plugins.ActionPlugin;
 import org.elasticsearch.plugins.Plugin;
 import org.elasticsearch.rest.RestHandler;
+import org.elasticsearch.xpack.piescript.eval.ChannelRegistry;
 
 import java.util.Collection;
 import java.util.List;
@@ -21,8 +22,16 @@ import java.util.function.Supplier;
 public class PiescriptPlugin extends Plugin implements ActionPlugin {
 
     @Override
+    public Collection<?> createComponents(PluginServices services) {
+        return List.of(new ChannelRegistry());
+    }
+
+    @Override
     public Collection<ActionHandler> getActions() {
-        return List.of(new ActionHandler(PiescriptAction.INSTANCE, TransportPiescriptAction.class));
+        return List.of(
+            new ActionHandler(PiescriptAction.INSTANCE, TransportPiescriptAction.class),
+            new ActionHandler(PiescriptSendAction.INSTANCE, TransportPiescriptSendAction.class)
+        );
     }
 
     @Override

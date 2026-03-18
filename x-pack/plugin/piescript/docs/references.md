@@ -342,6 +342,59 @@ passing. Piescript and BEAM solve related problems from opposite starting points
 - Joe Armstrong's PhD thesis, *Making Reliable Distributed Systems in the Presence of Software
   Errors* (2003) — the design philosophy behind Erlang's fault tolerance model
 
+## Chemical Abstract Machine, Functional-Logic Programming, and Constraint Handling
+
+The theoretical foundations for generalized `when` clause matching: treating channel message stores
+as multisets with functional-pattern-based reaction rules and maximal parallel firing.
+
+### Berry & Boudol — *The Chemical Abstract Machine* (TCS, 1992)
+
+The original CHAM paper. Models concurrent computation as chemical reactions over a multiset
+("solution") of molecules. Reaction rules fire when matching molecules are present; multiple
+non-overlapping reactions fire in parallel (maximal parallelism). The join calculus (Fournet &
+Gonthier) restricts the CHAM to simple presence-based matching for distributed implementation
+efficiency. Piescript's future direction relaxes this restriction back toward CHAM semantics:
+functional patterns as reaction rules, maximal parallel firing over channel message stores.
+The performance argument is that channels are coordination (control plane), not data movement
+(data plane) — the Exchange handles high-throughput streaming, so control-plane message stores
+are small enough for expressive matching.
+
+- [ScienceDirect](https://www.sciencedirect.com/science/article/pii/030439759290185I)
+
+### Antoy & Hanus — *Functional Logic Programming* (CACM, 2010)
+
+Survey of functional-logic programming, covering narrowing (running functions "backwards" to
+find inputs satisfying a pattern), residuation, and non-deterministic search. Curry is the
+primary language discussed. The key mechanism for piescript: functional patterns — using a
+function definition as a pattern, where the runtime narrows (searches) for values that satisfy
+the function. Applied to channel message stores, this means the programmer writes a function
+describing the *shape* of a match, and the runtime finds all satisfying subsets of accumulated
+messages. Narrowing's natural multi-solution enumeration provides the set of all matches, which
+can fire concurrently as parallel `when` body executions.
+
+- [ACM DL](https://dl.acm.org/doi/10.1145/1721654.1721675)
+
+### Antoy & Hanus — *Curry: A Truly Integrated Functional Logic Language*
+
+The Curry language report. Defines functional patterns, narrowing strategies (needed narrowing,
+parallel narrowing), and non-deterministic functions. Functional patterns allow any function
+call on the left-hand side of a rule — the runtime inverts it via narrowing. This is the
+specific mechanism envisioned for piescript's generalized `when` clauses: a function used as a
+pattern over a channel's message store, with the runtime searching for satisfying assignments.
+
+- [Curry homepage](https://curry.pages.ps.informatik.uni-kiel.de/curry-lang.org/)
+- [Curry report (PDF)](https://curry.pages.ps.informatik.uni-kiel.de/curry-lang.org/documentation/report.html)
+
+### Frühwirth — *Theory and Practice of Constraint Handling Rules* (JLP, 1998)
+
+Constraint Handling Rules (CHR): multi-headed rules that fire when multiple constraints match,
+with multiset semantics. CHR's simpagation rules (keep some constraints, remove others) are
+analogous to channel pattern matching that consumes matched messages while leaving others.
+The CHR operational semantics (refined semantics with committed choice) informs how to schedule
+pattern matching over channel stores.
+
+- [ScienceDirect](https://www.sciencedirect.com/science/article/pii/S0743106698100055)
+
 ## Linear Types, QTT, and Substructural Type Systems
 
 For the future: safe resource management, ownership, and (speculatively) mutable shared state.
@@ -412,3 +465,6 @@ if piescript ever needs finer-grained usage tracking (e.g., "used at most N time
 | Bernardy et al. (Linear Haskell) | Linearity on arrows, backward-compatible, practical (D-018) |
 | Brady (Idris 2 / QTT) | Multiplicity framework {0, 1, ω} for channels and erasure |
 | Orchard et al. (Granule) | Graded modal types for fine-grained resource tracking |
+| Berry & Boudol (CHAM) | Future: multiset semantics + maximal parallel firing for generalized `when` patterns |
+| Antoy & Hanus (functional-logic / Curry) | Future: narrowing-based functional patterns as `when` reaction rules |
+| Frühwirth (CHR) | Future: multi-headed rule scheduling over channel message stores |

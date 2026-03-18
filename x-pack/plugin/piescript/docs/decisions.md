@@ -1768,3 +1768,109 @@ For non-values, constraints are solved eagerly and the type remains monomorphic.
   can be expanded. The value restriction is conservative but safe.
 
 **Ref**: Wright (1995) "Simple Imperative Polymorphism", OCaml value restriction
+
+---
+
+## D-047: Send semantics — fire-and-forget, error responsibility model
+
+**Status**: Accepted
+**Date**: 2026-03-17
+
+### Context
+
+`send` delivers a value to a channel (local or remote). When the target is an inbox channel,
+the payload is a closure that gets evaluated on the remote node. Two classes of error can arise:
+
+1. **Delivery errors** — the transport layer itself fails (network partition, node down, handler
+   bug). This is a runtime infrastructure error.
+2. **Closure evaluation errors** — user code sent to a remote node throws during evaluation.
+   This is a user-logic error that happens to execute on the target node.
+
+The initial implementation blocked the sender's transport response until the remote closure
+finished evaluation. This conflated the two error classes and broke the fire-and-forget model
+that the pi-calculus semantics require.
+
+### Decision
+
+**`send` is always fire-and-forget.** The transport response is sent as soon as the message is
+accepted by the target node, before any closure evaluation occurs. Specifically:
+
+- **Regular channels**: the value is deposited in the `ChannelRegistry` and the response is
+  returned immediately.
+- **Inbox channels**: the payload is validated as a `ClosureVal`, the response is returned
+  immediately, and the closure is evaluated asynchronously on the executor.
+
+**Error responsibility is split by category:**
+
+| Error class | Responsibility | Current handling | Future handling |
+|---|---|---|---|
+| **Delivery failure** | Initiator node | Propagated as exception (no user-facing handling yet) | `send` returns a `Result` value (requires sum types / variants). The `Err` case carries structured error info the piescript program can inspect and react to. |
+| **Closure evaluation failure** | Target node | Logged locally at WARN level | Node-local error handler, and/or a global error reporting channel that aggregates uncaught errors to a coordinator for user visibility. |
+
+Closure evaluation errors are **never** propagated back to the sender. It would be semantically
+wrong for a fire-and-forget dispatch to report back errors from code that has been handed off.
+The initiator's only contract is "the message was delivered (or not)."
+
+### Consequences
+
+- `send` now has consistent fire-and-forget semantics everywhere (local channels, remote
+  channels, inbox).
+- Remote closure errors are visible only in the target node's logs (WARN level). No silent
+  swallowing — operators can diagnose via node logs.
+- Future error handling is split into two independent tracks:
+  - **Delivery errors**: model `send`'s return type as `Result<Null, SendError>` once sum
+    types / variants land. Piescript code can pattern-match on the result.
+  - **Evaluation errors**: design a node-local error handler or a global error reporting
+    channel. This is orthogonal to `send` semantics and will be addressed in a later roadmap
+    block.
+- The `handleInbox` method now forks closure evaluation on the executor, decoupling the
+  transport response from the evaluation lifecycle.
+
+**Ref**: Block C design discussion, pi-calculus asynchronous output semantics
+
+---
+
+## D-048: Split topology into cluster topology and index routing
+
+**Status**: Accepted
+**Date**: 2026-03-17
+
+### Context
+
+The `topology "index"` builtin (D-044) conflated two distinct concerns:
+
+1. **Cluster topology** — what nodes exist, which one is the local (coordinator) node, their
+   addresses and inboxes. Not tied to any index.
+2. **Index routing** — which shards of a specific index are placed on which nodes. Inherently
+   index-centric.
+
+This made it impossible for piescript code to identify the local node. The coordinator running
+the program had no way to find "itself" in the nodes list returned by `topology`. Target nodes
+(inside inbox closures) receive their identity via the closure argument, but the initiator did not.
+
+In ES terminology, these map to `ClusterState.nodes()` (cluster topology) vs.
+`ClusterState.routingTable().index(name)` (shard routing).
+
+### Decision
+
+Split into four Prelude builtins:
+
+| Builtin | Signature | What it returns |
+|---|---|---|
+| `topology "cluster"` | `Keyword → { local: NodeBase, nodes: List NodeBase }` | Cluster-level: local node (coordinator) and all nodes with inboxes. The argument is a placeholder until nullary application is supported. |
+| `routing "index"` | `Keyword → { shards: List ShardRecord, nodes: List NodeRecord }` | Index-level: shard and node views of shard placement. Same behavior as the old `topology "index"`. |
+| `shards "index"` | `Keyword → List ShardRecord` | Convenience: equivalent to `(routing "index").shards`. |
+| `nodes "index"` | `Keyword → List NodeRecord` | Convenience: equivalent to `(routing "index").nodes`. |
+
+All are Prelude builtins — no grammar or Core IR changes needed.
+
+### Consequences
+
+- Piescript code can now identify the coordinator: `(topology "cluster").local.inbox`.
+- The full send-to-self test case becomes trivial: `send (topology "cluster").local.inbox (fn info -> ...)`.
+- `routing` uses the correct ES term for shard-to-node mapping.
+- `topology` is freed up for future cluster-level expansion (node roles, attributes, health,
+  remote clusters for CCS).
+- `shards` and `nodes` reduce boilerplate for the common case of needing one view.
+
+**Ref**: Block C cross-node execution discussion
