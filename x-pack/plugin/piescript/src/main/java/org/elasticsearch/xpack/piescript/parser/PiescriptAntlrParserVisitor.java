@@ -26,11 +26,20 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
     T visitProgram(PiescriptAntlrParser.ProgramContext ctx);
 
     /**
-     * Visit a parse tree produced by {@link PiescriptAntlrParser#topBinding}.
+     * Visit a parse tree produced by the {@code TopLet}
+     * labeled alternative in {@link PiescriptAntlrParser#topBinding}.
      * @param ctx the parse tree
      * @return the visitor result
      */
-    T visitTopBinding(PiescriptAntlrParser.TopBindingContext ctx);
+    T visitTopLet(PiescriptAntlrParser.TopLetContext ctx);
+
+    /**
+     * Visit a parse tree produced by the {@code TopUse}
+     * labeled alternative in {@link PiescriptAntlrParser#topBinding}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitTopUse(PiescriptAntlrParser.TopUseContext ctx);
 
     /**
      * Visit a parse tree produced by the {@code LetExpr}

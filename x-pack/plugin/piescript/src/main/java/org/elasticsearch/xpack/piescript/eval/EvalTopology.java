@@ -74,8 +74,8 @@ final class EvalTopology {
         }
 
         String indexName = switch (indexArg) {
-            case Value.KeywordVal kw -> kw.value();
-            default -> throw new AssertionError("type checker bug: expected Keyword, got " + indexArg);
+            case Value.IndexVal iv -> iv.name();
+            default -> throw new AssertionError("type checker bug: expected IndexVal, got " + indexArg);
         };
 
         var clusterState = clusterService.state();
@@ -131,6 +131,7 @@ final class EvalTopology {
     private static Map<String, Value> buildShardCoreFields(String indexName, ShardRouting shard) {
         var fields = new LinkedHashMap<String, Value>();
         fields.put("index", new Value.KeywordVal(indexName));
+        fields.put("uuid", new Value.KeywordVal(shard.index().getUUID()));
         fields.put("shard_id", new Value.DoubleVal(shard.shardId().id()));
         fields.put("primary", new Value.BooleanVal(shard.primary()));
         fields.put("state", new Value.KeywordVal(shard.state().name()));

@@ -12,6 +12,7 @@ import org.elasticsearch.action.ActionListenerResponseHandler;
 import org.elasticsearch.action.ActionResponse;
 import org.elasticsearch.action.ActionRunnable;
 import org.elasticsearch.action.support.SubscribableListener;
+import org.elasticsearch.cluster.metadata.ProjectId;
 import org.elasticsearch.xpack.esql.action.EsqlQueryAction;
 import org.elasticsearch.xpack.esql.action.EsqlQueryRequest;
 import org.elasticsearch.xpack.piescript.PiescriptSendAction;
@@ -254,7 +255,7 @@ public final class Evaluator {
 
     // ──── Literals ────
 
-    private static Value litToValue(LitVal lit) {
+    private Value litToValue(LitVal lit) {
         return switch (lit) {
             case LitVal.IntegerLit v -> new Value.IntegerVal(v.value());
             case LitVal.LongLit v -> new Value.LongVal(v.value());
@@ -262,7 +263,20 @@ public final class Evaluator {
             case LitVal.KeywordLit v -> new Value.KeywordVal(v.value().utf8ToString());
             case LitVal.BooleanLit v -> new Value.BooleanVal(v.value());
             case LitVal.NullLit v -> new Value.NullVal();
+            case LitVal.IndexLit v -> resolveIndex(v);
         };
+    }
+
+    private Value.IndexVal resolveIndex(LitVal.IndexLit lit) {
+        String uuid = "";
+        if (deps.clusterService() != null) {
+            var project = deps.clusterService().state().metadata().getProject(ProjectId.DEFAULT);
+            var indexMetadata = project.index(lit.name());
+            if (indexMetadata != null) {
+                uuid = indexMetadata.getIndex().getUUID();
+            }
+        }
+        return new Value.IndexVal(lit.name(), uuid, lit.fieldTypes());
     }
 
     // ──── Function application (shared by CoreApp dispatch and EvalBuiltins) ────

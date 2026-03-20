@@ -12,6 +12,7 @@ import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.threadpool.ThreadPool;
@@ -42,6 +43,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
     private final ClusterService clusterService;
     private final TransportService transportService;
     private final ChannelRegistry channelRegistry;
+    private final IndicesService indicesService;
 
     @Inject
     public TransportPiescriptAction(
@@ -50,7 +52,8 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         Client client,
         ThreadPool threadPool,
         ClusterService clusterService,
-        ChannelRegistry channelRegistry
+        ChannelRegistry channelRegistry,
+        IndicesService indicesService
     ) {
         super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, threadPool.executor(ThreadPool.Names.GENERIC));
         this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService);
@@ -59,6 +62,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         this.clusterService = clusterService;
         this.transportService = transportService;
         this.channelRegistry = channelRegistry;
+        this.indicesService = indicesService;
     }
 
     private EvalDependencies buildEvalDeps() {
@@ -68,7 +72,8 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             clusterService,
             transportService,
             channelRegistry,
-            transportService.getLocalNode().getId()
+            transportService.getLocalNode().getId(),
+            indicesService
         );
     }
 
@@ -88,11 +93,12 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         try {
             var cst = parser.parse(program);
             var queries = IndexResolutionPrePass.collectQueries(cst);
+            var useIndexNames = IndexResolutionPrePass.collectUseDeclarations(cst);
 
-            if (queries.isEmpty()) {
+            if (queries.isEmpty() && useIndexNames.isEmpty()) {
                 elaborateAndEvaluate(cst, null, listener);
             } else {
-                indexResolutionPrePass.resolve(queries, listener.delegateFailureAndWrap((l, resolvedMappings) -> {
+                indexResolutionPrePass.resolve(queries, useIndexNames, listener.delegateFailureAndWrap((l, resolvedMappings) -> {
                     executor.execute(() -> elaborateAndEvaluate(cst, resolvedMappings, l));
                 }));
             }
@@ -139,10 +145,11 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
 
         try {
             var queries = IndexResolutionPrePass.collectQueries(cst);
-            if (queries.isEmpty()) {
+            var useIndexNames = IndexResolutionPrePass.collectUseDeclarations(cst);
+            if (queries.isEmpty() && useIndexNames.isEmpty()) {
                 elaborateAndEvaluateDev(cst, treeString, null, listener);
             } else {
-                indexResolutionPrePass.resolve(queries, ActionListener.wrap(resolvedMappings -> {
+                indexResolutionPrePass.resolve(queries, useIndexNames, ActionListener.wrap(resolvedMappings -> {
                     executor.execute(() -> elaborateAndEvaluateDev(cst, treeString, resolvedMappings, listener));
                 }, e -> { listener.onResponse(devTypeError(treeString, "index resolution failed: " + e.getMessage())); }));
             }

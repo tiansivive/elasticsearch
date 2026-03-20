@@ -18,7 +18,8 @@ program
     ;
 
 topBinding
-    : LET ident (COLON type)? ASSIGN expr SEMICOLON
+    : LET ident (COLON type)? ASSIGN expr SEMICOLON    # TopLet
+    | USE QUOTED_STRING AS LOWER_IDENT SEMICOLON        # TopUse
     ;
 
 // ──── Expressions ────

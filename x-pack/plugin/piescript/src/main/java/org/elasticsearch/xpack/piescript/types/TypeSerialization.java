@@ -128,6 +128,7 @@ public final class TypeSerialization {
     private static final byte LIT_KEYWORD = 3;
     private static final byte LIT_BOOLEAN = 4;
     private static final byte LIT_NULL = 5;
+    private static final byte LIT_INDEX = 6;
 
     public static void writeLitVal(StreamOutput out, LitVal lit) throws IOException {
         switch (lit) {
@@ -152,6 +153,11 @@ public final class TypeSerialization {
                 out.writeBoolean(v.value());
             }
             case LitVal.NullLit ignored -> out.writeByte(LIT_NULL);
+            case LitVal.IndexLit v -> {
+                out.writeByte(LIT_INDEX);
+                out.writeString(v.name());
+                out.writeMap(v.fieldTypes(), StreamOutput::writeString);
+            }
         }
     }
 
@@ -164,6 +170,11 @@ public final class TypeSerialization {
             case LIT_KEYWORD -> new LitVal.KeywordLit(in.readBytesRef());
             case LIT_BOOLEAN -> new LitVal.BooleanLit(in.readBoolean());
             case LIT_NULL -> new LitVal.NullLit();
+            case LIT_INDEX -> {
+                var name = in.readString();
+                var fieldTypes = in.readMap(StreamInput::readString);
+                yield new LitVal.IndexLit(name, fieldTypes);
+            }
             default -> throw new IOException("unknown LitVal tag: " + tag);
         };
     }

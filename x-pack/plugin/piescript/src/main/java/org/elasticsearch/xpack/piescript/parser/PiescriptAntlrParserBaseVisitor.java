@@ -42,7 +42,18 @@ public class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor
      * {@link #visitChildren} on {@code ctx}.</p>
      */
     @Override
-    public T visitTopBinding(PiescriptAntlrParser.TopBindingContext ctx) {
+    public T visitTopLet(PiescriptAntlrParser.TopLetContext ctx) {
+        return visitChildren(ctx);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation returns the result of calling
+     * {@link #visitChildren} on {@code ctx}.</p>
+     */
+    @Override
+    public T visitTopUse(PiescriptAntlrParser.TopUseContext ctx) {
         return visitChildren(ctx);
     }
 
