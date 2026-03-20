@@ -44,8 +44,7 @@ post '{"program": "let topo = topology \"cluster\" in let remote = head (filter 
 # Each remote node sends back its name; we collect results.
 echo ""
 echo "=== 5. Fan-out: send closure to each remote node ==="
-post '{"program": "let topo = topology \"cluster\" in let remotes = filter (fn n -> n.id != topo.local.id) topo.nodes in let ch1 = spawn! in let ch2 = spawn! in let u1 = send (head remotes).inbox (fn info -> send ch1 info.name) in let rest = tail remotes in let u2 = send (head rest).inbox (fn info -> send ch2 info.name) in when (ch1 name1) & (ch2 name2) -> { ran_on_1: name1, ran_on_2: name2 }"}'
-
+.
 # ── 6. Remote computation — send arithmetic to a remote node ──
 echo ""
 echo "=== 6. Remote computation (1 + 2 + 3 on remote node) ==="

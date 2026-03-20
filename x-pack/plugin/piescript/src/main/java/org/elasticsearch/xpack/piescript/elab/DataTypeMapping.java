@@ -15,10 +15,9 @@ import java.util.Map;
 /**
  * Maps ESQL {@link DataType} values to piescript {@link MonoType} type constructors.
  *
- * <p>The mapping follows ESQL's widening rules: small numerics ({@code SHORT},
- * {@code BYTE}, {@code FLOAT}, {@code HALF_FLOAT}, {@code SCALED_FLOAT}) are
- * mapped to their widened piescript counterparts. Counter types and exotic types
- * (histograms, dense vectors, etc.) map to {@code Unsupported} for v0.
+ * <p>All numeric types ({@code INTEGER}, {@code LONG}, {@code DOUBLE}, {@code SHORT},
+ * {@code BYTE}, {@code FLOAT}, {@code HALF_FLOAT}, {@code SCALED_FLOAT}) map to
+ * {@code Double}. Piescript uses a single numeric type backed by IEEE 754 double.
  *
  * <p>{@code TEXT} maps to {@code Keyword} because ESQL loads text fields
  * without analysis and piescript treats them identically to keywords.
@@ -31,8 +30,8 @@ public final class DataTypeMapping {
     private DataTypeMapping() {}
 
     private static final Map<DataType, MonoType> MAPPING = Map.ofEntries(
-        Map.entry(DataType.INTEGER, Elaborator.INTEGER),
-        Map.entry(DataType.LONG, Elaborator.LONG),
+        Map.entry(DataType.INTEGER, Elaborator.DOUBLE),
+        Map.entry(DataType.LONG, Elaborator.DOUBLE),
         Map.entry(DataType.DOUBLE, Elaborator.DOUBLE),
         Map.entry(DataType.KEYWORD, Elaborator.KEYWORD),
         Map.entry(DataType.TEXT, Elaborator.KEYWORD),
@@ -40,7 +39,7 @@ public final class DataTypeMapping {
         Map.entry(DataType.NULL, Elaborator.NULL_TYPE),
         Map.entry(DataType.DATETIME, Elaborator.DATETIME),
         Map.entry(DataType.DATE_NANOS, Elaborator.DATETIME),
-        Map.entry(DataType.UNSIGNED_LONG, Elaborator.UNSIGNED_LONG),
+        Map.entry(DataType.UNSIGNED_LONG, Elaborator.DOUBLE),
         Map.entry(DataType.IP, Elaborator.IP),
         Map.entry(DataType.VERSION, Elaborator.VERSION),
         Map.entry(DataType.GEO_POINT, Elaborator.GEO_POINT),
@@ -48,8 +47,8 @@ public final class DataTypeMapping {
         Map.entry(DataType.GEO_SHAPE, Elaborator.GEO_SHAPE),
         Map.entry(DataType.CARTESIAN_SHAPE, Elaborator.CARTESIAN_SHAPE),
 
-        Map.entry(DataType.SHORT, Elaborator.INTEGER),
-        Map.entry(DataType.BYTE, Elaborator.INTEGER),
+        Map.entry(DataType.SHORT, Elaborator.DOUBLE),
+        Map.entry(DataType.BYTE, Elaborator.DOUBLE),
         Map.entry(DataType.FLOAT, Elaborator.DOUBLE),
         Map.entry(DataType.HALF_FLOAT, Elaborator.DOUBLE),
         Map.entry(DataType.SCALED_FLOAT, Elaborator.DOUBLE)

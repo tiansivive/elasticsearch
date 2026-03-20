@@ -71,8 +71,8 @@ public class ElaboratorTests extends ESTestCase {
     public void testIntegerLiteral() {
         var result = elaborate("42");
         assertThat(result, instanceOf(CoreLit.class));
-        assertThat(((CoreLit) result).value(), is(new LitVal.IntegerLit(42)));
-        assertThat(result.type(), is(INTEGER));
+        assertThat(((CoreLit) result).value(), is(new LitVal.DoubleLit(42.0)));
+        assertThat(result.type(), is(DOUBLE));
     }
 
     public void testNegativeIntegerLiteral() {
@@ -80,14 +80,14 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(result, instanceOf(CorePrimOp.class));
         var neg = (CorePrimOp) result;
         assertThat(neg.op(), is(Op.NEG));
-        assertThat(resolveType(neg), is(INTEGER));
+        assertThat(resolveType(neg), is(DOUBLE));
     }
 
-    public void testLargeIntegerBecomesLong() {
+    public void testLargeIntegerBecomesDouble() {
         var result = elaborate("3000000000");
         assertThat(result, instanceOf(CoreLit.class));
-        assertThat(((CoreLit) result).value(), is(new LitVal.LongLit(3_000_000_000L)));
-        assertThat(result.type(), is(LONG));
+        assertThat(((CoreLit) result).value(), is(new LitVal.DoubleLit(3_000_000_000.0)));
+        assertThat(result.type(), is(DOUBLE));
     }
 
     public void testDecimalLiteral() {
@@ -140,13 +140,13 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(let.debugName(), is("x"));
         assertThat(let.rhs(), instanceOf(CoreLit.class));
         assertThat(let.body(), instanceOf(CoreVar.class));
-        assertThat(resolveType(let), is(INTEGER));
+        assertThat(resolveType(let), is(DOUBLE));
     }
 
     public void testLetWithTypeAnnotation() {
-        var result = elaborate("let x : Integer = 1 in x");
+        var result = elaborate("let x : Double = 1 in x");
         assertThat(result, instanceOf(CoreLet.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testNestedLet() {
@@ -171,7 +171,7 @@ public class ElaboratorTests extends ESTestCase {
     public void testTopBinding() {
         var result = elaborate("let x = 42; x");
         assertThat(result, instanceOf(CoreLet.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testMultipleTopBindings() {
@@ -179,7 +179,7 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(result, instanceOf(CoreLet.class));
         var outer = (CoreLet) result;
         assertThat(outer.body(), instanceOf(CoreLet.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── Lambdas ────
@@ -195,11 +195,11 @@ public class ElaboratorTests extends ESTestCase {
     }
 
     public void testTypedParamLambda() {
-        var result = elaborate("fn (x : Integer) -> x");
+        var result = elaborate("fn (x : Double) -> x");
         assertThat(result, instanceOf(CoreLam.class));
         var lam = (CoreLam) result;
-        assertThat(lam.paramType(), is(INTEGER));
-        assertThat(resolveType(result), is(new MonoType.Arrow(INTEGER, INTEGER)));
+        assertThat(lam.paramType(), is(DOUBLE));
+        assertThat(resolveType(result), is(new MonoType.Arrow(DOUBLE, DOUBLE)));
     }
 
     public void testMultiParamLambda() {
@@ -212,16 +212,16 @@ public class ElaboratorTests extends ESTestCase {
     // ──── Function application ────
 
     public void testApplication() {
-        var result = elaborate("let f = fn (x : Integer) -> x in f 42");
+        var result = elaborate("let f = fn (x : Double) -> x in f 42");
         assertThat(result, instanceOf(CoreLet.class));
         var let = (CoreLet) result;
         assertThat(let.body(), instanceOf(CoreApp.class));
-        assertThat(resolveType(let), is(INTEGER));
+        assertThat(resolveType(let), is(DOUBLE));
     }
 
     public void testApplicationInfersParamType() {
         var result = elaborate("let f = fn x -> x in f 42");
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── Let-polymorphism ────
@@ -238,35 +238,35 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(result, instanceOf(CorePrimOp.class));
         var op = (CorePrimOp) result;
         assertThat(op.op(), is(Op.ADD));
-        assertThat(resolveType(op), is(INTEGER));
+        assertThat(resolveType(op), is(DOUBLE));
     }
 
     public void testSubtraction() {
         var result = elaborate("3 - 1");
         assertThat(result, instanceOf(CorePrimOp.class));
         assertThat(((CorePrimOp) result).op(), is(Op.SUB));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testMultiplication() {
         var result = elaborate("2 * 3");
         assertThat(result, instanceOf(CorePrimOp.class));
         assertThat(((CorePrimOp) result).op(), is(Op.MUL));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testDivision() {
         var result = elaborate("10 / 2");
         assertThat(result, instanceOf(CorePrimOp.class));
         assertThat(((CorePrimOp) result).op(), is(Op.DIV));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testModulo() {
         var result = elaborate("10 % 3");
         assertThat(result, instanceOf(CorePrimOp.class));
         assertThat(((CorePrimOp) result).op(), is(Op.MOD));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testArithmeticChain() {
@@ -381,7 +381,7 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(result, instanceOf(CoreProject.class));
         var proj = (CoreProject) result;
         assertThat(proj.label(), is("x"));
-        assertThat(resolveType(proj), is(INTEGER));
+        assertThat(resolveType(proj), is(DOUBLE));
     }
 
     public void testRecordUpdate() {
@@ -407,11 +407,11 @@ public class ElaboratorTests extends ESTestCase {
     // ──── Pipe operator ────
 
     public void testPipeOperator() {
-        var result = elaborate("let f = fn (x : Integer) -> x in 42 |> f");
+        var result = elaborate("let f = fn (x : Double) -> x in 42 |> f");
         assertThat(result, instanceOf(CoreLet.class));
         var let = (CoreLet) result;
         assertThat(let.body(), instanceOf(CoreApp.class));
-        assertThat(resolveType(let), is(INTEGER));
+        assertThat(resolveType(let), is(DOUBLE));
     }
 
     // ──── Accessor sugar ────
@@ -428,7 +428,7 @@ public class ElaboratorTests extends ESTestCase {
     public void testAccessorPipedIntoRecord() {
         var result = elaborate("{ x: 1 } |> .x");
         assertThat(result, instanceOf(CoreApp.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── Update sugar ────
@@ -446,19 +446,19 @@ public class ElaboratorTests extends ESTestCase {
     public void testBlockWithLetStmt() {
         var result = elaborate("{ let x = 1; x }");
         assertThat(result, instanceOf(CoreLet.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testBlockWithExprStmt() {
         var result = elaborate("{ 1; 2 }");
         assertThat(result, instanceOf(CoreLit.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testBlockMultipleStmts() {
         var result = elaborate("{ let x = 1; let y = 2; x + y }");
         assertThat(result, instanceOf(CoreLet.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── Parentheses and ascription ────
@@ -466,13 +466,13 @@ public class ElaboratorTests extends ESTestCase {
     public void testParenExpr() {
         var result = elaborate("(42)");
         assertThat(result, instanceOf(CoreLit.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testTypeAscription() {
-        var result = elaborate("(42 : Integer)");
+        var result = elaborate("(42 : Double)");
         assertThat(result, instanceOf(CoreLit.class));
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── De Bruijn indices ────
@@ -506,7 +506,7 @@ public class ElaboratorTests extends ESTestCase {
 
     public void testLambdaParamTypeInferredFromUsage() {
         var result = elaborate("let f = fn x -> x + 1 in f 10");
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── Error cases ────
@@ -557,7 +557,7 @@ public class ElaboratorTests extends ESTestCase {
     }
 
     public void testWrongAnnotationType() {
-        var ex = expectThrows(ElaborationException.class, () -> elaborate("(true : Integer)"));
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("(true : Double)"));
         assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
@@ -594,12 +594,13 @@ public class ElaboratorTests extends ESTestCase {
     }
 
     public void testCrossTypeArithmeticDoublePlusInt() {
-        var ex = expectThrows(ElaborationException.class, () -> elaborate("3.14 + 1"));
-        assertThat(ex.getMessage(), containsString("type mismatch"));
+        var result = elaborate("3.14 + 1");
+        assertThat(result, instanceOf(CorePrimOp.class));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testLambdaAppliedToWrongType() {
-        var ex = expectThrows(ElaborationException.class, () -> elaborate("(fn (x : Integer) -> x) \"hello\""));
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("(fn (x : Double) -> x) \"hello\""));
         assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
@@ -607,19 +608,19 @@ public class ElaboratorTests extends ESTestCase {
 
     public void testRowPolymorphicLet() {
         var result = elaborate("let get = fn r -> r.x in get { x: 1, y: 2 }");
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testRowPolymorphicLetDifferentShapes() {
         var result = elaborate("let getX = fn r -> r.x in let a = getX { x: 1 } in getX { x: 2, y: true }");
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── Type annotation with type variables (Phase 1d) ────
 
     public void testTypeAnnotationWithTypeVar() {
         var result = elaborate("let id : a -> a = fn x -> x in id 42");
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testTypeAnnotationMismatch() {
@@ -643,7 +644,7 @@ public class ElaboratorTests extends ESTestCase {
     @AwaitsFix(bugUrl = "D-038: MonoType needs Forall variant for polytype ascription")
     public void testPolytypeAscriptionApplied() {
         var result = elaborate("(fn x -> x : a -> a) 42");
-        assertThat(resolveType(result), is(INTEGER));
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     @AwaitsFix(bugUrl = "D-038: MonoType needs Forall variant for polytype ascription")
@@ -655,20 +656,20 @@ public class ElaboratorTests extends ESTestCase {
     // ──── Record check mode (D-036) ────
 
     public void testRecordCheckedAgainstAnnotation() {
-        var result = elaborate("let r : { x: Integer, y: Boolean } = { x: 1, y: true } in r.x");
-        assertThat(resolveType(result), is(INTEGER));
+        var result = elaborate("let r : { x: Double, y: Boolean } = { x: 1, y: true } in r.x");
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testRecordCheckFieldMismatch() {
-        var ex = expectThrows(ElaborationException.class, () -> elaborate("let r : { x: Integer } = { x: true } in r"));
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("let r : { x: Double } = { x: true } in r"));
         assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
     // ──── Multi-param lambda check (D-036) ────
 
     public void testMultiParamLambdaCheckedAgainstAnnotation() {
-        var result = elaborate("let add : Integer -> Integer -> Integer = fn x y -> x + y in add 1 2");
-        assertThat(resolveType(result), is(INTEGER));
+        var result = elaborate("let add : Double -> Double -> Double = fn x y -> x + y in add 1 2");
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testMultiParamLambdaPolymorphicAnnotation() {
@@ -679,13 +680,13 @@ public class ElaboratorTests extends ESTestCase {
     // ──── Let/block body propagation (D-036) ────
 
     public void testLetBodyCheckPropagation() {
-        var result = elaborate("(let x = fn a -> a in x 42 : Integer)");
-        assertThat(resolveType(result), is(INTEGER));
+        var result = elaborate("(let x = fn a -> a in x 42 : Double)");
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     public void testBlockBodyCheckPropagation() {
-        var result = elaborate("({ let x = 1; x } : Integer)");
-        assertThat(resolveType(result), is(INTEGER));
+        var result = elaborate("({ let x = 1; x } : Double)");
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── CoreTypeAbs / CoreTypeApp wrapping ────
@@ -709,8 +710,8 @@ public class ElaboratorTests extends ESTestCase {
     // ──── Lambda param type variable ────
 
     public void testLambdaParamTypeVarIsMonomorphic() {
-        var result = elaborate("let f = fn (x : Integer) -> fn (y : Integer) -> x + y in f 1 2");
-        assertThat(resolveType(result), is(INTEGER));
+        var result = elaborate("let f = fn (x : Double) -> fn (y : Double) -> x + y in f 1 2");
+        assertThat(resolveType(result), is(DOUBLE));
     }
 
     // ──── Spawn / When (Block A) ────
@@ -722,7 +723,7 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(type, instanceOf(MonoType.AppType.class));
         var appType = (MonoType.AppType) type;
         assertEquals(new MonoType.TCon("Channel"), appType.constructor());
-        assertEquals(INTEGER, appType.argument());
+        assertEquals(DOUBLE, appType.argument());
     }
 
     public void testSpawnExpressionTypeInfersBody() {
@@ -731,7 +732,7 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(type, instanceOf(MonoType.AppType.class));
         var appType = (MonoType.AppType) type;
         assertEquals(new MonoType.TCon("Channel"), appType.constructor());
-        assertEquals(INTEGER, appType.argument());
+        assertEquals(DOUBLE, appType.argument());
     }
 
     public void testSpawnBooleanBody() {
@@ -745,19 +746,19 @@ public class ElaboratorTests extends ESTestCase {
     public void testWhenUnwrapsChannelType() {
         var result = elaborate("let ch = spawn 42 in when (ch x) -> x");
         var type = resolveType(result);
-        assertEquals(INTEGER, type);
+        assertEquals(DOUBLE, type);
     }
 
     public void testWhenBodyExpressionType() {
         var result = elaborate("let ch = spawn 42 in when (ch x) -> x + 1");
         var type = resolveType(result);
-        assertEquals(INTEGER, type);
+        assertEquals(DOUBLE, type);
     }
 
     public void testWhenMultipleBindingsType() {
         var result = elaborate("let a = spawn 1 in let b = spawn true in when (a x) & (b y) -> x");
         var type = resolveType(result);
-        assertEquals(INTEGER, type);
+        assertEquals(DOUBLE, type);
     }
 
     public void testWhenMultipleBindingsSecondType() {
@@ -771,7 +772,7 @@ public class ElaboratorTests extends ESTestCase {
         var type = resolveType(result);
         assertThat(type, instanceOf(MonoType.RecordType.class));
         var row = ((MonoType.RecordType) type).row();
-        assertEquals(INTEGER, row.fields().get("num"));
+        assertEquals(DOUBLE, row.fields().get("num"));
         assertEquals(BOOLEAN, row.fields().get("flag"));
     }
 
@@ -796,7 +797,7 @@ public class ElaboratorTests extends ESTestCase {
     public void testSpawnBangTypeUnifiesWithSend() {
         var result = elaborate("let ch = spawn! in let u = send ch 42 in when (ch x) -> x");
         var type = resolveType(result);
-        assertEquals(INTEGER, type);
+        assertEquals(DOUBLE, type);
     }
 
     public void testSpawnBangTypeUnifiesWithSendBoolean() {
@@ -825,7 +826,7 @@ public class ElaboratorTests extends ESTestCase {
 
     public void testValueRestrictionLambdaGeneralizes() {
         var result = elaborate("let id = fn x -> x in id 42");
-        assertEquals(INTEGER, resolveType(result));
+        assertEquals(DOUBLE, resolveType(result));
     }
 
     public void testValueRestrictionLambdaUsedAtMultipleTypes() {
@@ -835,12 +836,12 @@ public class ElaboratorTests extends ESTestCase {
 
     public void testValueRestrictionSpawnBangStaysMonomorphic() {
         var result = elaborate("let ch = spawn! in let u = send ch 42 in when (ch x) -> x");
-        assertEquals(INTEGER, resolveType(result));
+        assertEquals(DOUBLE, resolveType(result));
     }
 
     public void testValueRestrictionApplicationNotGeneralized() {
         var result = elaborate("let x = (fn a -> a) 42 in x");
-        assertEquals(INTEGER, resolveType(result));
+        assertEquals(DOUBLE, resolveType(result));
     }
 
     // ──── Query expression typing (Phase 2: T2.5/T2.6) ────
@@ -883,7 +884,7 @@ public class ElaboratorTests extends ESTestCase {
         assertEquals(new MonoType.TCon("List"), appType.constructor());
         assertThat(appType.argument(), instanceOf(MonoType.RecordType.class));
         var recordType = (MonoType.RecordType) appType.argument();
-        assertEquals(INTEGER, recordType.row().fields().get("status"));
+        assertEquals(DOUBLE, recordType.row().fields().get("status"));
         assertEquals(KEYWORD, recordType.row().fields().get("message"));
     }
 

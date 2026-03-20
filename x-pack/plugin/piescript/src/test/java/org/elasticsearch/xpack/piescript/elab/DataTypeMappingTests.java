@@ -14,15 +14,15 @@ import org.elasticsearch.xpack.piescript.types.MonoType;
 public class DataTypeMappingTests extends ESTestCase {
 
     public void testCoreNumericTypes() {
-        assertEquals(Elaborator.INTEGER, DataTypeMapping.toPiescriptType(DataType.INTEGER));
-        assertEquals(Elaborator.LONG, DataTypeMapping.toPiescriptType(DataType.LONG));
+        assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.INTEGER));
+        assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.LONG));
         assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.DOUBLE));
-        assertEquals(Elaborator.UNSIGNED_LONG, DataTypeMapping.toPiescriptType(DataType.UNSIGNED_LONG));
+        assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.UNSIGNED_LONG));
     }
 
     public void testWidenedNumerics() {
-        assertEquals(Elaborator.INTEGER, DataTypeMapping.toPiescriptType(DataType.SHORT));
-        assertEquals(Elaborator.INTEGER, DataTypeMapping.toPiescriptType(DataType.BYTE));
+        assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.SHORT));
+        assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.BYTE));
         assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.FLOAT));
         assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.HALF_FLOAT));
         assertEquals(Elaborator.DOUBLE, DataTypeMapping.toPiescriptType(DataType.SCALED_FLOAT));

@@ -21,6 +21,7 @@ as closures — safe because the language is pure and referentially transparent.
 | [roadmap.md](roadmap.md) | Block-based development plan with status markers (Blocks A–E replace old Phases 3–5) |
 | [current-state.md](current-state.md) | What works **right now**, known limitations, immediate next steps |
 | [architecture.md](architecture.md) | System design, Core IR, async evaluator, channel-based coordination |
+| [data-access.md](data-access.md) | `Query a` typeclass, levels of control (ESQL/ShardPlan/LuceneM), use cases, comparable systems |
 | [project-structure.md](project-structure.md) | File layout and what each module/file does |
 | [decisions.md](decisions.md) | Key architectural decisions and their rationale |
 | [references.md](references.md) | π-calculus papers, textbooks, implemented languages, and theory |
