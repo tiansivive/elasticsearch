@@ -56,14 +56,14 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
     // ──── Topology ────
 
     public void testTopologyShowsThreeNodes() throws IOException {
-        var result = evalRecord("topology \"cluster\"");
+        var result = evalRecord("Cluster.topology \"cluster\"");
         @SuppressWarnings("unchecked")
         var nodes = (List<Map<String, Object>>) result.get("nodes");
         assertThat(nodes.size(), is(3));
     }
 
     public void testTopologyListsAllNodeNames() throws IOException {
-        var result = evalList("let topo = topology \"cluster\" in map (fn n -> n.name) topo.nodes");
+        var result = evalList("let topo = Cluster.topology \"cluster\" in List.map (fn n -> n.name) topo.nodes");
         assertThat(result.size(), is(3));
         for (var name : result) {
             assertThat(name, instanceOf(String.class));
@@ -71,7 +71,7 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
     }
 
     public void testTopologyLocalNodeHasInbox() throws IOException {
-        var result = evalRecord("let topo = topology \"cluster\" in topo.local");
+        var result = evalRecord("let topo = Cluster.topology \"cluster\" in topo.local");
         assertThat(result.get("id"), notNullValue());
         assertThat(result.get("name"), notNullValue());
         assertThat(result.get("address"), notNullValue());
@@ -81,7 +81,7 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
 
     public void testSendToLocalInbox() throws IOException {
         var result = eval(
-            "let topo = topology \"cluster\" "
+            "let topo = Cluster.topology \"cluster\" "
                 + "in let ch = spawn! "
                 + "in let u = send topo.local.inbox (fn info -> send ch info.id) "
                 + "in when (ch result) -> result"
@@ -94,8 +94,8 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
 
     public void testSendToRemoteInbox() throws IOException {
         var result = evalRecord(
-            "let topo = topology \"cluster\" "
-                + "in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) "
+            "let topo = Cluster.topology \"cluster\" "
+                + "in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) "
                 + "in let ch = spawn! "
                 + "in let u = send remote.inbox (fn info -> send ch info.id) "
                 + "in when (ch result) -> { local: topo.local.id, remote_ran_on: result }"
@@ -107,8 +107,8 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
 
     public void testRemoteComputation() throws IOException {
         var result = evalRecord(
-            "let topo = topology \"cluster\" "
-                + "in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) "
+            "let topo = Cluster.topology \"cluster\" "
+                + "in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) "
                 + "in let ch = spawn! "
                 + "in let u = send remote.inbox (fn info -> send ch (1 + 2 + 3)) "
                 + "in when (ch result) -> { computed_on: remote.name, result: result }"
@@ -118,8 +118,8 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
 
     public void testRemoteRoundTripTransform() throws IOException {
         var result = evalRecord(
-            "let topo = topology \"cluster\" "
-                + "in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) "
+            "let topo = Cluster.topology \"cluster\" "
+                + "in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) "
                 + "in let ch = spawn! "
                 + "in let u = send remote.inbox (fn info -> send ch { node: info.name, answer: 21 * 2 }) "
                 + "in when (ch result) -> result"
@@ -132,8 +132,8 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
 
     public void testProveCodeRanOnDifferentNode() throws IOException {
         var result = evalRecord(
-            "let topo = topology \"cluster\" "
-                + "in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) "
+            "let topo = Cluster.topology \"cluster\" "
+                + "in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) "
                 + "in let ch = spawn! "
                 + "in let u = send remote.inbox (fn info -> send ch info.id) "
                 + "in when (ch remote_id) -> "
@@ -147,13 +147,13 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
 
     public void testFanOutToAllRemoteNodes() throws IOException {
         var result = evalRecord(
-            "let topo = topology \"cluster\" "
-                + "in let remotes = filter (fn n -> n.id != topo.local.id) topo.nodes "
+            "let topo = Cluster.topology \"cluster\" "
+                + "in let remotes = List.filter (fn n -> n.id != topo.local.id) topo.nodes "
                 + "in let ch1 = spawn! "
                 + "in let ch2 = spawn! "
-                + "in let u1 = send (head remotes).inbox (fn info -> send ch1 info.name) "
-                + "in let rest = tail remotes "
-                + "in let u2 = send (head rest).inbox (fn info -> send ch2 info.name) "
+                + "in let u1 = send (List.head remotes).inbox (fn info -> send ch1 info.name) "
+                + "in let rest = List.tail remotes "
+                + "in let u2 = send (List.head rest).inbox (fn info -> send ch2 info.name) "
                 + "in when (ch1 name1) & (ch2 name2) -> { ran_on_1: name1, ran_on_2: name2 }"
         );
         assertThat(result.get("ran_on_1"), instanceOf(String.class));
@@ -165,10 +165,10 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
 
     public void testMathOnRemoteNode() throws IOException {
         var result = evalRecord(
-            "let topo = topology \"cluster\" "
-                + "in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) "
+            "let topo = Cluster.topology \"cluster\" "
+                + "in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) "
                 + "in let ch = spawn! "
-                + "in let u = send remote.inbox (fn info -> send ch { s: sqrt 16, a: abs (-42), p: pow 2 10 }) "
+                + "in let u = send remote.inbox (fn info -> send ch { s: Math.sqrt 16, a: Math.abs (-42), p: Math.pow 2 10 }) "
                 + "in when (ch r) -> r"
         );
         assertThat(result.get("s"), equalTo(4));

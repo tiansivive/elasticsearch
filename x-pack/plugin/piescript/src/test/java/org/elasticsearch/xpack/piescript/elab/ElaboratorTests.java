@@ -948,37 +948,37 @@ public class ElaboratorTests extends ESTestCase {
     // ──── Block B builtins type inference ────
 
     public void testHeadTypeInference() {
-        var result = elaborate("head");
+        var result = elaborate("List.head");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
 
     public void testLengthTypeInference() {
-        var result = elaborate("length");
+        var result = elaborate("List.length");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
 
     public void testIsEmptyTypeInference() {
-        var result = elaborate("isEmpty");
+        var result = elaborate("List.isEmpty");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
 
     public void testTopologyTypeIsArrow() {
-        var result = elaborate("topology");
+        var result = elaborate("Cluster.topology");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
 
     public void testRoutingTypeIsArrow() {
-        var result = elaborate("routing");
+        var result = elaborate("Index.routing");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
 
     public void testShardsTypeIsArrow() {
-        var result = elaborate("shards");
+        var result = elaborate("Index.shards");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
 
     public void testNodesTypeIsArrow() {
-        var result = elaborate("nodes");
+        var result = elaborate("Index.nodes");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
 }

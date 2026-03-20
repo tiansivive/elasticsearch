@@ -166,7 +166,7 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testCoreFree() throws IOException {
-        assertCoreExprRoundTrip(free("map", arrow(INTEGER, INTEGER)));
+        assertCoreExprRoundTrip(free("List.map", arrow(INTEGER, INTEGER)));
     }
 
     public void testCoreLit() throws IOException {
@@ -304,11 +304,11 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testValueBuiltin() throws IOException {
-        assertValueRoundTrip(builtin("map", 2));
+        assertValueRoundTrip(builtin("List.map", 2));
     }
 
     public void testValueBuiltinPartiallyApplied() throws IOException {
-        assertValueRoundTrip(builtin("map", 2, List.of(intVal(1))));
+        assertValueRoundTrip(builtin("List.map", 2, List.of(intVal(1))));
     }
 
     public void testValueClosure() throws IOException {
