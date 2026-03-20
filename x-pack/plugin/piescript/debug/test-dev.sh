@@ -28,37 +28,37 @@ echo ""
 echo "=== bare builtin (map) ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "map"}' | jq
+  -d '{"program": "List.map"}' | jq
 
 echo ""
 echo "=== partial application (map with identity fn) ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "map (fn x -> x)"}' | jq
+  -d '{"program": "List.map (fn x -> x)"}' | jq
 
 echo ""
 echo "=== map over query stream ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "let docs = query `FROM piescript-test` in map (fn r -> r.name) docs"}' | jq
+  -d '{"program": "let docs = query `FROM piescript-test` in List.map (fn r -> r.name) docs"}' | jq
 
 echo ""
 echo "=== filter over query stream ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "let docs = query `FROM piescript-test` in filter (fn r -> r.active) docs"}' | jq
+  -d '{"program": "let docs = query `FROM piescript-test` in List.filter (fn r -> r.active) docs"}' | jq
 
 echo ""
 echo "=== reduce over query stream ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "let docs = query `FROM piescript-test` in reduce (fn acc x -> acc + x.age) 0 docs"}' | jq
+  -d '{"program": "let docs = query `FROM piescript-test` in List.reduce (fn acc x -> acc + x.age) 0 docs"}' | jq
 
 echo ""
 echo "=== map with pipe syntax ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "query `FROM piescript-test` |> map (fn r -> r.name)"}' | jq
+  -d '{"program": "query `FROM piescript-test` |> List.map (fn r -> r.name)"}' | jq
 
 echo ""
 echo "=== spawn a pure value ==="
@@ -76,13 +76,13 @@ echo ""
 echo "=== spawn a query ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "let ch = spawn (query `FROM piescript-test`) in when (ch docs) -> map (fn r -> r.name) docs"}' | jq
+  -d '{"program": "let ch = spawn (query `FROM piescript-test`) in when (ch docs) -> List.map (fn r -> r.name) docs"}' | jq
 
 echo ""
 echo "=== multi-channel when (two spawned queries) ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "let a = spawn (query `FROM piescript-test | WHERE active == true`) in let b = spawn (query `FROM piescript-test | WHERE active == false`) in when (a active) & (b inactive) -> { active: map (fn r -> r.name) active, inactive: map (fn r -> r.name) inactive }"}' | jq
+  -d '{"program": "let a = spawn (query `FROM piescript-test | WHERE active == true`) in let b = spawn (query `FROM piescript-test | WHERE active == false`) in when (a active) & (b inactive) -> { active: List.map (fn r -> r.name) active, inactive: List.map (fn r -> r.name) inactive }"}' | jq
 
 echo ""
 echo "=== type error ==="
@@ -106,16 +106,16 @@ echo ""
 echo "=== cluster topology ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "topology \"cluster\""}' | jq
+  -d '{"program": "Cluster.topology \"cluster\""}' | jq
 
 echo ""
 echo "=== index routing ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "routing \"piescript-test\""}' | jq
+  -d '{"program": "Index.routing \"piescript-test\""}' | jq
 
 echo ""
 echo "=== send closure to local inbox via topology.local ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "let topo = topology \"cluster\" in let ch = spawn! in let u = send topo.local.inbox (fn info -> send ch info.id) in when (ch result) -> result"}' | jq
+  -d '{"program": "let topo = Cluster.topology \"cluster\" in let ch = spawn! in let u = send topo.local.inbox (fn info -> send ch info.id) in when (ch result) -> result"}' | jq

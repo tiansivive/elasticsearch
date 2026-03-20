@@ -22,23 +22,23 @@ echo "========================================"
 # ── 1. Cluster topology — verify we see multiple nodes ──
 echo ""
 echo "=== 1. Cluster topology (expect 3 nodes) ==="
-post '{"program": "let topo = topology \"cluster\" in { local_id: topo.local.id, local_name: topo.local.name, node_count: length topo.nodes }"}'
+post '{"program": "let topo = Cluster.topology \"cluster\" in { local_id: topo.local.id, local_name: topo.local.name, node_count: List.length topo.nodes }"}'
 
 # ── 2. List all node names ──
 echo ""
 echo "=== 2. All node names ==="
-post '{"program": "let topo = topology \"cluster\" in map (fn n -> n.name) topo.nodes"}'
+post '{"program": "let topo = Cluster.topology \"cluster\" in List.map (fn n -> n.name) topo.nodes"}'
 
 # ── 3. Send closure to local inbox — basic smoke test ──
 echo ""
 echo "=== 3. Send to local inbox (echo back node id) ==="
-post '{"program": "let topo = topology \"cluster\" in let ch = spawn! in let u = send topo.local.inbox (fn info -> send ch info.id) in when (ch result) -> result"}'
+post '{"program": "let topo = Cluster.topology \"cluster\" in let ch = spawn! in let u = send topo.local.inbox (fn info -> send ch info.id) in when (ch result) -> result"}'
 
 # ── 4. Send closure to a remote node's inbox ──
 # Pick the second node in the list (likely different from local).
 echo ""
 echo "=== 4. Send to remote node inbox (echo back remote node id) ==="
-post '{"program": "let topo = topology \"cluster\" in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch info.id) in when (ch result) -> { local: topo.local.id, remote_ran_on: result }"}'
+post '{"program": "let topo = Cluster.topology \"cluster\" in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch info.id) in when (ch result) -> { local: topo.local.id, remote_ran_on: result }"}'
 
 # ── 5. Send closure to ALL remote nodes (fan-out) ──
 # Each remote node sends back its name; we collect results.
@@ -48,17 +48,17 @@ echo "=== 5. Fan-out: send closure to each remote node ==="
 # ── 6. Remote computation — send arithmetic to a remote node ──
 echo ""
 echo "=== 6. Remote computation (1 + 2 + 3 on remote node) ==="
-post '{"program": "let topo = topology \"cluster\" in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch (1 + 2 + 3)) in when (ch result) -> { computed_on: remote.name, result: result }"}'
+post '{"program": "let topo = Cluster.topology \"cluster\" in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch (1 + 2 + 3)) in when (ch result) -> { computed_on: remote.name, result: result }"}'
 
 # ── 7. Round-trip: send data to remote, transform it there, get it back ──
 echo ""
 echo "=== 7. Round-trip: send value, transform remotely, return ==="
-post '{"program": "let topo = topology \"cluster\" in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch { node: info.name, answer: 21 * 2 }) in when (ch result) -> result"}'
+post '{"program": "let topo = Cluster.topology \"cluster\" in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch { node: info.name, answer: 21 * 2 }) in when (ch result) -> result"}'
 
 # ── 8. Verify local vs remote — prove code ran on different node ──
 echo ""
 echo "=== 8. Prove remote execution (local id != remote execution id) ==="
-post '{"program": "let topo = topology \"cluster\" in let remote = head (filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch info.id) in when (ch remote_id) -> { local: topo.local.id, remote: remote_id, same_node: topo.local.id == remote_id }"}'
+post '{"program": "let topo = Cluster.topology \"cluster\" in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch info.id) in when (ch remote_id) -> { local: topo.local.id, remote: remote_id, same_node: topo.local.id == remote_id }"}'
 
 # ── 9. Triangle coordination: A orchestrates B↔C direct communication ──
 # A sends identical closures (abstracted via let-binding) to B and C.
@@ -69,10 +69,10 @@ post '{"program": "let topo = topology \"cluster\" in let remote = head (filter 
 # coordination, direct B↔C communication, higher-order function abstraction.
 echo ""
 echo "=== 9. Triangle: A orchestrates B↔C direct communication ==="
-PROG9='let topo = topology "cluster"
-in let remotes = filter (fn n -> n.id != topo.local.id) topo.nodes
-in let nodeB = head remotes
-in let nodeC = head (tail remotes)
+PROG9='let topo = Cluster.topology "cluster"
+in let remotes = List.filter (fn n -> n.id != topo.local.id) topo.nodes
+in let nodeB = List.head remotes
+in let nodeC = List.head (List.tail remotes)
 
 in let ackB = spawn!
 in let ackC = spawn!
