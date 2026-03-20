@@ -113,3 +113,9 @@ echo "=== Shard.consume exhausted (second consume returns empty) ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
   -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let ch = Shard.open idx shard { match_all: true }; when (ch searcher) -> let first = Shard.consume 100.0 searcher; let second = Shard.consume 100.0 searcher; { first_count: List.length first, second_count: List.length second }"}' | jq
+
+echo ""
+echo "=== Negative: SearcherVal not serializable in response (expect error) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let ch = Shard.open idx shard { match_all: true }; when (ch searcher) -> searcher"}' | jq

@@ -108,30 +108,41 @@ echo "=== 10. use declaration + Index.shards ==="
 post '{"program": "use \"piescript-test\" as idx; Index.shards idx"}'
 
 echo ""
-echo "=== 11. Shard.open + Shard.consume + Shard.read (local data pipeline) ==="
+echo "=== 11. Shard.open fan-out to ALL shards (tagged with node info) ==="
 PROG11='use "piescript-test" as idx;
-let shards = Index.shards idx;
-let shard = List.head shards;
-let ch = Shard.open idx shard { match_all: true };
-when (ch searcher) ->
-  let docs = Shard.consume 10.0 searcher;
-  List.map (fn ref -> Shard.read ref) docs'
-post "$(jq -n --arg p "$PROG11" '{"program": $p}')"
+let shards = Index.shards idx
+in let s0 = List.at 0 shards
+in let s1 = List.at 1 shards
+in let s2 = List.at 2 shards
 
-# ── 12. Negative: attempt to send non-serializable SearcherVal to remote ──
-echo ""
-echo "=== 12. Negative: send SearcherVal to remote (expect error) ==="
-PROG12='use "piescript-test" as idx;
-let topo = Cluster.topology "cluster"
-in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes)
-in let shards = Index.shards idx;
-let shard = List.head shards;
-let ch = Shard.open idx shard { match_all: true };
-when (ch searcher) ->
-  let result_ch = spawn!
-  in let u = send remote.inbox (fn info -> send result_ch searcher)
-  in when (result_ch r) -> r'
-post "$(jq -n --arg p "$PROG12" '{"program": $p}')"
+in let ch0 = spawn!
+in let ch1 = spawn!
+in let ch2 = spawn!
+
+in let u0 = send s0.node.inbox (fn info ->
+  let dc = Shard.open idx s0 { match_all: true }
+  in when (dc searcher) ->
+    let docs = Shard.consume 100.0 searcher
+    in send ch0 { node: info.name, shard_id: s0.shard_id,
+                   rows: List.map (fn ref -> Shard.read ref) docs }
+)
+in let u1 = send s1.node.inbox (fn info ->
+  let dc = Shard.open idx s1 { match_all: true }
+  in when (dc searcher) ->
+    let docs = Shard.consume 100.0 searcher
+    in send ch1 { node: info.name, shard_id: s1.shard_id,
+                   rows: List.map (fn ref -> Shard.read ref) docs }
+)
+in let u2 = send s2.node.inbox (fn info ->
+  let dc = Shard.open idx s2 { match_all: true }
+  in when (dc searcher) ->
+    let docs = Shard.consume 100.0 searcher
+    in send ch2 { node: info.name, shard_id: s2.shard_id,
+                   rows: List.map (fn ref -> Shard.read ref) docs }
+)
+in when (ch0 r0) & (ch1 r1) & (ch2 r2) ->
+  { shard_0: r0, shard_1: r1, shard_2: r2 }'
+post "$(jq -n --arg p "$PROG11" '{"program": $p}')"
 
 echo ""
 echo "========================================"

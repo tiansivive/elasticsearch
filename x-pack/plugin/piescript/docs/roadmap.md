@@ -252,6 +252,7 @@ or when downstream work requires them.
 | String concat operator (`<>`) | Phase 1 tech debt | No way to concatenate `Keyword` values. Proposed: `<>` for string concat (aligns with Haskell `Semigroup`, Elixir convention). Separate `++` for list concat. Both are future typeclass candidates (`Semigroup.<>`). |
 | `RowType` not a first-class `MonoType` | D-050 (high priority) | Rows are separate from `MonoType`. `r` in `DocRef r` is `Kind.TYPE` not `Kind.ROW`, so `DocRef Double` is well-kinded — unsound. Fix: make `RowType` a `MonoType` variant with `Kind.ROW`, add row-kinded metas/rigids. |
 | No `Label` kind | D-050 (future) | `Shard.read` is wildcard-only (returns full record). Type-safe single-field projection requires `Label` kind with type-level string singletons and a `Project` type family. |
+| No runtime error provenance | — | `EvaluationException` has no source location. Builtin failures (e.g., `Shard.open` on wrong node) cannot point to the call site. Requires threading `Source` through evaluation — either on `CoreExpr` during eval, stamped on `BuiltinVal`, or via a provenance stack. Critical for distributed debugging where errors occur inside shipped closures on remote nodes. |
 
 See also [General Tech Debt — ES Conventions & Plugin Infrastructure](#general-tech-debt--es-conventions--plugin-infrastructure)
 for cross-cutting items (TransportVersion, logging, ActionType naming, thread pool, endpoint merge).
@@ -507,7 +508,8 @@ when (ch results) ->
   List.map (fn r -> { name: r.name }) results
 ```
 
-**Ref**: [D-050](decisions.md#d-050), [Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1)
+**Ref**: [D-050](decisions.md#d-050), [Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1),
+[Block D testing, debug scripts, docs](40f62001-d515-4590-b3cd-95e5e999b33b)
 
 ---
 
