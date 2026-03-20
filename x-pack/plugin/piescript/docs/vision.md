@@ -310,10 +310,16 @@ distributed vertical slice comes first because it proves the harder, more founda
 
 These are directional, not committed:
 
+- **Language-integrated query (comprehensions)** — replace the opaque `query \`ESQL\`` syntax with
+  piescript-native query expressions via the `Query a` typeclass. See
+  [§ Data Access Architecture](#data-access-architecture-query-as-a-typeclass) below and
+  [data-access.md](data-access.md) for the full design.
 - **Typeclass-driven push-down** — specialize generic functions (`filter`, `map`) based on data
   representation via typeclasses. `filter pred rawdata` compiles to a Lucene query; `filter pred
   stream` iterates values. Replaces the old push-down-to-ESQL-text approach with a principled,
-  type-directed optimization that works with piescript's own `scan` data access path.
+  type-directed optimization that works with piescript's own `scan` data access path. Closely
+  related to the comprehension layer — the same piescript expression, interpreted via different
+  typeclass instances, compiles to different backends (ESQL, Lucene, in-memory list).
 - **Exchange streaming via explicit orchestration** — for large data volumes, piescript orchestrates
   Exchange setup via channels (send closure to data node → data node initializes Exchange sink →
   coordinator connects source → Pages stream with back-pressure). The Exchange is ES infrastructure
@@ -338,6 +344,51 @@ These are directional, not committed:
   scripts, but typed and composable).
 - **IDE support** — language server protocol for autocompletion, type-on-hover, and error
   highlighting.
+
+## Data Access Architecture: `Query` as a Typeclass
+
+> **Status**: Exploratory. See [data-access.md](data-access.md) for the full design document
+> covering levels of control, use cases, comparable systems, and rationale.
+
+Piescript's data access story is unified by a single insight: filter, project, join, group, and
+aggregate are operations that form a **typeclass** (`Query f`), and the different data access
+backends — ESQL, shard-local Lucene, in-memory lists — are **instances**. The user writes one
+query surface (comprehensions or combinators); the instance determines how it executes.
+
+| Instance | What it compiles to | When to use |
+|----------|-------------------|-------------|
+| `Query ESQL` | ESQL query string | Cluster-wide declarative queries — the 90% case |
+| `Query ShardPlan` | Shard-local Lucene plan | Inside shipped closures, data-local computation |
+| `Query List` | In-memory iteration | Already-materialized data |
+
+Below the typeclass sits the **physical layer** (`LuceneM` free monad / `open`/`consume`/`read`
+primitives) — the escape hatch for programs that interleave data access with coordination logic,
+custom iteration patterns, or anything the `Query` interface doesn't cover. These are programs
+that happen to access data, not queries.
+
+This architecture means:
+- **One query syntax** (comprehensions or combinators) works across all backends
+- **Typeclass instances** determine compilation targets and optimization strategies
+- **The physical layer** provides full Lucene control when the declarative levels aren't enough
+- **ESQL coexists** via both the `Query ESQL` instance and the opaque `query \`ESQL\`` escape hatch
+
+### The ESQL typing problem
+
+The current opaque `query \`ESQL\`` syntax has a type soundness hole: piescript infers types from
+index field caps, but ESQL transformations inside the backticks (`KEEP`, `RENAME`, `STATS`, `EVAL`)
+change the result shape invisibly. Comprehensions solve this — every operation is a typed piescript
+expression, so the result type is computed correctly throughout.
+
+### Dynamic index names
+
+Static index names (via `use` / literal `from`) get full type safety from field caps at
+elaboration time. Dynamic index names — where the index is a runtime value — cannot be fully
+typed because the schema depends on external cluster state. The honest type is `Dynamic`, with
+explicit narrowing to concrete types via GADT-based type refinement (OutsideIn(X)), CPS-style
+validation, or a `Reflect` typeclass.
+
+See [data-access.md](data-access.md) for the full discussion including the architectural diagram,
+comparable systems analysis, and open questions.
 
 ## Speculative: Potential Future Directions
 
@@ -444,3 +495,112 @@ once), the executor can **move** it rather than clone it — zero-copy transfer 
 no allocation overhead. For large captured environments traveling to remote nodes, this is a
 significant performance win. Similarly, linear channel edges guarantee single-consumer data flow,
 simplifying buffer management.
+
+## Brainstorming: Impact on ML Workflows
+
+> **Caveat:** Exploratory notes. Not a commitment to ML-specific features — these are observations
+> about how piescript's general-purpose data access + coordination model intersects with ML
+> workflows that currently require leaving ES.
+
+### The ML extraction problem
+
+ML workflows over ES data today follow a common pattern: query ES → extract to Python/Spark →
+compute → maybe write back. Every step in that chain is a serialization boundary, a network hop,
+and a type-safety gap. The extraction exists not because ES can't store or serve the data, but
+because ESQL can't express the computation. Piescript's data access architecture directly
+addresses the computation gap.
+
+### What piescript handles naturally (no ML-specific features needed)
+
+These are ML-adjacent workloads that fall out of piescript's general-purpose design:
+
+**Feature engineering** — the highest-value ML workload for piescript. Query ES data, compute
+derived features (cross-index joins, time-series aggregations, normalized scores, windowed
+statistics), write feature vectors back to an index. Today this requires extracting to a
+DataFrame in Python or Spark. Piescript's `Query a` + `writeTo` makes it ES-native:
+
+```
+use .user-events as events
+use .user-profiles as profiles
+use .feature-store as features
+
+let userEvents = from e in events where e.timestamp > cutoff
+let userProfiles = from p in profiles
+in userEvents
+  |> groupBy (fn e -> e.user_id) (fn uid evts ->
+    let profile = from p in userProfiles where p.id == uid select p
+    in {
+      user_id: uid,
+      event_count: length evts,
+      avg_session: mean (map (fn e -> e.duration) evts),
+      account_age: profile.created_at,
+      risk_score: profile.risk_score
+    })
+  |> writeTo features
+```
+
+**Model evaluation** — compute precision/recall/F1/AUC over predictions vs ground truth. This is
+a custom aggregation — ship a fold to each shard, merge partial results on the coordinator.
+Exactly the pattern that `Query ShardPlan` with a custom fold enables.
+
+**Data preparation** — sampling, stratification, train/test splitting, normalization, one-hot
+encoding. These are map/filter/reduce operations over query results. Already in piescript's
+wheelhouse via `Query a` combinators.
+
+**Inference orchestration** — fan out model application across nodes, collect and post-process
+results. ES already has trained model inference (the `_inference` API and ML nodes). Piescript
+would not implement inference kernels, but could coordinate them: query data, route batches to
+inference endpoints, collect predictions, join with source data, write enriched results.
+
+**ML pipeline automation** — combine feature engineering + inference + evaluation + write-back in
+one typed program. Today this is a Jupyter notebook or Airflow DAG calling the ES REST API in a
+loop. Piescript collapses it into a single program with type safety across all stages.
+
+### What piescript should not attempt
+
+**Model training** — gradient descent, backpropagation, matrix multiplication. Requires GPUs,
+CUDA, automatic differentiation, and massive parallelism over parameter space. ES's JVM is
+fundamentally wrong for this. Not a gap to close — a different problem entirely.
+
+**Heavy inference** — running large transformer models, billion-parameter embedding computation.
+ES's native inference API and external inference providers handle this. Piescript orchestrates
+calling them; it doesn't reimplement them.
+
+**Tensor operations** — piescript's type system is records and lists, not multi-dimensional arrays
+with broadcasting semantics. Adding tensor primitives would be a different language.
+
+### Integration with ES's ML infrastructure
+
+One genuinely interesting direction: ES already has ML nodes with dedicated thread pools and
+trained model inference capabilities. Piescript's `topology` + `send` could potentially route
+closures to ML nodes specifically, combining piescript's coordination model with ES's inference
+infrastructure:
+
+```
+let mlNodes = topology "cluster" |> nodes |> filter (fn n -> n.role == "ml")
+let target = head mlNodes
+let resultCh = spawn!
+in send target.inbox (fn () ->
+  let data = from r in idx where r.needs_scoring
+  let scored = infer "my-model" data
+  in send resultCh scored
+)
+in when (resultCh results) -> writeTo scored_index results
+```
+
+This is an integration story, not an implementation story — piescript orchestrates, ES's ML
+infrastructure executes. Worth exploring once the distributed vertical slice and `Query ESQL`
+are complete.
+
+### The framing
+
+Piescript is not "ML in ES." It's a general-purpose distributed computation language that
+happens to make ML-adjacent workflows ES-native. The advantage comes from the data access
+architecture, not from ML-specific primitives. Custom aggregations are custom aggregations
+whether they compute a t-digest or an F1 score. Feature engineering is query → transform →
+write, regardless of whether the downstream consumer is an ML model or a dashboard.
+
+The risk of explicitly targeting ML is scope creep and mismatched expectations. Users will expect
+GPU support, tensor operations, and training capabilities that ES cannot provide. The safer
+position: piescript is general-purpose, and ML pipelines benefit significantly because they're
+data-heavy workflows that today require unnecessary extraction from ES.

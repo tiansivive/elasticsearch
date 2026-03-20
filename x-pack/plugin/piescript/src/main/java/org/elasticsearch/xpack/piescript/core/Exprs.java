@@ -50,11 +50,11 @@ public final class Exprs {
     // ──── Literals ────
 
     public static CoreLit lit(int n) {
-        return new CoreLit(SRC, new LitVal.IntegerLit(n), Types.INTEGER);
+        return new CoreLit(SRC, new LitVal.DoubleLit(n), Types.DOUBLE);
     }
 
     public static CoreLit lit(long n) {
-        return new CoreLit(SRC, new LitVal.LongLit(n), Types.LONG);
+        return new CoreLit(SRC, new LitVal.DoubleLit(n), Types.DOUBLE);
     }
 
     public static CoreLit lit(double d) {

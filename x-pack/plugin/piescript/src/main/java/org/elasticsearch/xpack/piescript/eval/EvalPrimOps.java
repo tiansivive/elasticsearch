@@ -14,8 +14,12 @@ import org.elasticsearch.xpack.piescript.types.Op;
 /**
  * Primitive operation evaluation: arithmetic, comparison, and boolean operators.
  *
+ * <p>All numeric operations use {@code double}. Integer, Long, and Double runtime values
+ * are all accepted and widened to {@code double} via {@link #requireNumeric}. Results
+ * are always {@link Value.DoubleVal}.
+ *
  * <p>EQ/NEQ use polymorphic structural equality via {@link Object#equals} on {@code Value}
- * records (D-049). Ordering operators (LT, GT, LTE, GTE) remain integer-only.
+ * records (D-049).
  */
 final class EvalPrimOps {
 
@@ -35,7 +39,7 @@ final class EvalPrimOps {
             case NEG -> eval.evaluate(
                 args.get(0),
                 env,
-                listener.delegateFailureAndWrap((l, operand) -> l.onResponse(new Value.IntegerVal(-requireInteger(operand, op))))
+                listener.delegateFailureAndWrap((l, operand) -> l.onResponse(new Value.DoubleVal(-requireNumeric(operand, op))))
             );
 
             case ADD, SUB, MUL, DIV, MOD -> eval.evaluate(
@@ -47,7 +51,7 @@ final class EvalPrimOps {
                         env,
                         l1.delegateFailureAndWrap(
                             (l2, rightVal) -> l2.onResponse(
-                                new Value.IntegerVal(intArithmetic(op, requireInteger(leftVal, op), requireInteger(rightVal, op)))
+                                new Value.DoubleVal(doubleArithmetic(op, requireNumeric(leftVal, op), requireNumeric(rightVal, op)))
                             )
                         )
                     )
@@ -74,7 +78,7 @@ final class EvalPrimOps {
                         env,
                         l1.delegateFailureAndWrap(
                             (l2, rightVal) -> l2.onResponse(
-                                new Value.BooleanVal(intComparison(op, requireInteger(leftVal, op), requireInteger(rightVal, op)))
+                                new Value.BooleanVal(doubleComparison(op, requireNumeric(leftVal, op), requireNumeric(rightVal, op)))
                             )
                         )
                     )
@@ -103,22 +107,24 @@ final class EvalPrimOps {
         }
     }
 
-    static int intArithmetic(Op op, int left, int right) {
-        try {
-            return switch (op) {
-                case ADD -> left + right;
-                case SUB -> left - right;
-                case MUL -> left * right;
-                case DIV -> left / right;
-                case MOD -> left % right;
-                default -> throw new AssertionError("not an arithmetic op: " + op);
-            };
-        } catch (ArithmeticException e) {
-            throw new EvaluationException("division by zero", e);
-        }
+    static double doubleArithmetic(Op op, double left, double right) {
+        return switch (op) {
+            case ADD -> left + right;
+            case SUB -> left - right;
+            case MUL -> left * right;
+            case DIV -> {
+                if (right == 0.0) throw new EvaluationException("division by zero");
+                yield left / right;
+            }
+            case MOD -> {
+                if (right == 0.0) throw new EvaluationException("division by zero");
+                yield left % right;
+            }
+            default -> throw new AssertionError("not an arithmetic op: " + op);
+        };
     }
 
-    static boolean intComparison(Op op, int left, int right) {
+    static boolean doubleComparison(Op op, double left, double right) {
         return switch (op) {
             case LT -> left < right;
             case GT -> left > right;
@@ -128,11 +134,13 @@ final class EvalPrimOps {
         };
     }
 
-    static int requireInteger(Value value, Op op) {
+    static double requireNumeric(Value value, Op op) {
         return switch (value) {
-            case Value.IntegerVal v -> v.value();
+            case Value.DoubleVal v -> v.value();
+            case Value.IntegerVal v -> (double) v.value();
+            case Value.LongVal v -> (double) v.value();
             case Value.NullVal ignored -> throw new EvaluationException("null value in " + op + " operation");
-            default -> throw new AssertionError("type checker bug: expected Integer for " + op + ", got " + value);
+            default -> throw new AssertionError("type checker bug: expected numeric for " + op + ", got " + value);
         };
     }
 

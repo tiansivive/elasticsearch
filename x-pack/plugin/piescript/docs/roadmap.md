@@ -3,13 +3,16 @@
 > **Living doc** — update status markers as work progresses. Add new phases/sub-phases as they are
 > planned.
 >
-> **Revised**: 2026-03-17. Blocks B–E restructured around the distributed vertical slice (D-042).
-> Block B is now ES topology; Block C is cross-node execution; Block D is local data access;
-> Block E is `writeTo` (stretch goal). Old block definitions (multi-value channels, `writeTo` +
-> scheduler, push-down compilation, Exchange integration) are deferred. See D-042 for rationale.
+> **Revised**: 2026-03-19. Block C fully complete (C.1–C.5). Numeric unification (D-020 resolved),
+> math builtins, and multi-node integration tests added.
 >
-> Previous revision (2026-03-16): Phases 3–5 replaced by Blocks A–E based on Join Calculus (D-040).
-> The pre-join-calculus roadmap is archived in `docs/archive/roadmap.pre-join-calculus.md`.
+> Previous revision (2026-03-17): Blocks B–E restructured around the distributed vertical slice
+> (D-042). Block B is now ES topology; Block C is cross-node execution; Block D is local data
+> access; Block E is `writeTo` (stretch goal). Old block definitions (multi-value channels,
+> `writeTo` + scheduler, push-down compilation, Exchange integration) are deferred. See D-042
+> for rationale. Previous revision (2026-03-16): Phases 3–5 replaced by Blocks A–E based on Join
+> Calculus (D-040). The pre-join-calculus roadmap is archived in
+> `docs/archive/roadmap.pre-join-calculus.md`.
 
 **Overall design**: [scripting language design](../../.cursor/plans/scripting_language_design_9286506e.plan.md)
 
@@ -46,7 +49,7 @@ distributed computing with code mobility, coordinated by the Join Calculus.
 | Phase 2 | Index resolution — typed query results, field-level type checking, eager evaluation | :white_check_mark: |
 | Block A | `spawn` + single-value `when` — local async coordination | :white_check_mark: |
 | Block B | ES topology as typed values — `topology`, node/shard records, `List` type rename, list utilities | :white_check_mark: |
-| Block C | Cross-node code execution — `send`, `spawn!`, closure serialization, channel registry | :construction: |
+| Block C | Cross-node code execution — `send`, `spawn!`, closure serialization, channel registry, multi-node tests | :white_check_mark: |
 | Block D | Local data access — `scan` on data nodes inside shipped closures | :memo: |
 
 **Stretch goal** (valuable but not required for the vertical slice):
@@ -57,6 +60,7 @@ distributed computing with code mobility, coordinated by the Join Calculus.
 
 **Post-MVP enhancements**:
 
+- Data access architecture: `Query a` typeclass with ESQL / ShardPlan / List instances, dynamic index typing (see [data-access.md](data-access.md))
 - Multi-value channels (streaming patterns, fold-as-join, functional-pattern matching)
 - Scheduled execution (persistent tasks)
 - Typeclasses + RawData → Lucene push-down (principled optimization via type system)
@@ -141,8 +145,8 @@ Tree-walking interpreter and end-to-end pipeline integration.
 | Tree-walking evaluator (de Bruijn environment machine) | :white_check_mark: |
 | `PiescriptResponse` (expression result + ESQL query wrapper) | :white_check_mark: |
 | Dual-dispatch transport action (query passthrough + expression pipeline) | :white_check_mark: |
-| Evaluator unit tests (50 tests) | :white_check_mark: |
-| Integration tests (expression eval + query passthrough, 12 tests) | :white_check_mark: |
+| Evaluator unit tests (115 tests) | :white_check_mark: |
+| Integration tests (expression eval + query passthrough, 22 single-node + 10 multi-node) | :white_check_mark: |
 | Dev endpoint with eval stage | :white_check_mark: |
 | Deferred elaborator tests (occurs check, cross-type arithmetic, lambda mismatch) | :white_check_mark: |
 
@@ -198,7 +202,7 @@ Dev endpoint now exposes `core_raw`, `constraints`, and `zonker` for debugging.
 | `Evaluator`: handle `CoreTypeAbs`/`CoreTypeApp` (erase at runtime) | :white_check_mark: |
 | `CorePrinter`: raw IR printer, constraint printer, zonker printer | :white_check_mark: |
 | Dev endpoint: `core_raw`, `constraints`, `zonker` fields | :white_check_mark: |
-| Update all tests (332 passing) | :white_check_mark: |
+| Update all tests (545 unit + 32 IT passing) | :white_check_mark: |
 
 **Remaining tech debt**:
 - `resolveDeep` still used by `CorePrinter` — replace with env-based Rigid resolution
@@ -237,7 +241,7 @@ or when downstream work requires them.
 | Bidirectional checking mode partially implemented | D-036 | Elaborator has `elaborate` (synthesis) and `check` modes, but polytype ascription at expression level does not work correctly (see D-038). |
 | `MonoType` cannot represent polytypes (`∀a. τ`) | D-038 | `CoreTypeAbs.type()` returns body monotype with bare rigids. Fix: rename `MonoType` → `Type`, add `Forall` variant. Related tests are `@AwaitsFix`. |
 | Pattern matching deferred (Phase 1e) | D-010, D-029 | `match` expressions, exhaustiveness checking, `if/then/else` as sugar — all deferred. Not blocking Blocks A+. |
-| Integer-only arithmetic | D-020 | `Long` and `Double` literals exist but cannot participate in arithmetic. Requires coercion rules or type classes. |
+| ~~Integer-only arithmetic~~ | D-020 | :white_check_mark: **Resolved** — all numbers unified as `Double`. Integer/Long literals elaborate to `DoubleLit`, arithmetic and comparisons operate on doubles. ESQL numeric fields widened to `DoubleVal` at the boundary. |
 | Null semantics unsound | D-007 | `Null` unifies with any type. Proper `Option` type requires ADTs (Phase 1e+). |
 | `KeywordVal` uses `String`, not `BytesRef` | D-026 | Reverse conversion needed when piescript values flow into ESQL query parameters (Phase 2+). |
 | Double `EsqlBodyParser.parse()` call | T2.6 | Index pattern extracted once in `IndexResolutionPrePass.collectQueries()` and again in `Queries.query()`. Consequence of opaque `ESQL_BODY` token approach. Goes away when ANTLR grammar structurally captures the `FROM` clause. |
@@ -382,9 +386,9 @@ code anywhere.
 
 ---
 
-## Block C — Cross-Node Code Execution (`send` + `spawn!`) :construction:
+## Block C — Cross-Node Code Execution (`send` + `spawn!`) :white_check_mark:
 
-> **Revised**: 2026-03-17. Sub-blocks C.1–C.3 complete. See D-045, D-046, D-047.
+> **Revised**: 2026-03-19. All sub-blocks C.1–C.5 complete. See D-045, D-046, D-047.
 
 The core distributed computing story. Ship a closure to a remote node, get a result back.
 
@@ -396,7 +400,7 @@ The core distributed computing story. Ship a closure to a remote node, get a res
   transport (even local). Fire-and-forget: returns `Null` immediately (D-047).
 - Closure serialization — full-fidelity `ValueSerialization`, `CoreExprSerialization`,
   `TypeSerialization` with recursive `ClosureVal` (body + env) and `BuiltinVal` (name + arity +
-  partial args) support. 47 round-trip tests.
+  partial args) support. 54 round-trip tests.
 - Channel registry — `ConcurrentHashMap<String, ActionListener<Value>>` per node. Singleton
   shared across transport actions via Guice injection.
 - Inbox — well-known `"inbox"` channel on every node. Receives closures, evaluates them
@@ -425,14 +429,16 @@ The core distributed computing story. Ship a closure to a remote node, get a res
 | `Value` serialization (`ValueSerialization` — all 11 variants) | :white_check_mark: |
 | `CoreExpr` serialization (`CoreExprSerialization` — all 16 variants) | :white_check_mark: |
 | `MonoType`/`RowType`/`LitVal`/`Op`/`Kind` serialization (`TypeSerialization`) | :white_check_mark: |
-| Serialization round-trip tests (47 tests) | :white_check_mark: |
+| Serialization round-trip tests (54 tests) | :white_check_mark: |
 | Transport handler: `PiescriptSendAction` + `TransportPiescriptSendAction` | :white_check_mark: |
 | Inbox: fire-and-forget closure evaluation on target node (D-047) | :white_check_mark: |
 | Remote send routing in `Evaluator` (local vs remote dispatch) | :white_check_mark: |
 | `when` locality check — reject remote channels | :white_check_mark: |
 | Inbox field in topology node records (`EvalTopology` + `Prelude`) | :white_check_mark: |
 | Builder DSL for `CoreExpr`/`Value`/`MonoType` (`Exprs`, `Values`, `Types`) | :white_check_mark: |
-| Multi-node integration tests (ping/pong, channel passing, errors) | :memo: |
+| Multi-node integration tests (10 tests: topology, local/remote inbox, fan-out, round-trip, math-on-remote) | :white_check_mark: |
+
+**Ref**: [Block C.4/C.5, numeric unification, math builtins](c7b160cb-0062-4a7e-a930-c0ec2437d7ee)
 
 ---
 
@@ -568,6 +574,51 @@ Compile piescript lambdas into ESQL expression strings (`filter pred` → `WHERE
 `EVAL`). Still useful as an optimization for the `query \`ESQL\`` path, but no longer on the
 critical path. Significant compiler work (closure conversion, lambda lifting, mobility analysis)
 for limited scope (only works with ESQL, not with piescript's own `scan`).
+
+---
+
+## Deferred: Data Access Architecture (`Query a` Typeclass) :thought_balloon:
+
+> Exploratory. See [data-access.md](data-access.md) for the full design document.
+
+The data access story unifies around a **`Query` typeclass**: filter, project, join, group, and
+aggregate are typeclass methods, and the different data access backends (ESQL, shard-local Lucene,
+in-memory lists) are instances. The user writes one query surface (comprehensions or combinators);
+the instance determines how it executes.
+
+| Instance | Compiles to | Distribution model |
+|----------|------------|-------------------|
+| `Query ESQL` | ESQL query string | ESQL decides (declarative) |
+| `Query ShardPlan` | Shard-local Lucene plan | User-controlled (inside shipped closures) |
+| `Query List` | In-memory iteration | Already materialized |
+
+Below the typeclass: the **physical layer** (`LuceneM` / `open`/`consume`/`read`) for programs
+that interleave data access with coordination logic — the escape hatch when the `Query` interface
+isn't enough.
+
+This subsumes the earlier "comprehensions + dynamic index typing" discussion. Block D's Layer 3
+(`ShardPlan`) IS `Query ShardPlan`. The typeclass-driven push-down IS the instance selection
+mechanism. Comprehensions are the surface syntax for `Query`.
+
+### Key prerequisites
+
+| Prerequisite | What it enables |
+|-------------|----------------|
+| Typeclasses in the language | `Query` typeclass + instances; instance selection; `Filterable`, `Groupable`, etc. |
+| Comprehension or combinator syntax | Uniform query surface that elaborates to typeclass method calls |
+| `Dynamic` type + GADT narrowing | Type-safe dynamic index access (see [data-access.md § Dynamic Index Names](data-access.md)) |
+| Block D vertical slice | Physical layer primitives that `LuceneM` / `ShardPlan` compile to |
+| T-LINQ normalization | Formal guarantee of which expressions compile to which backends |
+
+### Relation to other work
+
+- **Block D Layer 3** = `Query ShardPlan` instance (same concept, now unified)
+- **Typeclass-driven push-down** = instance selection mechanism
+- **Opaque `query \`ESQL\``** remains as escape hatch for ESQL features the typeclass can't express
+- **CALM theorem** determines which operations distribute without coordination
+
+See [data-access.md](data-access.md) for comparable systems analysis, use cases, open questions,
+and the full architectural diagram.
 
 ---
 

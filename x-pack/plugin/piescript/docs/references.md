@@ -289,6 +289,147 @@ of partial evaluation is a tree of coordination effects. Push-down compilation (
 homomorphic combinators into ESQL plans. Non-homomorphic operations (stateful folds, operations
 with data dependencies between elements) remain at the piescript level.
 
+## Language-Integrated Query and Comprehensions
+
+The formal foundations for embedding query expressions in a typed functional host language —
+replacing opaque query strings with typed, normalizable, compilable expressions. Directly relevant
+to piescript's query language evolution: replacing the opaque `query \`ESQL\`` syntax with
+piescript-native comprehensions or combinators. See
+[data-access.md](data-access.md) for the unified `Query a` typeclass architecture.
+
+### Cheney, Lindley, Wadler — *A Practical Theory of Language-Integrated Query* (ICFP, 2013)
+
+The most directly applicable paper for piescript's query surface. Shows how to embed query
+expressions in a typed functional language (with HM inference), represent them as quotations
+(data), normalize them via evaluation, and compile them to SQL. The key result: if the query
+sublanguage is restricted to certain forms (no higher-order functions in predicates, no side
+effects), normalization produces flat queries that map directly to the backend — a formal
+guarantee, not a heuristic. Tells you exactly which piescript expressions can be pushed down to
+ESQL or Lucene and which must materialize.
+
+- [PDF (Edinburgh)](https://homepages.inf.ed.ac.uk/slindley/papers/practical-theory-of-linq.pdf)
+- [ACM DL](https://dl.acm.org/doi/10.1145/2500365.2500586)
+
+### Wadler — *Comprehending Monads* (Mathematical Structures in Computer Science, 1992)
+
+Shows that list comprehensions generalize to any monad, and that SQL's `SELECT-FROM-WHERE` is a
+monad comprehension over the "set monad." Establishes the formal basis for why `map`/`filter`/
+`reduce` are the right query primitives — they are the monadic operations specialized to
+collections.
+
+- [PDF](https://ncatlab.org/nlab/files/WadlerMonads.pdf)
+
+### Buneman, Libkin, Suciu, Tannen, Wong — *Comprehension Syntax* (DBPL, 1994)
+
+Extends Wadler's monadic comprehensions to **bulk types** (sets, bags, lists) with a uniform
+comprehension syntax. Proves that comprehension-based query languages have the same expressive
+power as the nested relational algebra. Relevant to piescript because `List` is one bulk type; a
+future `Set` or `Bag` backed by Lucene indices would be another — the comprehension framework
+shows they share the same query language.
+
+- [Springer](https://link.springer.com/chapter/10.1007/BFb0014655)
+
+### Cheney, Lindley, Wadler — *Query Shredding: Efficient Relational Evaluation of Queries over Nested Data* (SIGMOD, 2014)
+
+Shows how to compile *nested* queries (queries returning records of lists of records) to flat SQL
+via "shredding." Relevant because piescript naturally produces nested results (records with list
+fields), and the optimizer would want to push those computations down rather than materializing
+intermediate nested structures.
+
+- [ACM DL](https://dl.acm.org/doi/10.1145/2588555.2612186)
+
+### Elliott — *Compiling to Categories* (ICFP, 2017)
+
+A Haskell program can be systematically reinterpreted in any **cartesian closed category** by
+replacing function abstraction, application, and composition with their categorical counterparts.
+The same program, compiled to different categories, produces different things: a circuit, a GPU
+kernel, a symbolic derivative. This formalizes piescript's typeclass-driven push-down pattern: the
+same piescript expression (`filter pred data`), interpreted in the "Lucene category," produces a
+Lucene query; in the "ESQL category," it produces an ESQL string; in the "List category," it
+produces iteration.
+
+- [PDF](http://conal.net/papers/compiling-to-categories/compiling-to-categories.pdf)
+- [ACM DL](https://dl.acm.org/doi/10.1145/3136502)
+
+### Fegaras & Maier — *Optimizing Object Queries Using an Effective Calculus* (ACM TODS, 2000)
+
+Defines **monoid comprehensions** as a uniform intermediate representation for queries over
+different collection types (sets, bags, lists, arrays). The optimizer normalizes monoid
+comprehension expressions and then specializes them based on the target collection. Formally what
+piescript's typeclass approach does: normalize the expression, then specialize via typeclass
+instance.
+
+- [ACM DL](https://dl.acm.org/doi/10.1145/357775.357783)
+
+## Distributed Data Management and Consistency
+
+Formal foundations for distributed data access, data placement, and the consistency/coordination
+trade-off. Relevant to piescript's explicit distributed execution model: which operations can be
+pushed to data nodes without coordination, and how to reason about distributed data access.
+
+### Hellerstein — *The Declarative Imperative: Experiences and Conjectures in Distributed Logic* (SIGMOD, 2010)
+
+The Dedalus/Bloom vision: distributed programming should be declarative, with formal foundations in
+logic. The framing — declarative specifications of distributed computation with explicit data
+placement — parallels piescript's position between a query language and a coordination language.
+
+- [ACM DL](https://dl.acm.org/doi/10.1145/1807167.1807184)
+
+### Alvaro, Conway, Hellerstein, Marczak — *Consistency Analysis in Bloom: A CALM and Collected Approach* (CIDR, 2011)
+
+The **CALM theorem** (Consistency As Logical Monotonicity): monotone computations (adding more input
+data never retracts previous output) can be safely distributed without coordination. Non-monotone
+operations (aggregation with negation, `reduce` with non-commutative combiners) require
+synchronization. Directly relevant to piescript: `map` and `filter` are monotone — safe to push to
+any shard. Aggregation is non-monotone — requires a coordination point. CALM provides the formal
+line.
+
+- [PDF](http://www.vldb.org/pvldb/vol3/pp1-alvaro.pdf)
+- [Bloom language](http://bloom-lang.net/)
+
+### Abiteboul, Bourhis, Miklau — *WebdamLog* (multiple papers, 2011–2015)
+
+One of very few systems that treats **data placement** as a first-class concern in a language with
+formal semantics. Location-aware Datalog extension with explicit delegation and provenance.
+Piescript's `topology` + `send` + `scan` pattern — "here is where data lives, ship code there,
+access it locally" — is the same concern Webdamlog formalizes.
+
+- [WebdamLog project](https://webdamlog.github.io/)
+
+## Data Materialization and Column-Store Architecture
+
+Physical-layer concerns: when and how to materialize data from columnar storage into language
+values. Directly relevant to Block D's interaction with Lucene, where doc values are columnar
+storage and the question is when to construct piescript `RecordVal`s.
+
+### Abadi, Myers, DeWitt, Madden — *Materialization Strategies in a Column-Oriented DBMS* (ICDE, 2007)
+
+Defines **early materialization** (construct tuples at the leaves, pass them up) vs **late
+materialization** (operate on column positions as long as possible, construct tuples only when
+needed). Late materialization is dramatically better for selective queries. Lucene's doc values
+are columnar storage — the same trade-off applies to piescript's `scan`/`read` primitives. Block D's
+`Shard.read ref "*"` (read all fields) is early materialization; the future `RawData` type with
+deferred field access would be late materialization.
+
+- [IEEE](https://ieeexplore.ieee.org/document/4221659)
+
+## GADTs and Type Refinement
+
+Relevant to the dynamic index typing problem: how to narrow an opaque `Dynamic` type to a concrete
+row type via pattern matching on type equality witnesses.
+
+### Vytiniotis, Peyton Jones, Schrijvers, Sulzmann — *OutsideIn(X): Modular Type Inference with Local Assumptions* (JFP, 2011)
+
+The formal treatment of how GADTs interact with HM inference. Pattern matching on a GADT
+constructor introduces local type equality assumptions (implication constraints) into scope,
+refining the type in that branch. Implemented in GHC. Directly relevant to piescript's potential
+`Dynamic` → concrete type narrowing: matching on a validation result that carries a type equality
+witness would refine the type in the success branch without requiring flow-sensitive typing or
+union types.
+
+- [PDF](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/jfp-outsidein.pdf)
+- [JFP](https://www.cambridge.org/core/journals/journal-of-functional-programming/article/outsideinx-modular-type-inference-with-local-assumptions/3E50FF75E65B7C2CAAB7E41B6CE72E5A)
+
 ## BEAM / Erlang / Elixir — Lessons and Differentiation
 
 Erlang/BEAM is the most successful production system for distributed computation with message
@@ -465,6 +606,17 @@ if piescript ever needs finer-grained usage tracking (e.g., "used at most N time
 | Bernardy et al. (Linear Haskell) | Linearity on arrows, backward-compatible, practical (D-018) |
 | Brady (Idris 2 / QTT) | Multiplicity framework {0, 1, ω} for channels and erasure |
 | Orchard et al. (Granule) | Graded modal types for fine-grained resource tracking |
+| Cheney, Lindley, Wadler (T-LINQ) | Language-integrated query: normalization-based compilation of typed query expressions to backend query languages |
+| Wadler (comprehending monads) | Why `map`/`filter`/`reduce` are the right query primitives — monadic operations over collections |
+| Buneman et al. (comprehension syntax) | Uniform query syntax over bulk types (sets, bags, lists) — same language, different collections |
+| Cheney, Lindley, Wadler (query shredding) | Compiling nested queries to flat backend queries — relevant for piescript's nested record results |
+| Elliott (compiling to categories) | Typeclass-driven push-down: same expression compiled to different backends via categorical reinterpretation |
+| Fegaras & Maier (monoid comprehensions) | Uniform query IR over multiple collection types — normalize then specialize by target |
+| Hellerstein (declarative imperative) | Distributed programming with declarative foundations — framing for piescript's position |
+| Alvaro et al. (CALM theorem) | Which operations can be distributed without coordination (monotone) vs which require synchronization |
+| Webdamlog | Distributed data management with explicit data placement — parallels piescript's `topology` + `send` + `scan` |
+| Abadi et al. (materialization strategies) | Early vs late materialization in columnar storage — directly applies to Block D Lucene access |
+| Vytiniotis et al. (OutsideIn(X)) | GADT type refinement: narrowing `Dynamic` to concrete types via pattern matching on type equality witnesses |
 | Berry & Boudol (CHAM) | Future: multiset semantics + maximal parallel firing for generalized `when` patterns |
 | Antoy & Hanus (functional-logic / Curry) | Future: narrowing-based functional patterns as `when` reaction rules |
 | Frühwirth (CHR) | Future: multi-headed rule scheduling over channel message stores |

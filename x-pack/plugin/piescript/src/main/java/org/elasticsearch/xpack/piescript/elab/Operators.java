@@ -19,14 +19,14 @@ import java.util.List;
 /**
  * Binary operator elaboration: arithmetic, comparison, and boolean operators as typed primops.
  *
+ * <p>All numeric types (integer literals, decimal literals, ESQL numeric fields) are unified
+ * as {@code Double}. Arithmetic is {@code Double → Double → Double}, ordering comparison is
+ * {@code Double → Double → Boolean}. No widening or coercion rules are needed.
+ *
  * <p>{@code ==} and {@code !=} are polymorphic (D-049): both operands must share the same type
  * but that type is unconstrained. The evaluator uses {@link Object#equals} on {@code Value}
- * records, which means structural equality for all current value types. This is sound for
- * Integer, Keyword, Boolean, and Null. For ClosureVal, RecordVal, ListVal, and ChannelVal it
- * falls back to Java record/object equality — correct but potentially surprising. Proper
+ * records, which means structural equality for all current value types. Proper
  * semantics (e.g. an {@code Eq} typeclass) are deferred to a future phase.
- *
- * <p>Ordering operators ({@code <}, {@code >}, {@code <=}, {@code >=}) remain Integer-only.
  */
 final class Operators {
 
@@ -53,15 +53,15 @@ final class Operators {
     }
 
     /**
-     * Concrete primop signatures. Arithmetic is {@code Integer → Integer → Integer},
-     * ordering comparison is {@code Integer → Integer → Boolean}, boolean ops are
+     * Concrete primop signatures. Arithmetic is {@code Double → Double → Double},
+     * ordering comparison is {@code Double → Double → Boolean}, boolean ops are
      * {@code Boolean → Boolean → Boolean}. EQ/NEQ are handled inline in {@link #binary}
      * (polymorphic, D-049).
      */
     static PrimSig primOpSignature(Op op) {
         return switch (op) {
-            case ADD, SUB, MUL, DIV, MOD -> new PrimSig(Elaborator.INTEGER, Elaborator.INTEGER);
-            case LT, GT, LTE, GTE -> new PrimSig(Elaborator.INTEGER, Elaborator.BOOLEAN);
+            case ADD, SUB, MUL, DIV, MOD -> new PrimSig(Elaborator.DOUBLE, Elaborator.DOUBLE);
+            case LT, GT, LTE, GTE -> new PrimSig(Elaborator.DOUBLE, Elaborator.BOOLEAN);
             case EQ, NEQ -> throw new IllegalStateException("EQ/NEQ are polymorphic; handled in binary()");
             case AND, OR -> new PrimSig(Elaborator.BOOLEAN, Elaborator.BOOLEAN);
             case NOT, NEG -> throw new IllegalStateException("unary ops should not use binary dispatch");

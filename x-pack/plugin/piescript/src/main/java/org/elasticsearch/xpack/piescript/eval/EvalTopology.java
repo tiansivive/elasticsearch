@@ -131,7 +131,7 @@ final class EvalTopology {
     private static Map<String, Value> buildShardCoreFields(String indexName, ShardRouting shard) {
         var fields = new LinkedHashMap<String, Value>();
         fields.put("index", new Value.KeywordVal(indexName));
-        fields.put("shard_id", new Value.IntegerVal(shard.shardId().id()));
+        fields.put("shard_id", new Value.DoubleVal(shard.shardId().id()));
         fields.put("primary", new Value.BooleanVal(shard.primary()));
         fields.put("state", new Value.KeywordVal(shard.state().name()));
         return fields;

@@ -14,10 +14,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Built-in function application and list processing ({@code map}, {@code filter},
- * {@code reduce}). List element iteration is expressed as a {@link SubscribableListener}
- * chain — each element becomes one step in the chain, and the infrastructure handles
- * both synchronous inline completion and genuinely async suspension. See D-041.
+ * Built-in function application: list processing ({@code map}, {@code filter},
+ * {@code reduce}), math functions ({@code abs}, {@code floor}, {@code sqrt}, etc.),
+ * and cluster topology lookups. List element iteration is expressed as a
+ * {@link SubscribableListener} chain — each element becomes one step in the chain,
+ * and the infrastructure handles both synchronous inline completion and genuinely
+ * async suspension. See D-041.
  *
  * <p>The chain approach allocates O(n) listeners upfront. An iterative while-loop
  * (ThrottledIterator-style) would achieve O(1) outstanding listeners; worth
@@ -58,8 +60,24 @@ final class EvalBuiltins {
                     listener.onResponse(new Value.ListVal(elems.subList(1, elems.size())));
                 }
             }
-            case "length" -> listener.onResponse(new Value.IntegerVal(requireList(args.get(0), name).elements().size()));
+            case "length" -> listener.onResponse(new Value.DoubleVal(requireList(args.get(0), name).elements().size()));
             case "isEmpty" -> listener.onResponse(new Value.BooleanVal(requireList(args.get(0), name).elements().isEmpty()));
+            case "abs" -> listener.onResponse(new Value.DoubleVal(Math.abs(requireDouble(args.get(0), name))));
+            case "floor" -> listener.onResponse(new Value.DoubleVal(Math.floor(requireDouble(args.get(0), name))));
+            case "ceil" -> listener.onResponse(new Value.DoubleVal(Math.ceil(requireDouble(args.get(0), name))));
+            case "round" -> listener.onResponse(new Value.DoubleVal(Math.round(requireDouble(args.get(0), name))));
+            case "sqrt" -> listener.onResponse(new Value.DoubleVal(Math.sqrt(requireDouble(args.get(0), name))));
+            case "log" -> listener.onResponse(new Value.DoubleVal(Math.log(requireDouble(args.get(0), name))));
+            case "min" -> listener.onResponse(
+                new Value.DoubleVal(Math.min(requireDouble(args.get(0), name), requireDouble(args.get(1), name)))
+            );
+            case "max" -> listener.onResponse(
+                new Value.DoubleVal(Math.max(requireDouble(args.get(0), name), requireDouble(args.get(1), name)))
+            );
+            case "pow" -> listener.onResponse(
+                new Value.DoubleVal(Math.pow(requireDouble(args.get(0), name), requireDouble(args.get(1), name)))
+            );
+            case "toInt" -> listener.onResponse(new Value.DoubleVal((long) requireDouble(args.get(0), name)));
             case "topology" -> EvalTopology.resolveClusterTopology(eval, listener);
             case "routing" -> EvalTopology.resolveRouting(eval, args.get(0), listener);
             case "shards" -> EvalTopology.resolveRouting(eval, args.get(0), listener.map(v -> {
@@ -114,6 +132,15 @@ final class EvalBuiltins {
         return switch (value) {
             case Value.ListVal s -> s;
             default -> throw new AssertionError("type checker bug: expected List for " + builtinName + ", got " + value);
+        };
+    }
+
+    static double requireDouble(Value value, String builtinName) {
+        return switch (value) {
+            case Value.DoubleVal v -> v.value();
+            case Value.IntegerVal v -> (double) v.value();
+            case Value.LongVal v -> (double) v.value();
+            default -> throw new AssertionError("type checker bug: expected Double for " + builtinName + ", got " + value);
         };
     }
 }

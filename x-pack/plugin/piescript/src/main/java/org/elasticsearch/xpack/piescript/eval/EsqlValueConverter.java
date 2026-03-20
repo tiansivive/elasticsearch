@@ -69,8 +69,8 @@ public final class EsqlValueConverter {
      */
     static Value convertCell(Object cell) {
         if (cell == null) return new Value.NullVal();
-        if (cell instanceof Integer v) return new Value.IntegerVal(v);
-        if (cell instanceof Long v) return new Value.LongVal(v);
+        if (cell instanceof Integer v) return new Value.DoubleVal(v);
+        if (cell instanceof Long v) return new Value.DoubleVal(v);
         if (cell instanceof Double v) return new Value.DoubleVal(v);
         if (cell instanceof Boolean v) return new Value.BooleanVal(v);
         if (cell instanceof String v) return new Value.KeywordVal(v);

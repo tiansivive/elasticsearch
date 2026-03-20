@@ -46,7 +46,6 @@ import java.util.Map;
  * <p>Current limitations:
  * <ul>
  *   <li>No if/then/else — deferred to Phase 1e (pattern matching).</li>
- *   <li>No numeric widening/coercion — primops have fixed signatures per concrete type.</li>
  * </ul>
  */
 public final class Elaborator {
@@ -212,8 +211,8 @@ public final class Elaborator {
                     emitConstraint(operand.type(), BOOLEAN, s);
                     yield new CorePrimOp(s.source, Op.NOT, List.of(operand), BOOLEAN);
                 } else {
-                    emitConstraint(operand.type(), INTEGER, s);
-                    yield new CorePrimOp(s.source, Op.NEG, List.of(operand), INTEGER);
+                    emitConstraint(operand.type(), DOUBLE, s);
+                    yield new CorePrimOp(s.source, Op.NEG, List.of(operand), DOUBLE);
                 }
             }
 
@@ -304,13 +303,10 @@ public final class Elaborator {
         var src = source(lit);
         var text = lit.INTEGER_LITERAL().getText();
         try {
-            long wide = Long.parseLong(text);
-            if (Integer.MIN_VALUE <= wide && wide <= Integer.MAX_VALUE) {
-                return new CoreLit(src.source, new LitVal.IntegerLit((int) wide), INTEGER);
-            }
-            return new CoreLit(src.source, new LitVal.LongLit(wide), LONG);
+            double value = Double.parseDouble(text);
+            return new CoreLit(src.source, new LitVal.DoubleLit(value), DOUBLE);
         } catch (NumberFormatException e) {
-            throw error(src, "integer literal out of range: " + text);
+            throw error(src, "numeric literal out of range: " + text);
         }
     }
 

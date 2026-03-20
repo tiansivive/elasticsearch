@@ -179,7 +179,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
         switch (val) {
             case Value.IntegerVal v -> builder.field(fieldName, v.value());
             case Value.LongVal v -> builder.field(fieldName, v.value());
-            case Value.DoubleVal v -> builder.field(fieldName, v.value());
+            case Value.DoubleVal v -> writeDoubleField(builder, fieldName, v.value());
             case Value.KeywordVal v -> builder.field(fieldName, v.value());
             case Value.BooleanVal v -> builder.field(fieldName, v.value());
             case Value.NullVal ignored -> builder.nullField(fieldName);
@@ -207,7 +207,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
         switch (val) {
             case Value.IntegerVal v -> builder.value(v.value());
             case Value.LongVal v -> builder.value(v.value());
-            case Value.DoubleVal v -> builder.value(v.value());
+            case Value.DoubleVal v -> writeDoubleValue(builder, v.value());
             case Value.KeywordVal v -> builder.value(v.value());
             case Value.BooleanVal v -> builder.value(v.value());
             case Value.NullVal ignored -> builder.nullValue();
@@ -228,6 +228,26 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.ClosureVal ignored -> builder.value("<function>");
             case Value.BuiltinVal b -> builder.value("<builtin:" + b.name() + ">");
             case Value.ChannelVal ignored -> builder.value("<channel>");
+        }
+    }
+
+    /**
+     * Write a double as a named field. Whole-number doubles (e.g. 3.0) are written
+     * as longs for cleaner JSON output ({@code "x": 3} instead of {@code "x": 3.0}).
+     */
+    private static void writeDoubleField(XContentBuilder builder, String fieldName, double v) throws IOException {
+        if (v == Math.floor(v) && Double.isFinite(v) && Math.abs(v) <= Long.MAX_VALUE) {
+            builder.field(fieldName, (long) v);
+        } else {
+            builder.field(fieldName, v);
+        }
+    }
+
+    private static void writeDoubleValue(XContentBuilder builder, double v) throws IOException {
+        if (v == Math.floor(v) && Double.isFinite(v) && Math.abs(v) <= Long.MAX_VALUE) {
+            builder.value((long) v);
+        } else {
+            builder.value(v);
         }
     }
 
