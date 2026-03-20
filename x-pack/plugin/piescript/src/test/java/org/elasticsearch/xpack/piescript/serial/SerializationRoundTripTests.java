@@ -76,6 +76,7 @@ import static org.elasticsearch.xpack.piescript.types.Types.channel;
 import static org.elasticsearch.xpack.piescript.types.Types.list;
 import static org.elasticsearch.xpack.piescript.types.Types.record;
 import static org.elasticsearch.xpack.piescript.types.Types.rigid;
+import static org.hamcrest.Matchers.containsString;
 
 /**
  * Round-trip serialization tests for all piescript wire types:
@@ -143,6 +144,10 @@ public class SerializationRoundTripTests extends ESTestCase {
 
     public void testLitValNull() throws IOException {
         assertLitValRoundTrip(new LitVal.NullLit());
+    }
+
+    public void testLitValIndex() throws IOException {
+        assertLitValRoundTrip(new LitVal.IndexLit("logs-test", Map.of("status", "integer", "message", "keyword")));
     }
 
     // ──── Op ────
@@ -334,6 +339,26 @@ public class SerializationRoundTripTests extends ESTestCase {
         assertValueRoundTrip(closure(var(0, "ch", channel(INTEGER)), channelVal("node-2", "ch-99")));
     }
 
+    public void testValueIndex() throws IOException {
+        assertValueRoundTrip(new Value.IndexVal("logs-test", "abc-123-uuid", Map.of("status", "integer", "message", "keyword")));
+    }
+
+    public void testValueSearcherNotSerializable() {
+        var ex = expectThrows(IOException.class, () -> {
+            var out = new BytesStreamOutput();
+            ValueSerialization.writeValue(out, new Value.SearcherVal(null));
+        });
+        assertThat(ex.getMessage(), containsString("not serializable"));
+    }
+
+    public void testValueDocRefNotSerializable() {
+        var ex = expectThrows(IOException.class, () -> {
+            var out = new BytesStreamOutput();
+            ValueSerialization.writeValue(out, new Value.DocRefVal(null, 0, null));
+        });
+        assertThat(ex.getMessage(), containsString("not serializable"));
+    }
+
     // ──── Helpers ────
 
     private void assertMonoTypeRoundTrip(MonoType type) throws IOException {
@@ -523,6 +548,14 @@ public class SerializationRoundTripTests extends ESTestCase {
                 assertEquals(e.nodeId(), a.nodeId());
                 assertEquals(e.channelId(), a.channelId());
             }
+            case Value.IndexVal e -> {
+                var a = (Value.IndexVal) actual;
+                assertEquals(e.name(), a.name());
+                assertEquals(e.uuid(), a.uuid());
+                assertEquals(e.fieldTypes(), a.fieldTypes());
+            }
+            case Value.SearcherVal ignored -> fail("SearcherVal should not be serialized");
+            case Value.DocRefVal ignored -> fail("DocRefVal should not be serialized");
         }
     }
 }

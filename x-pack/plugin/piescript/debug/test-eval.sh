@@ -76,22 +76,40 @@ echo ""
 echo "=== index routing (shards + nodes) ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "Index.routing \"piescript-test\""}' | jq
+  -d '{"program": "use \"piescript-test\" as idx; Index.routing idx"}' | jq
 
 echo ""
 echo "=== shards convenience ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "Index.shards \"piescript-test\""}' | jq
+  -d '{"program": "use \"piescript-test\" as idx; Index.shards idx"}' | jq
 
 echo ""
 echo "=== nodes convenience ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "Index.nodes \"piescript-test\""}' | jq
+  -d '{"program": "use \"piescript-test\" as idx; Index.nodes idx"}' | jq
 
 echo ""
 echo "=== send closure to local inbox via topology.local ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
   -d '{"program": "let topo = Cluster.topology \"cluster\" in let ch = spawn! in let u = send topo.local.inbox (fn info -> send ch info.id) in when (ch result) -> result"}' | jq
+
+echo ""
+echo "=== use declaration (Index r type) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; idx"}' | jq
+
+echo ""
+echo "=== Shard.open + Shard.consume + Shard.read (full local-data pipeline) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let ch = Shard.open idx shard { match_all: true }; when (ch searcher) -> let docs = Shard.consume 10.0 searcher; List.map (fn ref -> Shard.read ref) docs"}' | jq
+
+echo ""
+echo "=== Shard.consume exhausted (second consume returns empty) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let ch = Shard.open idx shard { match_all: true }; when (ch searcher) -> let first = Shard.consume 100.0 searcher; let second = Shard.consume 100.0 searcher; { first_count: List.length first, second_count: List.length second }"}' | jq

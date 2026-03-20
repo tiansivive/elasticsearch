@@ -200,6 +200,9 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.ClosureVal ignored -> builder.field(fieldName, "<function>");
             case Value.BuiltinVal b -> builder.field(fieldName, "<builtin:" + b.name() + ">");
             case Value.ChannelVal ignored -> builder.field(fieldName, "<channel>");
+            case Value.IndexVal v -> builder.field(fieldName, "<index:" + v.name() + ">");
+            case Value.SearcherVal ignored -> builder.field(fieldName, "<searcher>");
+            case Value.DocRefVal ignored -> builder.field(fieldName, "<docref>");
         }
     }
 
@@ -228,6 +231,9 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.ClosureVal ignored -> builder.value("<function>");
             case Value.BuiltinVal b -> builder.value("<builtin:" + b.name() + ">");
             case Value.ChannelVal ignored -> builder.value("<channel>");
+            case Value.IndexVal v -> builder.value("<index:" + v.name() + ">");
+            case Value.SearcherVal ignored -> builder.value("<searcher>");
+            case Value.DocRefVal ignored -> builder.value("<docref>");
         }
     }
 

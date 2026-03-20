@@ -7,6 +7,8 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
+import org.elasticsearch.xpack.esql.core.type.EsField;
+import org.elasticsearch.xpack.esql.core.type.InvalidMappedField;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
@@ -16,9 +18,12 @@ import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
+import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.MonoType;
+import org.elasticsearch.xpack.piescript.types.RowType;
 import org.elasticsearch.xpack.piescript.types.TypeScheme;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -45,6 +50,24 @@ final class Let {
         }
 
         var binding = bindings.get(index);
+        return switch (binding) {
+            case PiescriptAntlrParser.TopLetContext topLet -> topLet(elab, topLet, bindings, index, finalExpr, ctx);
+            case PiescriptAntlrParser.TopUseContext topUse -> topUse(elab, topUse, bindings, index, finalExpr, ctx);
+            default -> {
+                var src = Elaborator.source(binding);
+                throw new ElaborationException(src.line(), src.column(), "unexpected top-level binding form");
+            }
+        };
+    }
+
+    private static CoreExpr topLet(
+        Elaborator elab,
+        PiescriptAntlrParser.TopLetContext binding,
+        List<PiescriptAntlrParser.TopBindingContext> bindings,
+        int index,
+        PiescriptAntlrParser.ExprContext finalExpr,
+        ElaborationContext ctx
+    ) {
         var src = Elaborator.source(binding);
         var name = binding.ident().getText();
         var letCtx = ctx.enterBindingLevel();
@@ -72,6 +95,62 @@ final class Let {
         var body = topBindings(elab, bindings, index + 1, finalExpr, bodyCtx);
 
         return new CoreLet(src.source(), name, wrappedRhs.type(), wrappedRhs, body, body.type());
+    }
+
+    /**
+     * Elaborate {@code use "index-name" as idx} into a {@link CoreLet} binding an
+     * {@link LitVal.IndexLit} with type {@code Index r} where {@code r} is the
+     * concrete row type from the resolved field caps.
+     *
+     * @throws ElaborationException if no resolved mapping was found (pre-pass not run
+     *                              or index does not exist)
+     */
+    private static CoreExpr topUse(
+        Elaborator elab,
+        PiescriptAntlrParser.TopUseContext binding,
+        List<PiescriptAntlrParser.TopBindingContext> bindings,
+        int index,
+        PiescriptAntlrParser.ExprContext finalExpr,
+        ElaborationContext ctx
+    ) {
+        var src = Elaborator.source(binding);
+        var name = binding.LOWER_IDENT().getText();
+        var rawIndexName = Elaborator.unquote(binding.QUOTED_STRING().getText());
+
+        var mapping = elab.state.resolvedMapping(rawIndexName);
+        if (mapping == null) {
+            throw Elaborator.error(src, "no resolved mapping for index [" + rawIndexName + "]");
+        }
+
+        var rowFields = new LinkedHashMap<String, MonoType>();
+        var fieldTypes = new LinkedHashMap<String, String>();
+        for (var entry : mapping.fieldMap().entrySet()) {
+            String fieldName = entry.getKey();
+            EsField esField = entry.getValue();
+            if (fieldName.startsWith("_")) {
+                continue;
+            }
+            if (esField instanceof InvalidMappedField conflict) {
+                rowFields.put(fieldName, Elaborator.UNSUPPORTED);
+                elab.state.addDiagnostic("field [" + fieldName + "] in [" + rawIndexName + "]: " + conflict.errorMessage());
+                continue;
+            }
+            MonoType piescriptType = DataTypeMapping.toPiescriptType(esField.getDataType());
+            rowFields.put(fieldName, piescriptType);
+            fieldTypes.put(fieldName, esField.getDataType().name().toLowerCase());
+        }
+
+        var rowType = RowType.closed(rowFields);
+        var indexType = new MonoType.AppType(Elaborator.INDEX, new MonoType.RecordType(rowType));
+
+        var litVal = new LitVal.IndexLit(rawIndexName, fieldTypes);
+        var rhs = new CoreLit(src.source(), litVal, indexType);
+
+        var scheme = TypeScheme.mono(indexType);
+        var bodyCtx = ctx.bind(name, scheme);
+        var body = topBindings(elab, bindings, index + 1, finalExpr, bodyCtx);
+
+        return new CoreLet(src.source(), name, indexType, rhs, body, body.type());
     }
 
     static CoreExpr let(Elaborator elab, PiescriptAntlrParser.LetExprContext let, ElaborationContext ctx) {

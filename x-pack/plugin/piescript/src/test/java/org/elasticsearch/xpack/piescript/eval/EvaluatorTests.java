@@ -908,6 +908,14 @@ public class EvaluatorTests extends ESTestCase {
     }
 
     private static EvalDependencies testDeps(java.util.concurrent.Executor executor) {
-        return new EvalDependencies(null, executor, null, transportService, new ChannelRegistry(), transportService.getLocalNode().getId());
+        return new EvalDependencies(
+            null,
+            executor,
+            null,
+            transportService,
+            new ChannelRegistry(),
+            transportService.getLocalNode().getId(),
+            null
+        );
     }
 }

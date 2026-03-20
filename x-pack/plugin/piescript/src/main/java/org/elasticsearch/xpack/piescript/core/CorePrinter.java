@@ -214,6 +214,11 @@ public final class CorePrinter {
             case LitVal.KeywordLit(var v) -> sb.append('"').append(v.utf8ToString()).append('"');
             case LitVal.BooleanLit(var v) -> sb.append(v);
             case LitVal.NullLit() -> sb.append("null");
+            case LitVal.IndexLit(var name, var fields) -> sb.append("Index(\"")
+                .append(name)
+                .append("\", ")
+                .append(fields.size())
+                .append(" fields)");
         }
     }
 

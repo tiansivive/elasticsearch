@@ -16,6 +16,7 @@ import org.elasticsearch.test.TestClustersThreadFilter;
 import org.elasticsearch.test.cluster.ElasticsearchCluster;
 import org.elasticsearch.test.cluster.local.distribution.DistributionType;
 import org.elasticsearch.test.rest.ESRestTestCase;
+import org.junit.Before;
 import org.junit.ClassRule;
 
 import java.io.IOException;
@@ -51,6 +52,37 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
     @Override
     protected String getTestRestCluster() {
         return cluster.getHttpAddresses();
+    }
+
+    @Before
+    public void setupIndex() throws IOException {
+        if (indexExists("piescript-test")) {
+            return;
+        }
+        Request createIndex = new Request("PUT", "/piescript-test");
+        createIndex.setJsonEntity("""
+            {
+              "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+              "mappings": {
+                "properties": {
+                  "name":   {"type": "keyword"},
+                  "age":    {"type": "integer"},
+                  "active": {"type": "boolean"}
+                }
+              }
+            }
+            """);
+        assertOK(adminClient().performRequest(createIndex));
+
+        Request bulk = new Request("POST", "/piescript-test/_bulk");
+        bulk.addParameter("refresh", "true");
+        bulk.setJsonEntity("""
+            {"index":{}}
+            {"name":"alice","age":30,"active":true}
+            {"index":{}}
+            {"name":"bob","age":25,"active":false}
+            """);
+        assertOK(adminClient().performRequest(bulk));
     }
 
     // ──── Topology ────
@@ -174,6 +206,24 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
         assertThat(result.get("s"), equalTo(4));
         assertThat(result.get("a"), equalTo(42));
         assertThat(result.get("p"), equalTo(1024));
+    }
+
+    // ──── Non-serializable value over the wire (Block D negative test) ────
+
+    public void testSendSearcherValToRemoteNodeFails() throws IOException {
+        String program = "use \"piescript-test\" as idx; "
+            + "let topo = Cluster.topology \"cluster\" "
+            + "in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) "
+            + "in let shards = Index.shards idx "
+            + "in let shard = List.head shards "
+            + "in let ch = Shard.open idx shard { match_all: true } "
+            + "in when (ch searcher) -> "
+            + "  let result_ch = spawn! "
+            + "  in let u = send remote.inbox (fn info -> send result_ch searcher) "
+            + "  in when (result_ch r) -> r";
+        Request request = piescriptRequest(program);
+        var e = expectThrows(org.elasticsearch.client.ResponseException.class, () -> client().performRequest(request));
+        assertThat(e.getResponse().getStatusLine().getStatusCode(), org.hamcrest.Matchers.greaterThanOrEqualTo(400));
     }
 
     // ──── Helpers ────

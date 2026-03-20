@@ -3,26 +3,27 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-19 (Block C.5: Multi-node integration tests. 10 tests in
-> `PiescriptMultiNodeIT` covering topology, local/remote inbox, fan-out, remote computation,
-> round-trip transform, prove-remote, and math-on-remote. Block C is now complete.)
+> **Last updated**: 2026-03-20 (Block D: Local data access. `use` declarations, `Index r` type,
+> `Shard.open`/`Shard.consume`/`Shard.read` primitives, qualified builtin names, `DocRef r` type
+> threading, negative serialization tests for non-serializable values. Block D is now complete.)
 
 ## Summary
 
 **Phase 0 is complete. Phase 1 (sub-phases 1a–1d + D-035) is complete. Phase 2 (Index Resolution +
 Concrete-Row Constraints + Eager Evaluation) is complete. Block A (spawn + single-value when) is
 complete. Block B (ES topology, `List` type rename, list utilities) is complete. Block C
-sub-blocks C.1–C.5 (cross-node code execution + builder DSL + multi-node integration tests) are complete.** Piescript can now
-create bare channels (`spawn!`), send values to local and remote channels (`send`), serialize
-closures and all value/type variants over the wire, route messages to remote nodes via a transport
-handler (`piescript/send`), and evaluate closures on remote nodes via the inbox mechanism. The
-inbox handler is fire-and-forget (D-047): the transport response returns immediately; closure
-evaluation runs asynchronously on the target node; evaluation errors are logged locally, never
-propagated back to the sender. The elaborator enforces the value restriction (D-046) to prevent
-unsound polymorphism from `spawn!`. Block C.4 adds `Exprs`, `Values`, and `Types` utility
-classes with static factory methods and type constants for concise IR/value/type construction.
-Block C is fully complete, including multi-node integration tests (C.5) that prove cross-node
-execution end-to-end on a 3-node cluster.
+sub-blocks C.1–C.5 (cross-node code execution + builder DSL + multi-node integration tests) are
+complete. Block D (local data access via `use`, `Shard.open`, `Shard.consume`, `Shard.read`) is
+complete.** Piescript can now access local Lucene data on data nodes via the `use`/`Shard.*`
+primitives. `use "index-name" as idx` declares a typed `Index r` value whose row type `r` is
+resolved from field capabilities at elaboration time. `Shard.open` acquires a `Searcher r` for a
+shard, `Shard.consume` iterates `DocRef r` references, and `Shard.read` reads all doc-value fields
+from a `DocRef r` returning a record of type `r`. Non-serializable types (`SearcherVal`, `DocRefVal`)
+are enforced at the serialization boundary — attempting to send them across the wire fails with an
+`IOException`. Block D also introduces qualified builtin names (`Shard.open`, `Index.routing`,
+`List.map`, `Math.sqrt`, `Cluster.topology`) and the `Index r` type (carrying index name, UUID,
+and field metadata). UUID is resolved at evaluation time from `ClusterService`, keeping Core IR
+cluster-state-free.
 
 **Phase 1e (Pattern Matching) is deferred** — not blocking the MVP-critical path. The execution
 model is the Join Calculus (D-040), with `spawn`/`when`/`send`/channels as coordination primitives.
@@ -46,9 +47,14 @@ for Phase 1 items carried forward.
 | Unified numeric type (`Double`) | All numbers in piescript are `Double` (IEEE 754 64-bit). Integer literals (`42`), decimal literals (`3.14`), and all ESQL numeric field types (`integer`, `long`, `double`, `float`, etc.) map to `Double`. Arithmetic, comparisons, and unary negation all operate on doubles. No numeric widening or coercion needed. `Integer`, `Long` still exist in `Value` for serialization but are widened to `DoubleVal` at the ESQL boundary. Whole-number doubles serialize as integers in JSON for clean output. Resolves D-020. |
 | Math builtins | `abs`, `floor`, `ceil`, `round`, `sqrt`, `log` (`Double → Double`); `min`, `max`, `pow` (`Double → Double → Double`); `toInt` (`Double → Double`, truncates to integer). All backed by `java.lang.Math`. Curried, so partial application works: `let clamp = min 100 in clamp 150`. |
 | Builder DSL (Block C.4) | `Exprs`, `Values`, and `Types` utility classes in `piescript.core`, `piescript.eval`, and `piescript.types` respectively. Static factory methods for concise construction: `lit(42)`, `lam("x", DOUBLE, body)`, `app(fn, arg)`, `rec(field(...))`, `doubleVal(n)`, `keyword(s)`, `record("k", v)`, `arrow(a, b)`, `list(t)`, `channel(t)`. Type inference where possible (e.g., `lam` computes arrow type, `rec` builds record type from fields). Reduces test and production verbosity. |
-| `EvalTopology` (Block B + Block C) | Implements the `topology` builtin. Reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting` → `DiscoveryNode` and converts to typed `RecordVal`/`ListVal` records. Node records include an `inbox` field (`ChannelVal(nodeId, "inbox")`) for sending closures to remote nodes. |
+| `use` declaration (Block D) | `use "index-name" as idx` is a top-level declaration that binds a typed `Index r` value. The row type `r` is resolved from field capabilities via the `IndexResolutionPrePass` at elaboration time. Elaborates to `CoreLet` with `LitVal.IndexLit`. |
+| `Index r` type (Block D) | `Index r` carries index name, UUID, and field metadata. UUID is resolved at evaluation time from `ClusterService` (not stored in Core IR). `r` is the row type derived from field capabilities. `Index.routing`, `Index.shards`, `Index.nodes` all accept `Index r` (not raw strings). |
+| `Shard.open` / `Shard.consume` / `Shard.read` (Block D) | `Shard.open : Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)` acquires a Lucene `IndexSearcher` asynchronously and delivers it via a channel. `Shard.consume : Double → Searcher r → List (DocRef r)` iterates `DocIdSetIterator` for up to N docs (synchronous). `Shard.read : DocRef r → r` reads all doc-value fields from a document reference (synchronous, throws on missing doc values). |
+| `Searcher r` / `DocRef r` types (Block D) | Opaque, non-serializable node-local types. `Searcher r` wraps Lucene `IndexSearcher` + `SearcherState`. `DocRef r` wraps a Lucene doc ID + `SearcherState` reference. Both parameterized by row type `r` for static type safety. Serialization of these types throws `IOException`. |
+| Qualified builtin names (Block D) | All builtins use qualified names: `Shard.open`, `Index.routing`, `List.map`, `Math.sqrt`, `Cluster.topology`, etc. Parser supports dotted identifiers for builtin dispatch. |
+| `EvalTopology` (Block B + Block C) | Implements the `topology` builtin. Reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting` → `DiscoveryNode` and converts to typed `RecordVal`/`ListVal` records. Node records include an `inbox` field (`ChannelVal(nodeId, "inbox")`) for sending closures to remote nodes. Shard records include `uuid` field. |
 | `Channel τ` type + `ChannelVal` (Block A + Block C) | `Channel` is a type constructor (`AppType(TCon("Channel"), tau)`). `ChannelVal(nodeId, channelId)` is a serializable channel reference (D-045). The actual `SubscribableListener<Value>` lives in the per-node `ChannelRegistry`. |
-| Serialization (Block C) | Full-fidelity serialization for all 11 `Value` variants (`ValueSerialization`), all 16 `CoreExpr` variants (`CoreExprSerialization`), and all `MonoType`, `RowType`, `LitVal`, `Op`, `Kind` types (`TypeSerialization`). `ClosureVal` serializes its `CoreExpr` body and `Value[]` environment recursively. `BuiltinVal` serializes name, arity, and partial args. 54 round-trip tests. |
+| Serialization (Block C + Block D) | Full-fidelity serialization for 12 serializable `Value` variants (`ValueSerialization`), all 16 `CoreExpr` variants (`CoreExprSerialization`), and all `MonoType`, `RowType`, `LitVal`, `Op`, `Kind` types (`TypeSerialization`). `ClosureVal` serializes its `CoreExpr` body and `Value[]` environment recursively. `BuiltinVal` serializes name, arity, and partial args. `IndexVal` serializes name, UUID, and field type map. `SearcherVal` and `DocRefVal` explicitly throw `IOException` on serialization attempt. `LitVal.IndexLit` serializes name and field types (no UUID — resolved at eval time). 58 round-trip tests. |
 | Transport layer (Block C) | `PiescriptSendAction` (`indices:data/read/piescript/send`), `PiescriptSendRequest` (channelId + serialized value), `TransportPiescriptSendAction` (handler with inbox and regular channel dispatch). `ChannelRegistry` is a singleton per node, shared across transport actions via Guice injection. |
 | `topology` builtin (Block B) | `topology "index-name"` returns a record with both shard-centric and node-centric views of the cluster topology. Shards include `index`, `shard_id`, `primary`, `state`, and nested `node` record. Nodes include `id`, `name`, `address`, and nested `shards` list. Only STARTED shards are included. Exact index name only (no wildcards). See D-044. |
 | `List` type (Block B, renamed from `Stream`) | `List` is the type constructor for in-memory lists (`TCon("List")`). `ListVal(List<Value>)` is the runtime representation. Renamed from `Stream`/`StreamVal` (D-043) to accurately reflect finite, eager, in-memory semantics. "Stream" reserved for future lazy/Exchange-backed streaming. |
@@ -58,7 +64,7 @@ for Phase 1 items carried forward.
 | Expression evaluation (Phase 1c) | Non-query programs go through parse → elaborate → evaluate pipeline, returning `{"type": "...", "result": ...}` |
 | Request validation | Empty/blank programs rejected with 400 |
 | Security | RBAC authorization via `shouldAuthorizeIndexActionNameOnly()`, operator privileges allowlist |
-| Integration tests | 22 single-node tests (`PiescriptIT`) + 10 multi-node tests (`PiescriptMultiNodeIT`) covering query type-checking, eager evaluation, expression evaluation, topology, list utilities, error handling, and cross-node execution |
+| Integration tests | 26 single-node tests (`PiescriptIT`) + 11 multi-node tests (`PiescriptMultiNodeIT`) covering query type-checking, eager evaluation, expression evaluation, topology, list utilities, error handling, cross-node execution, `use` declarations, shard data access, and non-serializable value wire rejection |
 | Build | Compiles, passes `check`, `spotlessJavaCheck`, `javaRestTest` |
 | ANTLR grammar | Lexer (`PiescriptLexer.g4`) and parser (`PiescriptAntlrParser.g4`) implementing full D1.17 surface syntax plus `SPAWN`, `WHEN`, `AMP` tokens and `SpawnExpr`/`WhenExpr` rules (Block A) |
 | Parser entry point | `PiescriptParser.java` — invokes ANTLR, produces parse tree; `parseToTreeString()` for CST inspection |
@@ -75,13 +81,13 @@ for Phase 1 items carried forward.
 | Type errors (Phase 1b) | `TypeError` sealed interface: `Mismatch`, `InfiniteType`, `FieldMismatch`, `MissingFields` |
 | Unification unit tests (Phase 1b) | `UnifierTests.java` — meta solving, transitive chains, occurs check, null-as-bottom, arrow/record/app structural matching, cross-form mismatch |
 | Elaborator (Phase 1b + D-035 + Phase 2 + Block C) | `Elaborator` in `piescript.elab`: pattern-matching recursive descent over ANTLR CST → Core IR. Bidirectional HM type inference with deferred constraint solving, `generalize` (metas → Rigids in zonker + `CoreTypeAbs`) guarded by **value restriction** (D-046: only syntactic values generalize; side-effecting expressions like `spawn!`, `send`, applications stay monomorphic), `instantiateAndWrap` (parameterized by `Function<MonoType, CoreExpr>` factory — produces `CoreVar` for local bindings, `CoreFree` for module-level free variables), primops as typed functions (Double signatures — D-020 resolved), desugaring (multi-param lambda, pipe, accessor, update sugar, blocks, top-level bindings). Two-tier variable lookup: local de Bruijn bindings then module-level free variables. `Spawns.spawnBang()` elaborates bare `spawn!` (null-body `CoreSpawn`). `Sends.send()` elaborates `send` with channel/value type alignment. |
-| Prelude (Phase 2 + Block B + math builtins) | `Prelude` in `piescript.elab`: defines the module map of built-in function type schemes (`map`, `filter`, `reduce`, `head`, `tail`, `length`, `isEmpty`, `topology`, `routing`, `abs`, `floor`, `ceil`, `round`, `sqrt`, `log`, `min`, `max`, `pow`, `toInt`) and their arities. Type schemes use pre-allocated Rigid IDs (negative, disjoint from `ElaborationState.freshRigid`). Wired into `ElaborationContext.withModule(Prelude.MODULE)` at elaboration start. |
+| Prelude (Phase 2 + Block B + math builtins + Block D) | `Prelude` in `piescript.elab`: defines the module map of built-in function type schemes. All builtins use qualified names: `List.map`, `List.filter`, `List.reduce`, `List.head`, `List.tail`, `List.length`, `List.isEmpty`, `Cluster.topology`, `Index.routing`, `Index.shards`, `Index.nodes`, `Math.abs`, `Math.floor`, `Math.ceil`, `Math.round`, `Math.sqrt`, `Math.log`, `Math.min`, `Math.max`, `Math.pow`, `Math.toInt`, `Shard.open`, `Shard.consume`, `Shard.read`. Type schemes use pre-allocated Rigid IDs (negative, disjoint from `ElaborationState.freshRigid`). Wired into `ElaborationContext.withModule(Prelude.MODULE)` at elaboration start. |
 | Type walker (Phase 1b, reduced by D-035) | `TypeWalker` in `piescript.elab`: `resolveDeep` (used by `CorePrinter` for display and test assertions) and `collectMetas` (used by `Elaborator.generalize`). `walkType`, `generalize`, and `instantiate` were deleted by D-035. |
 | Elaboration exception (Phase 1b) | `ElaborationException`: unchecked, fail-fast, wraps source location + optional `TypeError`. |
 | Elaborator tests (Phase 1b + D-035 + Block A) | `ElaboratorTests.java` — 126 tests covering all Phase 1b/D-035 tests plus `spawn`/`when` type inference (channel type production, unwrapping, multi-binding scenarios, type errors for non-channel `when` bindings). |
-| Runtime values (Phase 1c + Phase 2 + Block A + Block B + Block C) | `Value` sealed interface in `piescript.eval`: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)`, `BooleanVal`, `NullVal`, `RecordVal`, `ListVal(List<Value>)`, `ClosureVal`, `BuiltinVal(name, arity, partialArgs)`, `ChannelVal(nodeId, channelId)`. `ListVal` is the eagerly materialized list representation (renamed from `StreamVal` in Block B — D-043). `BuiltinVal` supports curried partial application. `ChannelVal` is a serializable channel reference (Block C — D-045); the actual `SubscribableListener<Value>` lives in the per-node `ChannelRegistry`. |
+| Runtime values (Phase 1c + Phase 2 + Block A + Block B + Block C + Block D) | `Value` sealed interface in `piescript.eval`: `IntegerVal`, `LongVal`, `DoubleVal`, `KeywordVal(String)`, `BooleanVal`, `NullVal`, `RecordVal`, `ListVal(List<Value>)`, `ClosureVal`, `BuiltinVal(name, arity, partialArgs)`, `ChannelVal(nodeId, channelId)`, `IndexVal(name, uuid, fieldTypes)`, `SearcherVal(SearcherState)`, `DocRefVal(docId, SearcherState)`. `ListVal` is the eagerly materialized list representation (renamed from `StreamVal` in Block B — D-043). `BuiltinVal` supports curried partial application. `ChannelVal` is a serializable channel reference (Block C — D-045). `IndexVal` is serializable (carries index metadata). `SearcherVal` and `DocRefVal` are **non-serializable** — they hold node-local Lucene state. Attempting to serialize them throws `IOException`. |
 | ESQL value converter (Phase 2) | `EsqlValueConverter` in `piescript.eval`: converts `EsqlQueryResponse` rows to `ListVal`. Each row becomes a `RecordVal` (column names → field keys, cell values → field values via `instanceof` dispatch). Handles `Integer`, `Long`, `Double`, `String`, `Boolean`, `null`, multi-value fields (v0: first element only). |
-| Evaluator (Phase 1c + D-035 + Phase 2 + Block A + Block B + Block C) | Uniformly async tree-walking de Bruijn environment machine, split across six classes: `Evaluator` (core dispatch + `CoreExpr` cases), `EvalPrimOps` (arithmetic, comparison, boolean ops), `EvalBuiltins` (list processing — `map`/`filter`/`reduce`/`head`/`tail`/`length`/`isEmpty` via `SubscribableListener` chaining), `EvalCoordination` (`when` evaluation via `PositionalCollector`), `EvalTopology` (`topology` builtin implementation), `EvalDependencies` (bundling `Client`, `Executor`, `ClusterService`, `TransportService`, `ChannelRegistry`, `localNodeId`). `CoreQuery` fires `EsqlQueryAction` asynchronously. `CoreSpawn` registers a `SubscribableListener` in the `ChannelRegistry`, optionally forks body evaluation, returns `ChannelVal(nodeId, channelId)`. `CoreSend` evaluates channel and value, completes the channel in the registry (local dispatch; remote dispatch stubbed for C.3). `CoreWhen` uses positional collector to synchronize channels via registry lookup and extend the de Bruijn environment. |
+| Evaluator (Phase 1c + D-035 + Phase 2 + Block A + Block B + Block C + Block D) | Uniformly async tree-walking de Bruijn environment machine, split across seven classes: `Evaluator` (core dispatch + `CoreExpr` cases), `EvalPrimOps` (arithmetic, comparison, boolean ops), `EvalBuiltins` (list processing — `map`/`filter`/`reduce`/`head`/`tail`/`length`/`isEmpty` via `SubscribableListener` chaining), `EvalCoordination` (`when` evaluation via `PositionalCollector`), `EvalTopology` (`topology` builtin implementation), `EvalShard` (`Shard.open`/`Shard.consume`/`Shard.read` implementations), `EvalDependencies` (bundling `Client`, `Executor`, `ClusterService`, `TransportService`, `IndicesService`, `ChannelRegistry`, `localNodeId`). `CoreQuery` fires `EsqlQueryAction` asynchronously. `CoreSpawn` registers a `SubscribableListener` in the `ChannelRegistry`, optionally forks body evaluation, returns `ChannelVal(nodeId, channelId)`. `CoreSend` evaluates channel and value, completes the channel in the registry (local dispatch; remote dispatch stubbed for C.3). `CoreWhen` uses positional collector to synchronize channels via registry lookup and extend the de Bruijn environment. `LitVal.IndexLit` resolves UUID from `ClusterService` at evaluation time. |
 | PiescriptResponse (Phase 1c + Phase 2 + Block B) | Wrapper response: expression results (`{"type": ..., "result": ...}`), including `ListVal` serialized as JSON arrays. Implements `ChunkedToXContentObject` and `Releasable`. |
 | Transport pipeline (Phase 2 + Block A) | Unified async pipeline: parse → index resolution pre-pass → elaborate → evaluate (via `ActionListener`). Runs on `ThreadPool.Names.GENERIC` (D-004 revision). The evaluator completes the transport `ActionListener` when done — including after async `spawn`/`when` resolution. |
 | Evaluator tests (Phase 1c + Phase 2 + Block A + math builtins) | `EvaluatorTests.java` — 115 tests covering: all Phase 1c/Phase 2 tests plus `spawn`/`when` semantics, math builtins (`abs`, `floor`, `ceil`, `round`, `sqrt`, `log`, `min`, `max`, `pow`, `toInt`), async evaluation with real thread pools, and deterministic tests with `DIRECT_EXECUTOR_SERVICE`. |
@@ -91,7 +97,8 @@ for Phase 1 items carried forward.
 | Capability | Target Block | Notes |
 |-----------|-------------|-------|
 | Pattern matching | 1e (deferred) | No match expressions (deferred — not blocking Blocks A+; see D-029) |
-| `scan` (local data access) | Block D | Shard-local Lucene queries inside shipped closures. MVP critical path. |
+| `Label` kind / type-level singletons | Tech debt | `DocRef r` and `Searcher r` use `Kind.TYPE` for `r` instead of `Kind.ROW`. Proper fix requires `Label` kind + `Project` type family. See D-050 § Future. |
+| `RowType` as first-class `MonoType` | Tech debt (high priority) | Rows are separate from `MonoType`; `r` in `DocRef r` is unconstrained. Should be `Kind.ROW` with row-kinded metas/rigids. |
 | `sort` / `take` combinators | Block D+ | No sorting or top-N selection within piescript. Must push into ESQL. |
 | `groupBy` combinator | Block D+ | No grouping/aggregation semantics within piescript. Must push into ESQL. |
 | Multi-value channels | Deferred | Block A/C channels are single-value only |
@@ -130,6 +137,17 @@ These are implementation deviations from the accepted design decisions, tracked 
    rename `MonoType` to `Type`, add a `Forall` variant, and update all consumers. Related tests
    are skipped with `@AwaitsFix`. The annotated-let path (`let f : a -> a = ...`) works because
    the scheme is constructed directly from the annotation, bypassing this issue.
+
+5. **`RowType` is not a first-class `MonoType` (D-050 deviation, high priority).** Row types are
+   modeled separately from `MonoType`, so the type parameter `r` in `DocRef r` and `Searcher r`
+   has `Kind.TYPE` instead of `Kind.ROW`. This means `DocRef Double` is well-kinded from the
+   type system's perspective, which is unsound. The fix is to make `RowType` a `MonoType` variant
+   with `Kind.ROW`, add row-kinded metas and rigids, and constrain `r` properly.
+
+6. **No `Label` kind for type-safe field projection (D-050 future work).** `Shard.read` returns
+   the full record `r` (wildcard read). Type-safe single-field projection (e.g.,
+   `Shard.read "name" ref`) requires a `Label` kind with type-level string singletons and a
+   `Project` type family. Documented as future work.
 
 ## Known Limitations and Shortcuts
 
@@ -201,24 +219,35 @@ superset of the distributed vertical slice — it requires `writeTo` (Block E st
 
 ## Immediate Next Steps
 
-Phases 0–2, Block A, Block B, and Block C (C.1–C.5) are complete. The language supports concurrent
-multi-index queries via `spawn`/`when`, cross-node code execution via `send`/inbox, typed
-functional composition over query results, structured record output, cluster topology discovery
-via `topology`, list utilities (`head`/`tail`/`length`/`isEmpty`), math builtins
-(`abs`/`floor`/`ceil`/`round`/`sqrt`/`log`/`min`/`max`/`pow`/`toInt`), concise IR construction
-via the `Exprs`/`Values`/`Types` builder DSL, and all numbers unified to `Double`. Multi-node
-integration tests (`PiescriptMultiNodeIT`) prove cross-node execution on a 3-node cluster.
-See [mvp.md](mvp.md) for concrete examples.
+Phases 0–2, Block A, Block B, Block C (C.1–C.5), and Block D are complete. The language supports
+concurrent multi-index queries via `spawn`/`when`, cross-node code execution via `send`/inbox,
+typed functional composition over query results, structured record output, cluster topology
+discovery via `Cluster.topology`, list utilities (`List.head`/`List.tail`/`List.length`/
+`List.isEmpty`), math builtins (`Math.abs`/`Math.floor`/`Math.ceil`/`Math.round`/`Math.sqrt`/
+`Math.log`/`Math.min`/`Math.max`/`Math.pow`/`Math.toInt`), concise IR construction via the
+`Exprs`/`Values`/`Types` builder DSL, all numbers unified to `Double`, and local data access via
+`use`/`Shard.open`/`Shard.consume`/`Shard.read`. Multi-node integration tests
+(`PiescriptMultiNodeIT`) prove cross-node execution and non-serializable value rejection on a
+3-node cluster. See [mvp.md](mvp.md) for concrete examples.
 
-**Next on the MVP critical path** (distributed vertical slice):
+**The MVP vertical slice is now feature-complete.** All blocks (A through D) required for the
+distributed vertical slice are implemented. A piescript program can discover topology, ship
+closures to data nodes, open Lucene searchers on shards, iterate and read documents, and
+coordinate results back to the coordinator via channels.
 
-1. **Block D** — Local data access (`scan`). Lucene queries on data nodes inside shipped closures.
+**Next on the roadmap:**
+
+1. **Block E** (stretch goal) — `writeTo` sink. Persist results to an index via Bulk API.
+2. **High-priority tech debt** — `RowType` as first-class `MonoType` (see deviations §5).
+3. **Data access architecture** — `Query a` typeclass with ESQL/ShardPlan/List instances.
 
 **Phase 1 tech debt** (opportunistic):
 
 - Replace `resolveDeep` in `CorePrinter` with environment-based Rigid resolution (D-032).
 - Switch `zonkOrKeep` to an `Optional`-returning `zonk` API (D-032).
 - `MonoType` → `Type` with `Forall` variant (D-038).
+- `RowType` → `MonoType` variant with `Kind.ROW` (D-050 deviation).
+- `Label` kind + `Project` type family for type-safe field projection (D-050 future).
 
 See [roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt) for
 the full consolidated list.
@@ -239,14 +268,12 @@ Review:
 - [mvp.md](mvp.md) for concrete examples of what piescript enables today
 - [vision.md](vision.md) for the MVP goal and design philosophy
 - [roadmap.md](roadmap.md) for the updated block breakdown and MVP milestone
-- [decisions.md](decisions.md) for all architectural decisions (D-040 Join Calculus model, D-041
-  Block A implementation, D-042 distributed execution model and block restructure, D-043 Stream→List
-  rename, D-044 topology builtin design, D-045 Block C design, D-046 value restriction, D-047
-  send fire-and-forget semantics and error responsibility)
+- [decisions.md](decisions.md) for all architectural decisions (D-040 through D-050)
 
 **Ref**: [Phase 2 completion session](303bcf3e-9eef-4719-a47d-24c1ff27a675),
 [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
 [Block A implementation](14bf4826-a39e-4012-ab4c-d73ad902a95f),
 [Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f),
 Block B implementation session,
-[Block C.4/C.5, numeric unification, math builtins](c7b160cb-0062-4a7e-a930-c0ec2437d7ee)
+[Block C.4/C.5, numeric unification, math builtins](c7b160cb-0062-4a7e-a930-c0ec2437d7ee),
+[Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1)

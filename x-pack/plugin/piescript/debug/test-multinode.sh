@@ -102,6 +102,37 @@ in when (refsFromB bRefs) & (refsFromC cRefs) ->
       c_heard_from: rc.peer_node, c_peer_role: rc.peer_role }'
 post "$(jq -n --arg p "$PROG9" '{"program": $p}')"
 
+# ── 10. Block D: use declaration + local shard data access ──
+echo ""
+echo "=== 10. use declaration + Index.shards ==="
+post '{"program": "use \"piescript-test\" as idx; Index.shards idx"}'
+
+echo ""
+echo "=== 11. Shard.open + Shard.consume + Shard.read (local data pipeline) ==="
+PROG11='use "piescript-test" as idx;
+let shards = Index.shards idx;
+let shard = List.head shards;
+let ch = Shard.open idx shard { match_all: true };
+when (ch searcher) ->
+  let docs = Shard.consume 10.0 searcher;
+  List.map (fn ref -> Shard.read ref) docs'
+post "$(jq -n --arg p "$PROG11" '{"program": $p}')"
+
+# ── 12. Negative: attempt to send non-serializable SearcherVal to remote ──
+echo ""
+echo "=== 12. Negative: send SearcherVal to remote (expect error) ==="
+PROG12='use "piescript-test" as idx;
+let topo = Cluster.topology "cluster"
+in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes)
+in let shards = Index.shards idx;
+let shard = List.head shards;
+let ch = Shard.open idx shard { match_all: true };
+when (ch searcher) ->
+  let result_ch = spawn!
+  in let u = send remote.inbox (fn info -> send result_ch searcher)
+  in when (result_ch r) -> r'
+post "$(jq -n --arg p "$PROG12" '{"program": $p}')"
+
 echo ""
 echo "========================================"
 echo "  Done"

@@ -30,13 +30,13 @@ import static org.elasticsearch.TransportVersion.current;
  *
  * <ol>
  *   <li>Walks the ANTLR CST to collect all {@code QueryExpr} nodes and
- *       extract their index patterns via {@link EsqlBodyParser}.</li>
+ *       {@code use} declarations, extracting their index patterns.</li>
  *   <li>For each unique index pattern, asynchronously calls
  *       {@link IndexResolver#resolveMainIndicesVersioned} to obtain the
  *       merged field capabilities mapping.</li>
  *   <li>Produces a {@code Map<String, ResolvedMapping>} keyed by index
  *       pattern, ready for the elaborator to use when typing query
- *       expressions.</li>
+ *       expressions and {@code use} bindings.</li>
  * </ol>
  *
  * <p>The pre-pass is asynchronous (field caps is a cluster action), but
@@ -92,19 +92,38 @@ public final class IndexResolutionPrePass {
     }
 
     /**
-     * Resolve all unique index patterns found in the collected queries.
+     * Collect index names from top-level {@code use "index" as idx} declarations.
+     *
+     * @param cst the root of the parse tree
+     * @return set of unique index names; empty if the program has no {@code use} declarations
+     */
+    public static Set<String> collectUseDeclarations(PiescriptAntlrParser.ProgramContext cst) {
+        Set<String> indexNames = new LinkedHashSet<>();
+        for (var binding : cst.topBinding()) {
+            if (binding instanceof PiescriptAntlrParser.TopUseContext use) {
+                String quoted = use.QUOTED_STRING().getText();
+                indexNames.add(quoted.substring(1, quoted.length() - 1));
+            }
+        }
+        return indexNames;
+    }
+
+    /**
+     * Resolve all unique index patterns from queries and {@code use} declarations.
      * Fan-out resolution via {@link RefCountingListener}: one field caps
      * request per unique pattern, all in parallel.
      *
      * @param queries the query info list from {@link #collectQueries}
-     * @param listener receives the resolved mappings keyed by index pattern,
+     * @param useIndexNames index names from {@link #collectUseDeclarations}
+     * @param listener receives the resolved mappings keyed by index pattern/name,
      *                 or failure if any resolution fails
      */
-    public void resolve(List<QueryInfo> queries, ActionListener<Map<String, ResolvedMapping>> listener) {
+    public void resolve(List<QueryInfo> queries, Set<String> useIndexNames, ActionListener<Map<String, ResolvedMapping>> listener) {
         Set<String> uniquePatterns = new LinkedHashSet<>();
         for (var q : queries) {
             uniquePatterns.add(q.parsedBody().indexPattern());
         }
+        uniquePatterns.addAll(useIndexNames);
 
         if (uniquePatterns.isEmpty()) {
             listener.onResponse(Map.of());

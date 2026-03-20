@@ -10,6 +10,7 @@ package org.elasticsearch.xpack.piescript.eval;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.core.Nullable;
+import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.transport.TransportService;
 
 import java.util.concurrent.Executor;
@@ -26,6 +27,7 @@ import java.util.concurrent.Executor;
  * @param transportService transport service for cross-node sends (D-045)
  * @param channelRegistry  per-node channel registry mapping channel IDs to listeners (D-045)
  * @param localNodeId      the discovery node ID of this node
+ * @param indicesService   access to index shards for Shard.open (D-050)
  */
 public record EvalDependencies(
     @Nullable Client client,
@@ -33,5 +35,6 @@ public record EvalDependencies(
     @Nullable ClusterService clusterService,
     @Nullable TransportService transportService,
     ChannelRegistry channelRegistry,
-    String localNodeId
+    String localNodeId,
+    @Nullable IndicesService indicesService
 ) {}
