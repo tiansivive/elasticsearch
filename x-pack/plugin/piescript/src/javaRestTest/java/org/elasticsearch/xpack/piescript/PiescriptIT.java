@@ -218,7 +218,7 @@ public class PiescriptIT extends ESRestTestCase {
         assertOK(response);
 
         Map<String, Object> responseMap = entityAsMap(response);
-        assertThat(responseMap.get("type"), equalTo("Integer"));
+        assertThat(responseMap.get("type"), equalTo("Double"));
         assertThat(responseMap.get("result"), equalTo(3));
     }
 
@@ -228,7 +228,7 @@ public class PiescriptIT extends ESRestTestCase {
         assertOK(response);
 
         Map<String, Object> responseMap = entityAsMap(response);
-        assertThat(responseMap.get("type"), equalTo("{ x: Integer, y: Integer }"));
+        assertThat(responseMap.get("type"), equalTo("{ x: Double, y: Double }"));
         @SuppressWarnings("unchecked")
         Map<String, Object> result = (Map<String, Object>) responseMap.get("result");
         assertThat(result.get("x"), equalTo(1));
@@ -378,7 +378,7 @@ public class PiescriptIT extends ESRestTestCase {
         assertOK(response);
 
         Map<String, Object> responseMap = entityAsMap(response);
-        assertThat(responseMap.get("type"), equalTo("Integer"));
+        assertThat(responseMap.get("type"), equalTo("Double"));
         assertThat(responseMap.get("result"), equalTo(3));
     }
 
@@ -394,7 +394,8 @@ public class PiescriptIT extends ESRestTestCase {
 
     private static Request piescriptRequest(String program) {
         Request request = new Request("POST", "/_piescript/eval");
-        request.setJsonEntity("{\"program\":\"" + program + "\"}");
+        String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"");
+        request.setJsonEntity("{\"program\":\"" + escaped + "\"}");
         request.addParameter("error_trace", "true");
         RequestOptions.Builder options = RequestOptions.DEFAULT.toBuilder();
         options.setWarningsHandler(warnings -> false);
@@ -404,7 +405,8 @@ public class PiescriptIT extends ESRestTestCase {
 
     private static Request piescriptDevRequest(String program) {
         Request request = new Request("POST", "/_piescript/dev");
-        request.setJsonEntity("{\"program\":\"" + program + "\"}");
+        String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"");
+        request.setJsonEntity("{\"program\":\"" + escaped + "\"}");
         request.addParameter("error_trace", "true");
         RequestOptions.Builder options = RequestOptions.DEFAULT.toBuilder();
         options.setWarningsHandler(warnings -> false);

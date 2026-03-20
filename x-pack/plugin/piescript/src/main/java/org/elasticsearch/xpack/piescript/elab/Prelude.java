@@ -34,8 +34,18 @@ import static java.util.Map.entry;
  *   reduce   : ∀a b. (b → a → b) → b → List a → b
  *   head     : ∀a. List a → a
  *   tail     : ∀a. List a → List a
- *   length   : ∀a. List a → Integer
+ *   length   : ∀a. List a → Double
  *   isEmpty  : ∀a. List a → Boolean
+ *   abs      : Double → Double
+ *   floor    : Double → Double
+ *   ceil     : Double → Double
+ *   round    : Double → Double
+ *   sqrt     : Double → Double
+ *   log      : Double → Double
+ *   min      : Double → Double → Double
+ *   max      : Double → Double → Double
+ *   pow      : Double → Double → Double
+ *   toInt    : Double → Double
  *   topology : Keyword → { local: NodeBase, nodes: List NodeBase }
  *   routing  : Keyword → { shards: List ShardRecord, nodes: List NodeRecord }
  *   shards   : Keyword → List ShardRecord
@@ -53,7 +63,7 @@ public final class Prelude {
     private static final MonoType.Rigid A0 = new MonoType.Rigid(-1, Kind.TYPE);
     private static final MonoType.Rigid B0 = new MonoType.Rigid(-2, Kind.TYPE);
     private static final MonoType KW = Elaborator.KEYWORD;
-    private static final MonoType INT = Elaborator.INTEGER;
+    private static final MonoType DBL = Elaborator.DOUBLE;
     private static final MonoType BOOL = Elaborator.BOOLEAN;
     private static final MonoType NULL = Elaborator.NULL_TYPE;
 
@@ -73,6 +83,16 @@ public final class Prelude {
         entry("tail", 1),
         entry("length", 1),
         entry("isEmpty", 1),
+        entry("abs", 1),
+        entry("floor", 1),
+        entry("ceil", 1),
+        entry("round", 1),
+        entry("sqrt", 1),
+        entry("log", 1),
+        entry("min", 2),
+        entry("max", 2),
+        entry("pow", 2),
+        entry("toInt", 1),
         entry("topology", 1),
         entry("routing", 1),
         entry("shards", 1),
@@ -86,8 +106,18 @@ public final class Prelude {
         module.put("reduce", reduceScheme());
         module.put("head", listToA());          // ∀a. List a → a
         module.put("tail", listToList());        // ∀a. List a → List a
-        module.put("length", listToInt());       // ∀a. List a → Integer
+        module.put("length", listToDouble());     // ∀a. List a → Double
         module.put("isEmpty", listToBool());     // ∀a. List a → Boolean
+        module.put("abs", dblToDbl());
+        module.put("floor", dblToDbl());
+        module.put("ceil", dblToDbl());
+        module.put("round", dblToDbl());
+        module.put("sqrt", dblToDbl());
+        module.put("log", dblToDbl());
+        module.put("min", dblDblToDbl());
+        module.put("max", dblDblToDbl());
+        module.put("pow", dblDblToDbl());
+        module.put("toInt", dblToDbl());
         module.put("topology", clusterTopologyScheme());
         module.put("routing", routingScheme());
         module.put("shards", shardsScheme());
@@ -141,11 +171,11 @@ public final class Prelude {
         return new TypeScheme(quantified, new MonoType.Arrow(list(A0), list(A0)));
     }
 
-    // length : ∀(a:TYPE). List a → Integer
-    private static TypeScheme listToInt() {
+    // length : ∀(a:TYPE). List a → Double
+    private static TypeScheme listToDouble() {
         var quantified = new LinkedHashMap<Integer, Kind>();
         quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(list(A0), INT));
+        return new TypeScheme(quantified, new MonoType.Arrow(list(A0), DBL));
     }
 
     // isEmpty : ∀(a:TYPE). List a → Boolean
@@ -153,6 +183,16 @@ public final class Prelude {
         var quantified = new LinkedHashMap<Integer, Kind>();
         quantified.put(A0.id(), Kind.TYPE);
         return new TypeScheme(quantified, new MonoType.Arrow(list(A0), BOOL));
+    }
+
+    // Double → Double (monomorphic, no quantified vars)
+    private static TypeScheme dblToDbl() {
+        return TypeScheme.mono(new MonoType.Arrow(DBL, DBL));
+    }
+
+    // Double → Double → Double (monomorphic, curried)
+    private static TypeScheme dblDblToDbl() {
+        return TypeScheme.mono(new MonoType.Arrow(DBL, new MonoType.Arrow(DBL, DBL)));
     }
 
     // Shared type building blocks for topology/routing:
@@ -174,7 +214,7 @@ public final class Prelude {
     }
 
     private static Map<String, MonoType> shardCoreFields() {
-        return Map.of("index", KW, "shard_id", INT, "primary", BOOL, "state", KW);
+        return Map.of("index", KW, "shard_id", DBL, "primary", BOOL, "state", KW);
     }
 
     // topology : Keyword → { local: NodeBase, nodes: List NodeBase } (D-048)
