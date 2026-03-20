@@ -64,7 +64,7 @@ for Phase 1 items carried forward.
 | Expression evaluation (Phase 1c) | Non-query programs go through parse → elaborate → evaluate pipeline, returning `{"type": "...", "result": ...}` |
 | Request validation | Empty/blank programs rejected with 400 |
 | Security | RBAC authorization via `shouldAuthorizeIndexActionNameOnly()`, operator privileges allowlist |
-| Integration tests | 26 single-node tests (`PiescriptIT`) + 11 multi-node tests (`PiescriptMultiNodeIT`) covering query type-checking, eager evaluation, expression evaluation, topology, list utilities, error handling, cross-node execution, `use` declarations, shard data access, and non-serializable value wire rejection |
+| Integration tests | 27 single-node tests (`PiescriptIT`) + 10 multi-node tests (`PiescriptMultiNodeIT`) covering query type-checking, eager evaluation, expression evaluation, topology, list utilities, error handling, cross-node execution, `use` declarations, shard data access, and non-serializable value response rejection |
 | Build | Compiles, passes `check`, `spotlessJavaCheck`, `javaRestTest` |
 | ANTLR grammar | Lexer (`PiescriptLexer.g4`) and parser (`PiescriptAntlrParser.g4`) implementing full D1.17 surface syntax plus `SPAWN`, `WHEN`, `AMP` tokens and `SpawnExpr`/`WhenExpr` rules (Block A) |
 | Parser entry point | `PiescriptParser.java` — invokes ANTLR, produces parse tree; `parseToTreeString()` for CST inspection |
@@ -148,6 +148,15 @@ These are implementation deviations from the accepted design decisions, tracked 
    the full record `r` (wildcard read). Type-safe single-field projection (e.g.,
    `Shard.read "name" ref`) requires a `Label` kind with type-level string singletons and a
    `Project` type family. Documented as future work.
+
+7. **No runtime error provenance (source locations in evaluation errors).** `EvaluationException`
+   carries only a message string — no source location. When a builtin like `Shard.open` fails at
+   runtime, the error cannot point back to the call site in the user's program.
+   `ElaborationException` already carries line/column from the parser, but this information is
+   lost once evaluation begins. The fix requires threading `Source` through the evaluator —
+   either on `CoreExpr` nodes during evaluation, on `BuiltinVal` (stamped at the application
+   site), or via a separate provenance stack. This is a prerequisite for good diagnostics in
+   distributed programs where errors occur on remote nodes inside shipped closures.
 
 ## Known Limitations and Shortcuts
 
@@ -276,4 +285,5 @@ Review:
 [Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f),
 Block B implementation session,
 [Block C.4/C.5, numeric unification, math builtins](c7b160cb-0062-4a7e-a930-c0ec2437d7ee),
-[Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1)
+[Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1),
+[Block D testing, debug scripts, docs](40f62001-d515-4590-b3cd-95e5e999b33b)

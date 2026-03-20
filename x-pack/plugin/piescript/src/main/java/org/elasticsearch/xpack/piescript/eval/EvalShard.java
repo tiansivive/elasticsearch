@@ -20,6 +20,7 @@ import org.apache.lucene.util.NumericUtils;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.cluster.metadata.ProjectId;
+import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.IndexService;
 import org.elasticsearch.index.mapper.MappedFieldType;
 
@@ -90,9 +91,22 @@ final class EvalShard {
             throw new EvaluationException("Shard.open: index [" + indexVal.name() + "] not found in cluster state");
         }
         var index = indexMetadata.getIndex();
-        IndexService indexService = deps.indicesService().indexServiceSafe(index);
-
         int shardId = (int) EvalBuiltins.requireDouble(shardRecord.fields().get("shard_id"), "Shard.open");
+
+        IndexService indexService;
+        try {
+            indexService = deps.indicesService().indexServiceSafe(index);
+        } catch (IndexNotFoundException e) {
+            throw new EvaluationException(
+                "Shard.open: index ["
+                    + indexVal.name()
+                    + "] shard ["
+                    + shardId
+                    + "] is not hosted on this node ["
+                    + deps.localNodeId()
+                    + "]. Route Shard.open to the node that holds the shard (see shard.node in Index.shards results)."
+            );
+        }
         var indexShard = indexService.getShard(shardId);
         var engineSearcher = indexShard.acquireSearcher("piescript_open");
 
