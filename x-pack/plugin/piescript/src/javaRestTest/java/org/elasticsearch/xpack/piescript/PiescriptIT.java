@@ -471,6 +471,19 @@ public class PiescriptIT extends ESRestTestCase {
         assertThat(responseMap.get("result"), equalTo(0));
     }
 
+    public void testSearcherValNotSerializableInResponse() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            let shards = Index.shards idx;
+            let shard = List.head shards;
+            let ch = Shard.open idx shard { match_all: true };
+            when (ch searcher) -> searcher
+            """;
+        Request request = piescriptRequest(program);
+        var e = expectThrows(ResponseException.class, () -> client().performRequest(request));
+        assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
+    }
+
     private static Request piescriptRequest(String program) {
         Request request = new Request("POST", "/_piescript/eval");
         String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"");
