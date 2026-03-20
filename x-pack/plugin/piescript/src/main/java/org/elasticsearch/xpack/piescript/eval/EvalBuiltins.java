@@ -41,50 +41,50 @@ final class EvalBuiltins {
 
     private static void executeBuiltin(Evaluator eval, String name, List<Value> args, ActionListener<Value> listener) {
         switch (name) {
-            case "map" -> mapList(eval, args.get(0), requireList(args.get(1), name).elements(), listener);
-            case "filter" -> filterList(eval, args.get(0), requireList(args.get(1), name).elements(), listener);
-            case "reduce" -> reduceList(eval, args.get(0), args.get(1), requireList(args.get(2), name).elements(), listener);
-            case "head" -> {
+            case "List.map" -> mapList(eval, args.get(0), requireList(args.get(1), name).elements(), listener);
+            case "List.filter" -> filterList(eval, args.get(0), requireList(args.get(1), name).elements(), listener);
+            case "List.reduce" -> reduceList(eval, args.get(0), args.get(1), requireList(args.get(2), name).elements(), listener);
+            case "List.head" -> {
                 var elems = requireList(args.get(0), name).elements();
                 if (elems.isEmpty()) {
-                    listener.onFailure(new EvaluationException("head: empty list"));
+                    listener.onFailure(new EvaluationException("List.head: empty list"));
                 } else {
                     listener.onResponse(elems.getFirst());
                 }
             }
-            case "tail" -> {
+            case "List.tail" -> {
                 var elems = requireList(args.get(0), name).elements();
                 if (elems.isEmpty()) {
-                    listener.onFailure(new EvaluationException("tail: empty list"));
+                    listener.onFailure(new EvaluationException("List.tail: empty list"));
                 } else {
                     listener.onResponse(new Value.ListVal(elems.subList(1, elems.size())));
                 }
             }
-            case "length" -> listener.onResponse(new Value.DoubleVal(requireList(args.get(0), name).elements().size()));
-            case "isEmpty" -> listener.onResponse(new Value.BooleanVal(requireList(args.get(0), name).elements().isEmpty()));
-            case "abs" -> listener.onResponse(new Value.DoubleVal(Math.abs(requireDouble(args.get(0), name))));
-            case "floor" -> listener.onResponse(new Value.DoubleVal(Math.floor(requireDouble(args.get(0), name))));
-            case "ceil" -> listener.onResponse(new Value.DoubleVal(Math.ceil(requireDouble(args.get(0), name))));
-            case "round" -> listener.onResponse(new Value.DoubleVal(Math.round(requireDouble(args.get(0), name))));
-            case "sqrt" -> listener.onResponse(new Value.DoubleVal(Math.sqrt(requireDouble(args.get(0), name))));
-            case "log" -> listener.onResponse(new Value.DoubleVal(Math.log(requireDouble(args.get(0), name))));
-            case "min" -> listener.onResponse(
+            case "List.length" -> listener.onResponse(new Value.DoubleVal(requireList(args.get(0), name).elements().size()));
+            case "List.isEmpty" -> listener.onResponse(new Value.BooleanVal(requireList(args.get(0), name).elements().isEmpty()));
+            case "Math.abs" -> listener.onResponse(new Value.DoubleVal(Math.abs(requireDouble(args.get(0), name))));
+            case "Math.floor" -> listener.onResponse(new Value.DoubleVal(Math.floor(requireDouble(args.get(0), name))));
+            case "Math.ceil" -> listener.onResponse(new Value.DoubleVal(Math.ceil(requireDouble(args.get(0), name))));
+            case "Math.round" -> listener.onResponse(new Value.DoubleVal(Math.round(requireDouble(args.get(0), name))));
+            case "Math.sqrt" -> listener.onResponse(new Value.DoubleVal(Math.sqrt(requireDouble(args.get(0), name))));
+            case "Math.log" -> listener.onResponse(new Value.DoubleVal(Math.log(requireDouble(args.get(0), name))));
+            case "Math.min" -> listener.onResponse(
                 new Value.DoubleVal(Math.min(requireDouble(args.get(0), name), requireDouble(args.get(1), name)))
             );
-            case "max" -> listener.onResponse(
+            case "Math.max" -> listener.onResponse(
                 new Value.DoubleVal(Math.max(requireDouble(args.get(0), name), requireDouble(args.get(1), name)))
             );
-            case "pow" -> listener.onResponse(
+            case "Math.pow" -> listener.onResponse(
                 new Value.DoubleVal(Math.pow(requireDouble(args.get(0), name), requireDouble(args.get(1), name)))
             );
-            case "toInt" -> listener.onResponse(new Value.DoubleVal((long) requireDouble(args.get(0), name)));
-            case "topology" -> EvalTopology.resolveClusterTopology(eval, listener);
-            case "routing" -> EvalTopology.resolveRouting(eval, args.get(0), listener);
-            case "shards" -> EvalTopology.resolveRouting(eval, args.get(0), listener.map(v -> {
+            case "Math.toInt" -> listener.onResponse(new Value.DoubleVal((long) requireDouble(args.get(0), name)));
+            case "Cluster.topology" -> EvalTopology.resolveClusterTopology(eval, listener);
+            case "Index.routing" -> EvalTopology.resolveRouting(eval, args.get(0), listener);
+            case "Index.shards" -> EvalTopology.resolveRouting(eval, args.get(0), listener.map(v -> {
                 var rec = (Value.RecordVal) v;
                 return rec.fields().get("shards");
             }));
-            case "nodes" -> EvalTopology.resolveRouting(eval, args.get(0), listener.map(v -> {
+            case "Index.nodes" -> EvalTopology.resolveRouting(eval, args.get(0), listener.map(v -> {
                 var rec = (Value.RecordVal) v;
                 return rec.fields().get("nodes");
             }));

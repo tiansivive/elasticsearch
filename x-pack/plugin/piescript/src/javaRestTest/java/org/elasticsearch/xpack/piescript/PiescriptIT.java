@@ -269,7 +269,7 @@ public class PiescriptIT extends ESRestTestCase {
     // ──── Cluster topology builtin (D-048) ────
 
     public void testTopologyReturnsLocalAndNodes() throws IOException {
-        Request request = piescriptRequest("topology \"cluster\"");
+        Request request = piescriptRequest("Cluster.topology \"cluster\"");
         Response response = client().performRequest(request);
         assertOK(response);
 
@@ -298,7 +298,7 @@ public class PiescriptIT extends ESRestTestCase {
     }
 
     public void testTopologyTypecheck() throws IOException {
-        Request request = piescriptDevRequest("topology \"cluster\"");
+        Request request = piescriptDevRequest("Cluster.topology \"cluster\"");
         Response response = client().performRequest(request);
         assertOK(response);
 
@@ -311,7 +311,7 @@ public class PiescriptIT extends ESRestTestCase {
     // ──── Index routing builtin (D-048) ────
 
     public void testRoutingReturnsShardAndNodeInfo() throws IOException {
-        Request request = piescriptRequest("routing \"piescript-test\"");
+        Request request = piescriptRequest("Index.routing \"piescript-test\"");
         Response response = client().performRequest(request);
         assertOK(response);
 
@@ -352,7 +352,7 @@ public class PiescriptIT extends ESRestTestCase {
     }
 
     public void testRoutingNonExistentIndexThrows() throws IOException {
-        Request request = piescriptRequest("routing \"nonexistent-index-xyz\"");
+        Request request = piescriptRequest("Index.routing \"nonexistent-index-xyz\"");
         ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
     }
@@ -360,7 +360,7 @@ public class PiescriptIT extends ESRestTestCase {
     // ──── List utility builtins ────
 
     public void testHeadBuiltin() throws IOException {
-        Request request = piescriptRequest("head (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
+        Request request = piescriptRequest("List.head (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
         Response response = client().performRequest(request);
         assertOK(response);
 
@@ -373,7 +373,7 @@ public class PiescriptIT extends ESRestTestCase {
     }
 
     public void testLengthBuiltin() throws IOException {
-        Request request = piescriptRequest("length (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
+        Request request = piescriptRequest("List.length (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
         Response response = client().performRequest(request);
         assertOK(response);
 
@@ -383,7 +383,7 @@ public class PiescriptIT extends ESRestTestCase {
     }
 
     public void testIsEmptyBuiltin() throws IOException {
-        Request request = piescriptRequest("isEmpty (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
+        Request request = piescriptRequest("List.isEmpty (query `FROM piescript-typed | SORT name ASC | LIMIT 10`)");
         Response response = client().performRequest(request);
         assertOK(response);
 

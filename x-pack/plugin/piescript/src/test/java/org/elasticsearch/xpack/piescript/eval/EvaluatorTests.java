@@ -436,7 +436,7 @@ public class EvaluatorTests extends ESTestCase {
         var stream = testStream();
         var body = new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "age", DBL);
         var lambda = new CoreLam(SRC, "r", DBL, body, DBL);
-        var mapFree = new CoreFree(SRC, "map", DBL);
+        var mapFree = new CoreFree(SRC, "List.map", DBL);
         var mapApplied = new CoreApp(SRC, mapFree, lambda, DBL);
         var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", DBL), DBL);
 
@@ -459,7 +459,7 @@ public class EvaluatorTests extends ESTestCase {
         );
         var add = new CorePrimOp(SRC, Op.ADD, List.of(proj, lit1), DBL);
         var lambda = new CoreLam(SRC, "r", DBL, add, DBL);
-        var mapFree = new CoreFree(SRC, "map", DBL);
+        var mapFree = new CoreFree(SRC, "List.map", DBL);
         var mapApplied = new CoreApp(SRC, mapFree, lambda, DBL);
         var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", DBL), DBL);
 
@@ -483,7 +483,7 @@ public class EvaluatorTests extends ESTestCase {
         );
         var gt = new CorePrimOp(SRC, Op.GT, List.of(proj, lit28), BOOL);
         var lambda = new CoreLam(SRC, "r", DBL, gt, DBL);
-        var filterFree = new CoreFree(SRC, "filter", DBL);
+        var filterFree = new CoreFree(SRC, "List.filter", DBL);
         var filterApplied = new CoreApp(SRC, filterFree, lambda, DBL);
         var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", DBL), DBL);
 
@@ -504,7 +504,7 @@ public class EvaluatorTests extends ESTestCase {
             BOOL
         );
         var lambda = new CoreLam(SRC, "r", DBL, trueBody, DBL);
-        var filterFree = new CoreFree(SRC, "filter", DBL);
+        var filterFree = new CoreFree(SRC, "List.filter", DBL);
         var filterApplied = new CoreApp(SRC, filterFree, lambda, DBL);
         var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", DBL), DBL);
 
@@ -522,7 +522,7 @@ public class EvaluatorTests extends ESTestCase {
             BOOL
         );
         var lambda = new CoreLam(SRC, "r", DBL, falseBody, DBL);
-        var filterFree = new CoreFree(SRC, "filter", DBL);
+        var filterFree = new CoreFree(SRC, "List.filter", DBL);
         var filterApplied = new CoreApp(SRC, filterFree, lambda, DBL);
         var fullExpr = new CoreApp(SRC, filterApplied, new CoreVar(SRC, 0, "stream", DBL), DBL);
 
@@ -542,7 +542,7 @@ public class EvaluatorTests extends ESTestCase {
         var innerLam = new CoreLam(SRC, "elem", DBL, addBody, DBL);
         var outerLam = new CoreLam(SRC, "acc", DBL, innerLam, DBL);
 
-        var reduceFree = new CoreFree(SRC, "reduce", DBL);
+        var reduceFree = new CoreFree(SRC, "List.reduce", DBL);
         var lit0 = new org.elasticsearch.xpack.piescript.core.CoreLit(
             SRC,
             new org.elasticsearch.xpack.piescript.types.LitVal.DoubleLit(0),
@@ -570,7 +570,7 @@ public class EvaluatorTests extends ESTestCase {
         var innerLam = new CoreLam(SRC, "elem", DBL, addBody, DBL);
         var outerLam = new CoreLam(SRC, "acc", DBL, innerLam, DBL);
 
-        var reduceFree = new CoreFree(SRC, "reduce", DBL);
+        var reduceFree = new CoreFree(SRC, "List.reduce", DBL);
         var lit0 = new org.elasticsearch.xpack.piescript.core.CoreLit(
             SRC,
             new org.elasticsearch.xpack.piescript.types.LitVal.DoubleLit(0),
@@ -588,7 +588,7 @@ public class EvaluatorTests extends ESTestCase {
         var emptyStream = new Value.ListVal(List.of());
         var body = new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "age", DBL);
         var lambda = new CoreLam(SRC, "r", DBL, body, DBL);
-        var mapFree = new CoreFree(SRC, "map", DBL);
+        var mapFree = new CoreFree(SRC, "List.map", DBL);
         var mapApplied = new CoreApp(SRC, mapFree, lambda, DBL);
         var fullExpr = new CoreApp(SRC, mapApplied, new CoreVar(SRC, 0, "stream", DBL), DBL);
 
@@ -737,7 +737,7 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testHeadReturnFirstElement() {
         var stream = testStream();
-        var headFree = new CoreFree(SRC, "head", DBL);
+        var headFree = new CoreFree(SRC, "List.head", DBL);
         var fullExpr = new CoreApp(SRC, headFree, new CoreVar(SRC, 0, "list", DBL), DBL);
 
         var result = evaluateWithEnv(fullExpr, stream);
@@ -749,7 +749,7 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testHeadEmptyListThrows() {
         var emptyList = new Value.ListVal(List.of());
-        var headFree = new CoreFree(SRC, "head", DBL);
+        var headFree = new CoreFree(SRC, "List.head", DBL);
         var fullExpr = new CoreApp(SRC, headFree, new CoreVar(SRC, 0, "list", DBL), DBL);
 
         var future = new PlainActionFuture<Value>();
@@ -760,7 +760,7 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testTailReturnsRest() {
         var stream = testStream();
-        var tailFree = new CoreFree(SRC, "tail", DBL);
+        var tailFree = new CoreFree(SRC, "List.tail", DBL);
         var fullExpr = new CoreApp(SRC, tailFree, new CoreVar(SRC, 0, "list", DBL), DBL);
 
         var result = evaluateWithEnv(fullExpr, stream);
@@ -773,7 +773,7 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testTailEmptyListThrows() {
         var emptyList = new Value.ListVal(List.of());
-        var tailFree = new CoreFree(SRC, "tail", DBL);
+        var tailFree = new CoreFree(SRC, "List.tail", DBL);
         var fullExpr = new CoreApp(SRC, tailFree, new CoreVar(SRC, 0, "list", DBL), DBL);
 
         var future = new PlainActionFuture<Value>();
@@ -784,7 +784,7 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testLengthReturnsSize() {
         var stream = testStream();
-        var lengthFree = new CoreFree(SRC, "length", DBL);
+        var lengthFree = new CoreFree(SRC, "List.length", DBL);
         var fullExpr = new CoreApp(SRC, lengthFree, new CoreVar(SRC, 0, "list", DBL), DBL);
 
         var result = evaluateWithEnv(fullExpr, stream);
@@ -793,7 +793,7 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testIsEmptyFalseForNonEmpty() {
         var stream = testStream();
-        var isEmptyFree = new CoreFree(SRC, "isEmpty", DBL);
+        var isEmptyFree = new CoreFree(SRC, "List.isEmpty", DBL);
         var fullExpr = new CoreApp(SRC, isEmptyFree, new CoreVar(SRC, 0, "list", DBL), DBL);
 
         var result = evaluateWithEnv(fullExpr, stream);
@@ -802,7 +802,7 @@ public class EvaluatorTests extends ESTestCase {
 
     public void testIsEmptyTrueForEmpty() {
         var emptyList = new Value.ListVal(List.of());
-        var isEmptyFree = new CoreFree(SRC, "isEmpty", DBL);
+        var isEmptyFree = new CoreFree(SRC, "List.isEmpty", DBL);
         var fullExpr = new CoreApp(SRC, isEmptyFree, new CoreVar(SRC, 0, "list", DBL), DBL);
 
         var result = evaluateWithEnv(fullExpr, emptyList);
@@ -810,7 +810,7 @@ public class EvaluatorTests extends ESTestCase {
     }
 
     public void testTopologyWithoutClusterServiceThrows() {
-        var topologyFree = new CoreFree(SRC, "topology", DBL);
+        var topologyFree = new CoreFree(SRC, "Cluster.topology", DBL);
         var fullExpr = new CoreApp(SRC, topologyFree, new CoreVar(SRC, 0, "arg", DBL), DBL);
 
         var future = new PlainActionFuture<Value>();
@@ -824,7 +824,7 @@ public class EvaluatorTests extends ESTestCase {
     }
 
     public void testRoutingWithoutClusterServiceThrows() {
-        var routingFree = new CoreFree(SRC, "routing", DBL);
+        var routingFree = new CoreFree(SRC, "Index.routing", DBL);
         var fullExpr = new CoreApp(SRC, routingFree, new CoreVar(SRC, 0, "index", DBL), DBL);
 
         var future = new PlainActionFuture<Value>();
@@ -840,71 +840,71 @@ public class EvaluatorTests extends ESTestCase {
     // ──── Math builtins ────
 
     public void testAbs() {
-        assertThat(evaluate("abs (-5)"), is(new Value.DoubleVal(5.0)));
-        assertThat(evaluate("abs 3"), is(new Value.DoubleVal(3.0)));
+        assertThat(evaluate("Math.abs (-5)"), is(new Value.DoubleVal(5.0)));
+        assertThat(evaluate("Math.abs 3"), is(new Value.DoubleVal(3.0)));
     }
 
     public void testFloor() {
-        assertThat(evaluate("floor 3.7"), is(new Value.DoubleVal(3.0)));
-        assertThat(evaluate("floor (-2.3)"), is(new Value.DoubleVal(-3.0)));
+        assertThat(evaluate("Math.floor 3.7"), is(new Value.DoubleVal(3.0)));
+        assertThat(evaluate("Math.floor (-2.3)"), is(new Value.DoubleVal(-3.0)));
     }
 
     public void testCeil() {
-        assertThat(evaluate("ceil 3.2"), is(new Value.DoubleVal(4.0)));
-        assertThat(evaluate("ceil (-2.7)"), is(new Value.DoubleVal(-2.0)));
+        assertThat(evaluate("Math.ceil 3.2"), is(new Value.DoubleVal(4.0)));
+        assertThat(evaluate("Math.ceil (-2.7)"), is(new Value.DoubleVal(-2.0)));
     }
 
     public void testRound() {
-        assertThat(evaluate("round 3.5"), is(new Value.DoubleVal(4.0)));
-        assertThat(evaluate("round 3.4"), is(new Value.DoubleVal(3.0)));
+        assertThat(evaluate("Math.round 3.5"), is(new Value.DoubleVal(4.0)));
+        assertThat(evaluate("Math.round 3.4"), is(new Value.DoubleVal(3.0)));
     }
 
     public void testSqrt() {
-        assertThat(evaluate("sqrt 9"), is(new Value.DoubleVal(3.0)));
-        assertThat(evaluate("sqrt 2"), is(new Value.DoubleVal(Math.sqrt(2))));
+        assertThat(evaluate("Math.sqrt 9"), is(new Value.DoubleVal(3.0)));
+        assertThat(evaluate("Math.sqrt 2"), is(new Value.DoubleVal(Math.sqrt(2))));
     }
 
     public void testLog() {
-        var result = evaluate("log 1");
+        var result = evaluate("Math.log 1");
         assertThat(result, is(new Value.DoubleVal(0.0)));
     }
 
     public void testMin() {
-        assertThat(evaluate("min 3 5"), is(new Value.DoubleVal(3.0)));
-        assertThat(evaluate("min 10 2"), is(new Value.DoubleVal(2.0)));
+        assertThat(evaluate("Math.min 3 5"), is(new Value.DoubleVal(3.0)));
+        assertThat(evaluate("Math.min 10 2"), is(new Value.DoubleVal(2.0)));
     }
 
     public void testMax() {
-        assertThat(evaluate("max 3 5"), is(new Value.DoubleVal(5.0)));
-        assertThat(evaluate("max 10 2"), is(new Value.DoubleVal(10.0)));
+        assertThat(evaluate("Math.max 3 5"), is(new Value.DoubleVal(5.0)));
+        assertThat(evaluate("Math.max 10 2"), is(new Value.DoubleVal(10.0)));
     }
 
     public void testPow() {
-        assertThat(evaluate("pow 2 3"), is(new Value.DoubleVal(8.0)));
-        assertThat(evaluate("pow 3 2"), is(new Value.DoubleVal(9.0)));
+        assertThat(evaluate("Math.pow 2 3"), is(new Value.DoubleVal(8.0)));
+        assertThat(evaluate("Math.pow 3 2"), is(new Value.DoubleVal(9.0)));
     }
 
     public void testToInt() {
-        assertThat(evaluate("toInt 3.7"), is(new Value.DoubleVal(3.0)));
-        assertThat(evaluate("toInt (-2.9)"), is(new Value.DoubleVal(-2.0)));
+        assertThat(evaluate("Math.toInt 3.7"), is(new Value.DoubleVal(3.0)));
+        assertThat(evaluate("Math.toInt (-2.9)"), is(new Value.DoubleVal(-2.0)));
     }
 
     public void testMathComposition() {
-        assertThat(evaluate("abs (floor (-3.7))"), is(new Value.DoubleVal(4.0)));
-        assertThat(evaluate("pow (sqrt 9) 2"), is(new Value.DoubleVal(9.0)));
+        assertThat(evaluate("Math.abs (Math.floor (-3.7))"), is(new Value.DoubleVal(4.0)));
+        assertThat(evaluate("Math.pow (Math.sqrt 9) 2"), is(new Value.DoubleVal(9.0)));
     }
 
     public void testMathWithArithmetic() {
-        assertThat(evaluate("abs (-5) + max 3 7"), is(new Value.DoubleVal(12.0)));
+        assertThat(evaluate("Math.abs (-5) + Math.max 3 7"), is(new Value.DoubleVal(12.0)));
     }
 
     public void testMathInLambda() {
-        assertThat(evaluate("let double = fn x -> x * 2 in abs (double (-3))"), is(new Value.DoubleVal(6.0)));
+        assertThat(evaluate("let double = fn x -> x * 2 in Math.abs (double (-3))"), is(new Value.DoubleVal(6.0)));
     }
 
     public void testMinPartialApplication() {
-        assertThat(evaluate("let clamp = min 100 in clamp 150"), is(new Value.DoubleVal(100.0)));
-        assertThat(evaluate("let clamp = min 100 in clamp 50"), is(new Value.DoubleVal(50.0)));
+        assertThat(evaluate("let clamp = Math.min 100 in clamp 150"), is(new Value.DoubleVal(100.0)));
+        assertThat(evaluate("let clamp = Math.min 100 in clamp 50"), is(new Value.DoubleVal(50.0)));
     }
 
     private static EvalDependencies testDeps(java.util.concurrent.Executor executor) {

@@ -1919,3 +1919,124 @@ Ordering operators (`<`, `>`, `<=`, `>=`) remain `Integer → Integer → Boolea
 - No changes to the grammar, parser, or Core IR.
 
 **Ref**: Block C manual testing, multinode debug scripts
+
+---
+
+## D-050: Block D — Local data access via `use`, `Shard.open`, `Shard.consume`, `Shard.read`
+
+**Status**: Accepted
+**Date**: 2026-03-20
+
+### Context
+
+Piescript can distribute closures to data nodes (Block C), but has no mechanism to read index data
+once there. The current `query` path delegates to ESQL and returns tabular results — useful, but
+opaque. For the piescript vision of composable data pipelines, the language needs pull-based,
+cursor-style access to Lucene data that gives the user control over iteration and field reading.
+
+Block D introduces the first direct interaction between piescript programs and the local Lucene
+store on each data node. The design prioritizes minimal surface area: three primitives (`open`,
+`consume`, `read`) that expose Lucene's `DocIdSetIterator`-based iteration model without leaking
+Lucene internals into the piescript type system.
+
+### Decision
+
+#### 1. `use` declaration and `Index r` type
+
+A `use .index-name as idx` declaration introduces a binding of type `Index r`, where `r` is a
+concrete row type resolved at elaboration time via field capabilities. The elaborator's index
+resolution pre-pass extracts the index name, calls field caps, and resolves `r` to a row of
+mapped fields (e.g., `{ user.name: Keyword, user.age: Double }`).
+
+At runtime, `use` desugars to a `CoreLet` binding an `IndexVal` literal. No new Core IR node is
+needed. `IndexVal` carries the index name, UUID, and field metadata. It is serializable — it
+travels in closures sent to data nodes.
+
+`Index r` is the **only** way to reference an index. The `routing`, `shards`, and `nodes` builtins
+change from `Keyword →` to `Index r →` signatures.
+
+#### 2. Qualified builtin names (namespacing)
+
+All builtins move to qualified names (`Namespace.name`). The parser supports
+`UPPER_IDENT DOT LOWER_IDENT` as a qualified name in expression position. The elaborator looks up
+qualified names in the Prelude module map. Core IR and runtime use the qualified string key
+(e.g., `CoreFree("Math.abs")`, `BuiltinVal("List.map", 2, [])`).
+
+Namespace assignments:
+- `Math`: `abs`, `floor`, `ceil`, `round`, `sqrt`, `log`, `min`, `max`, `pow`, `toInt`
+- `List`: `map`, `filter`, `reduce`, `head`, `tail`, `length`, `isEmpty`, `at`
+- `Cluster`: `topology`
+- `Index`: `routing`, `shards`, `nodes`
+- `Shard`: `open`, `consume`, `read`
+- `Query`: `matchAll`, `term`, `range`, `bool`
+
+This is a clean break — no backwards compatibility with unqualified names.
+
+#### 3. Three pull-based primitives
+
+**`Shard.open : ∀r. Index r → Shard → Query → Channel (Searcher r)`** — acquires an
+`Engine.Searcher`, compiles a query (`RecordVal` → `QueryBuilder` → Lucene `Query` → `Weight`),
+creates per-segment scorers, and completes a channel with the `Searcher r` value. Async because
+searcher acquisition and query compilation involve local I/O.
+
+**`Shard.consume : ∀r. Double → Searcher r → List DocRef`** — advances the internal cursor by up
+to N positions, returning a list of `DocRef` handles. If the list has fewer than N elements, the
+searcher is exhausted. POSIX `read()` semantics. Synchronous — advances in-memory iterators over
+mmap'd posting lists.
+
+**`Shard.read : DocRef → Keyword → Value`** — reads a single field's DocValues for the referenced
+document. `Shard.read ref "*"` reads all mapped fields and returns a `RecordVal` matching type
+`r`. DocValues reading dispatches by ES field type (Keyword → `SortedDocValues`, numeric →
+`SortedNumericDocValues`, boolean → `SortedNumericDocValues` as 0/1, datetime → epoch millis).
+
+#### 4. Queries as plain records
+
+Queries are piescript records converted to `QueryBuilder` at runtime inside `Shard.open`:
+`{ match_all: true }` → `MatchAllQueryBuilder`, `{ term: { field: "status", value: "active" } }`
+→ `TermQueryBuilder`, etc. No new `Value` variant, no compile-time query validation. Convenience
+builtins (`Query.matchAll`, `Query.term`, `Query.range`, `Query.bool`) are optional.
+
+#### 5. `Searcher r` and `DocRef` — opaque, non-serializable, node-local
+
+`Searcher r` holds `Engine.Searcher`, compiled `Weight`, per-segment `Scorer` instances, and
+iteration cursor state. `DocRef` holds a segment-local doc ID and a reference to its
+`LeafReaderContext`. Both are non-serializable (runtime rejection if serialization is attempted)
+and only meaningful on the node where they were created.
+
+#### 6. Resource management
+
+For the vertical slice: auto-release when the searcher's cursor is fully exhausted. If never
+fully consumed, the searcher leaks (documented limitation). Explicit `Shard.release` deferred.
+Future options include scope-based release (spawn cleanup) or bracket patterns.
+
+#### 7. New `Value` variants
+
+- `IndexVal(name, uuid, fieldMetadata)` — serializable
+- `SearcherVal(...)` — non-serializable (holds JVM resources)
+- `DocRefVal(leafReaderContext, localDocId)` — non-serializable (tied to its Searcher)
+
+### Consequences
+
+- Piescript programs can read index data directly on data nodes, enabling fan-out search patterns:
+  ship a closure, open a shard, consume docs, read fields, send results back.
+- The three-primitive design (`open` / `consume` / `read`) is the minimal pull-based surface. It
+  maps directly to Lucene's `DocIdSetIterator` model and is the foundation for the future
+  three-layer architecture (LuceneM free monad → pull/push patterns → declarative combinators).
+- `use` with elaboration-time field caps introduces static index resolution — the type system
+  knows the index schema before runtime.
+- No size limit for the vertical slice (documented limitation).
+- No security enforcement beyond the existing `internal:data/read/piescript/send` permissions
+  (documented limitation).
+- Recursive/batched consumption requires recursion support (not yet available); the vertical slice
+  assumes a single large `consume` call.
+
+### Deferred items
+
+- `Local` kind for type-level serialization prevention
+- Size limits on search results
+- Projection (read only requested fields)
+- Query type safety via ADTs
+- Schema introspection on `Index r`
+- `Maybe` / ADTs for consume exhaustion signaling
+
+**Ref**: [Block D design discussion](01e7770e-9e20-41ae-a116-2e78142bb672), Block D plan

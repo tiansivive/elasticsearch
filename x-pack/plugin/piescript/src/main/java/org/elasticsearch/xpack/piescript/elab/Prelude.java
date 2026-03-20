@@ -27,34 +27,37 @@ import static java.util.Map.entry;
  * substitutes all quantified Rigids with fresh metas, the IDs only need
  * to be internally consistent within each scheme.
  *
+ * <p>All builtins use qualified names ({@code Namespace.name}). See D-050.
+ *
  * <p>Signatures:
  * <pre>
- *   map      : ∀a b. (a → b) → List a → List b
- *   filter   : ∀a.   (a → Boolean) → List a → List a
- *   reduce   : ∀a b. (b → a → b) → b → List a → b
- *   head     : ∀a. List a → a
- *   tail     : ∀a. List a → List a
- *   length   : ∀a. List a → Double
- *   isEmpty  : ∀a. List a → Boolean
- *   abs      : Double → Double
- *   floor    : Double → Double
- *   ceil     : Double → Double
- *   round    : Double → Double
- *   sqrt     : Double → Double
- *   log      : Double → Double
- *   min      : Double → Double → Double
- *   max      : Double → Double → Double
- *   pow      : Double → Double → Double
- *   toInt    : Double → Double
- *   topology : Keyword → { local: NodeBase, nodes: List NodeBase }
- *   routing  : Keyword → { shards: List ShardRecord, nodes: List NodeRecord }
- *   shards   : Keyword → List ShardRecord
- *   nodes    : Keyword → List NodeRecord
+ *   List.map      : ∀a b. (a → b) → List a → List b
+ *   List.filter   : ∀a.   (a → Boolean) → List a → List a
+ *   List.reduce   : ∀a b. (b → a → b) → b → List a → b
+ *   List.head     : ∀a. List a → a
+ *   List.tail     : ∀a. List a → List a
+ *   List.length   : ∀a. List a → Double
+ *   List.isEmpty  : ∀a. List a → Boolean
+ *   Math.abs      : Double → Double
+ *   Math.floor    : Double → Double
+ *   Math.ceil     : Double → Double
+ *   Math.round    : Double → Double
+ *   Math.sqrt     : Double → Double
+ *   Math.log      : Double → Double
+ *   Math.min      : Double → Double → Double
+ *   Math.max      : Double → Double → Double
+ *   Math.pow      : Double → Double → Double
+ *   Math.toInt    : Double → Double
+ *   Cluster.topology : Keyword → { local: NodeBase, nodes: List NodeBase }
+ *   Index.routing    : Keyword → { shards: List ShardRecord, nodes: List NodeRecord }
+ *   Index.shards     : Keyword → List ShardRecord
+ *   Index.nodes      : Keyword → List NodeRecord
  * </pre>
  *
- * <p>{@code topology "cluster"} returns cluster-level info: the local (coordinator) node and
- * all nodes with their inboxes. {@code routing "index"} returns index-level shard placement.
- * {@code shards} and {@code nodes} are conveniences over {@code routing}. See D-048.
+ * <p>{@code Cluster.topology "cluster"} returns cluster-level info: the local (coordinator)
+ * node and all nodes with their inboxes. {@code Index.routing "index"} returns index-level
+ * shard placement. {@code Index.shards} and {@code Index.nodes} are conveniences over
+ * {@code Index.routing}. See D-048, D-050.
  */
 public final class Prelude {
 
@@ -76,52 +79,52 @@ public final class Prelude {
 
     /** Arity (number of term-level arguments) for each built-in function. */
     public static final Map<String, Integer> ARITY = Map.ofEntries(
-        entry("map", 2),
-        entry("filter", 2),
-        entry("reduce", 3),
-        entry("head", 1),
-        entry("tail", 1),
-        entry("length", 1),
-        entry("isEmpty", 1),
-        entry("abs", 1),
-        entry("floor", 1),
-        entry("ceil", 1),
-        entry("round", 1),
-        entry("sqrt", 1),
-        entry("log", 1),
-        entry("min", 2),
-        entry("max", 2),
-        entry("pow", 2),
-        entry("toInt", 1),
-        entry("topology", 1),
-        entry("routing", 1),
-        entry("shards", 1),
-        entry("nodes", 1)
+        entry("List.map", 2),
+        entry("List.filter", 2),
+        entry("List.reduce", 3),
+        entry("List.head", 1),
+        entry("List.tail", 1),
+        entry("List.length", 1),
+        entry("List.isEmpty", 1),
+        entry("Math.abs", 1),
+        entry("Math.floor", 1),
+        entry("Math.ceil", 1),
+        entry("Math.round", 1),
+        entry("Math.sqrt", 1),
+        entry("Math.log", 1),
+        entry("Math.min", 2),
+        entry("Math.max", 2),
+        entry("Math.pow", 2),
+        entry("Math.toInt", 1),
+        entry("Cluster.topology", 1),
+        entry("Index.routing", 1),
+        entry("Index.shards", 1),
+        entry("Index.nodes", 1)
     );
 
     private static Map<String, TypeScheme> buildModule() {
         var module = new LinkedHashMap<String, TypeScheme>();
-        module.put("map", mapScheme());
-        module.put("filter", filterScheme());
-        module.put("reduce", reduceScheme());
-        module.put("head", listToA());          // ∀a. List a → a
-        module.put("tail", listToList());        // ∀a. List a → List a
-        module.put("length", listToDouble());     // ∀a. List a → Double
-        module.put("isEmpty", listToBool());     // ∀a. List a → Boolean
-        module.put("abs", dblToDbl());
-        module.put("floor", dblToDbl());
-        module.put("ceil", dblToDbl());
-        module.put("round", dblToDbl());
-        module.put("sqrt", dblToDbl());
-        module.put("log", dblToDbl());
-        module.put("min", dblDblToDbl());
-        module.put("max", dblDblToDbl());
-        module.put("pow", dblDblToDbl());
-        module.put("toInt", dblToDbl());
-        module.put("topology", clusterTopologyScheme());
-        module.put("routing", routingScheme());
-        module.put("shards", shardsScheme());
-        module.put("nodes", nodesScheme());
+        module.put("List.map", mapScheme());
+        module.put("List.filter", filterScheme());
+        module.put("List.reduce", reduceScheme());
+        module.put("List.head", listToA());          // ∀a. List a → a
+        module.put("List.tail", listToList());        // ∀a. List a → List a
+        module.put("List.length", listToDouble());     // ∀a. List a → Double
+        module.put("List.isEmpty", listToBool());     // ∀a. List a → Boolean
+        module.put("Math.abs", dblToDbl());
+        module.put("Math.floor", dblToDbl());
+        module.put("Math.ceil", dblToDbl());
+        module.put("Math.round", dblToDbl());
+        module.put("Math.sqrt", dblToDbl());
+        module.put("Math.log", dblToDbl());
+        module.put("Math.min", dblDblToDbl());
+        module.put("Math.max", dblDblToDbl());
+        module.put("Math.pow", dblDblToDbl());
+        module.put("Math.toInt", dblToDbl());
+        module.put("Cluster.topology", clusterTopologyScheme());
+        module.put("Index.routing", routingScheme());
+        module.put("Index.shards", shardsScheme());
+        module.put("Index.nodes", nodesScheme());
         return Map.copyOf(module);
     }
 

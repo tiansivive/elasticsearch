@@ -8,6 +8,7 @@
 package org.elasticsearch.xpack.piescript.elab;
 
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
+import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
@@ -99,6 +100,29 @@ final class Records {
     static CoreExpr projection(Elaborator elab, PiescriptAntlrParser.ProjectionContext p, ElaborationContext ctx) {
         var s = Elaborator.source(p);
         var label = p.ident().getText();
+
+        // Qualified builtin name: Namespace.name (D-050)
+        if (p.primary() instanceof PiescriptAntlrParser.VariableContext varCtx && varCtx.ident().UPPER_IDENT() != null) {
+            var namespaceName = varCtx.ident().getText();
+            if (ctx.lookup(namespaceName).isEmpty()) {
+                var qualifiedName = namespaceName + "." + label;
+                var moduleLookup = ctx.lookupModule(qualifiedName);
+                if (moduleLookup.isPresent()) {
+                    var scheme = moduleLookup.get();
+                    if (scheme.quantified().isEmpty()) {
+                        return new CoreFree(s.source(), qualifiedName, scheme.body());
+                    }
+                    return Polymorphism.instantiateAndWrap(
+                        elab,
+                        type -> new CoreFree(s.source(), qualifiedName, type),
+                        scheme,
+                        ctx,
+                        s.source()
+                    );
+                }
+            }
+        }
+
         var expr = elab.elaborate(p.primary(), ctx);
         var fieldType = elab.state.freshType(ctx.bindingLevel());
         var rowTail = elab.state.freshRow(ctx.bindingLevel());
