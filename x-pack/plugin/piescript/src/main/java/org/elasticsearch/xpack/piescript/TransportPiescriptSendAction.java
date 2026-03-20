@@ -13,6 +13,7 @@ import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.logging.LogManager;
 import org.elasticsearch.logging.Logger;
@@ -57,6 +58,7 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
     private final Executor executor;
     private final ClusterService clusterService;
     private final TransportService transportService;
+    private final IndicesService indicesService;
 
     @Inject
     public TransportPiescriptSendAction(
@@ -65,7 +67,8 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
         ThreadPool threadPool,
         Client client,
         ClusterService clusterService,
-        ChannelRegistry channelRegistry
+        ChannelRegistry channelRegistry,
+        IndicesService indicesService
     ) {
         super(
             PiescriptSendAction.NAME,
@@ -79,6 +82,7 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
         this.executor = threadPool.executor(ThreadPool.Names.GENERIC);
         this.clusterService = clusterService;
         this.transportService = transportService;
+        this.indicesService = indicesService;
     }
 
     private EvalDependencies buildEvalDeps() {
@@ -88,7 +92,8 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
             clusterService,
             transportService,
             channelRegistry,
-            transportService.getLocalNode().getId()
+            transportService.getLocalNode().getId(),
+            indicesService
         );
     }
 

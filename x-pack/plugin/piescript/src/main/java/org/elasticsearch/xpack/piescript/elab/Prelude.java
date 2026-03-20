@@ -38,6 +38,7 @@ import static java.util.Map.entry;
  *   List.tail     : ∀a. List a → List a
  *   List.length   : ∀a. List a → Double
  *   List.isEmpty  : ∀a. List a → Boolean
+ *   List.at       : ∀a. Double → List a → a
  *   Math.abs      : Double → Double
  *   Math.floor    : Double → Double
  *   Math.ceil     : Double → Double
@@ -49,9 +50,12 @@ import static java.util.Map.entry;
  *   Math.pow      : Double → Double → Double
  *   Math.toInt    : Double → Double
  *   Cluster.topology : Keyword → { local: NodeBase, nodes: List NodeBase }
- *   Index.routing    : Keyword → { shards: List ShardRecord, nodes: List NodeRecord }
- *   Index.shards     : Keyword → List ShardRecord
- *   Index.nodes      : Keyword → List NodeRecord
+ *   Index.routing    : ∀r. Index r → { shards: List ShardRecord, nodes: List NodeRecord }
+ *   Index.shards     : ∀r. Index r → List ShardRecord
+ *   Index.nodes      : ∀r. Index r → List NodeRecord
+ *   Shard.open       : ∀r. Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)
+ *   Shard.consume    : ∀r. Double → Searcher r → List (DocRef r)
+ *   Shard.read       : ∀r. DocRef r → r
  * </pre>
  *
  * <p>{@code Cluster.topology "cluster"} returns cluster-level info: the local (coordinator)
@@ -65,6 +69,7 @@ public final class Prelude {
 
     private static final MonoType.Rigid A0 = new MonoType.Rigid(-1, Kind.TYPE);
     private static final MonoType.Rigid B0 = new MonoType.Rigid(-2, Kind.TYPE);
+
     private static final MonoType KW = Elaborator.KEYWORD;
     private static final MonoType DBL = Elaborator.DOUBLE;
     private static final MonoType BOOL = Elaborator.BOOLEAN;
@@ -86,6 +91,7 @@ public final class Prelude {
         entry("List.tail", 1),
         entry("List.length", 1),
         entry("List.isEmpty", 1),
+        entry("List.at", 2),
         entry("Math.abs", 1),
         entry("Math.floor", 1),
         entry("Math.ceil", 1),
@@ -99,7 +105,10 @@ public final class Prelude {
         entry("Cluster.topology", 1),
         entry("Index.routing", 1),
         entry("Index.shards", 1),
-        entry("Index.nodes", 1)
+        entry("Index.nodes", 1),
+        entry("Shard.open", 3),
+        entry("Shard.consume", 2),
+        entry("Shard.read", 1)
     );
 
     private static Map<String, TypeScheme> buildModule() {
@@ -111,6 +120,7 @@ public final class Prelude {
         module.put("List.tail", listToList());        // ∀a. List a → List a
         module.put("List.length", listToDouble());     // ∀a. List a → Double
         module.put("List.isEmpty", listToBool());     // ∀a. List a → Boolean
+        module.put("List.at", listAtScheme());        // ∀a. Double → List a → a
         module.put("Math.abs", dblToDbl());
         module.put("Math.floor", dblToDbl());
         module.put("Math.ceil", dblToDbl());
@@ -125,6 +135,9 @@ public final class Prelude {
         module.put("Index.routing", routingScheme());
         module.put("Index.shards", shardsScheme());
         module.put("Index.nodes", nodesScheme());
+        module.put("Shard.open", shardOpenScheme());
+        module.put("Shard.consume", shardConsumeScheme());
+        module.put("Shard.read", shardReadScheme());
         return Map.copyOf(module);
     }
 
@@ -217,7 +230,7 @@ public final class Prelude {
     }
 
     private static Map<String, MonoType> shardCoreFields() {
-        return Map.of("index", KW, "shard_id", DBL, "primary", BOOL, "state", KW);
+        return Map.of("index", KW, "uuid", KW, "shard_id", DBL, "primary", BOOL, "state", KW);
     }
 
     // topology : Keyword → { local: NodeBase, nodes: List NodeBase } (D-048)
@@ -227,7 +240,7 @@ public final class Prelude {
         return TypeScheme.mono(new MonoType.Arrow(KW, resultType));
     }
 
-    // routing : Keyword → { shards: List ShardRecord, nodes: List NodeRecord } (D-048)
+    // routing : ∀r. Index r → { shards: List ShardRecord, nodes: List NodeRecord } (D-048, D-050)
     private static TypeScheme routingScheme() {
         var nb = nodeBase();
         var shardCore = shardCoreFields();
@@ -241,23 +254,67 @@ public final class Prelude {
         var nodeRecordFull = record(nodeRecordFields);
 
         var resultType = record(Map.of("shards", list(shardRecord), "nodes", list(nodeRecordFull)));
-        return TypeScheme.mono(new MonoType.Arrow(KW, resultType));
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), resultType));
     }
 
-    // shards : Keyword → List ShardRecord (convenience over routing)
+    // shards : ∀r. Index r → List ShardRecord (convenience over routing)
     private static TypeScheme shardsScheme() {
         var nb = nodeBase();
         var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
         shardRecordFields.put("node", nb);
-        return TypeScheme.mono(new MonoType.Arrow(KW, list(record(shardRecordFields))));
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), list(record(shardRecordFields))));
     }
 
-    // nodes : Keyword → List NodeRecord (convenience over routing)
+    // nodes : ∀r. Index r → List NodeRecord (convenience over routing)
     private static TypeScheme nodesScheme() {
         var nb = nodeBase();
         var nodeRecordFields = new LinkedHashMap<>(nb.row().fields());
         nodeRecordFields.put("shards", list(record(shardCoreFields())));
-        return TypeScheme.mono(new MonoType.Arrow(KW, list(record(nodeRecordFields))));
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), list(record(nodeRecordFields))));
+    }
+
+    // at : ∀a. Double → List a → a (0-based index access)
+    private static TypeScheme listAtScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(list(A0), A0)));
+    }
+
+    // Shard.open : ∀r. Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)
+    private static TypeScheme shardOpenScheme() {
+        var nb = nodeBase();
+        var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
+        shardRecordFields.put("node", nb);
+        var shardRecordType = record(shardRecordFields);
+
+        var queryType = record(Map.of("match_all", BOOL));
+
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(index(A0), new MonoType.Arrow(shardRecordType, new MonoType.Arrow(queryType, channel(searcher(A0)))))
+        );
+    }
+
+    // Shard.consume : ∀r. Double → Searcher r → List (DocRef r)
+    private static TypeScheme shardConsumeScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(searcher(A0), list(docref(A0)))));
+    }
+
+    // Shard.read : ∀r. DocRef r → r
+    private static TypeScheme shardReadScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(docref(A0), A0));
     }
 
     static MonoType.RecordType record(Map<String, MonoType> fields) {
@@ -270,5 +327,17 @@ public final class Prelude {
 
     static MonoType.AppType channel(MonoType element) {
         return new MonoType.AppType(Elaborator.CHANNEL, element);
+    }
+
+    static MonoType.AppType index(MonoType schema) {
+        return new MonoType.AppType(Elaborator.INDEX, schema);
+    }
+
+    static MonoType.AppType searcher(MonoType schema) {
+        return new MonoType.AppType(Elaborator.SEARCHER, schema);
+    }
+
+    static MonoType.AppType docref(MonoType schema) {
+        return new MonoType.AppType(Elaborator.DOCREF, schema);
     }
 }

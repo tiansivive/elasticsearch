@@ -33,16 +33,32 @@ public interface PiescriptAntlrParserListener extends ParseTreeListener {
     void exitProgram(PiescriptAntlrParser.ProgramContext ctx);
 
     /**
-     * Enter a parse tree produced by {@link PiescriptAntlrParser#topBinding}.
+     * Enter a parse tree produced by the {@code TopLet}
+     * labeled alternative in {@link PiescriptAntlrParser#topBinding}.
      * @param ctx the parse tree
      */
-    void enterTopBinding(PiescriptAntlrParser.TopBindingContext ctx);
+    void enterTopLet(PiescriptAntlrParser.TopLetContext ctx);
 
     /**
-     * Exit a parse tree produced by {@link PiescriptAntlrParser#topBinding}.
+     * Exit a parse tree produced by the {@code TopLet}
+     * labeled alternative in {@link PiescriptAntlrParser#topBinding}.
      * @param ctx the parse tree
      */
-    void exitTopBinding(PiescriptAntlrParser.TopBindingContext ctx);
+    void exitTopLet(PiescriptAntlrParser.TopLetContext ctx);
+
+    /**
+     * Enter a parse tree produced by the {@code TopUse}
+     * labeled alternative in {@link PiescriptAntlrParser#topBinding}.
+     * @param ctx the parse tree
+     */
+    void enterTopUse(PiescriptAntlrParser.TopUseContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code TopUse}
+     * labeled alternative in {@link PiescriptAntlrParser#topBinding}.
+     * @param ctx the parse tree
+     */
+    void exitTopUse(PiescriptAntlrParser.TopUseContext ctx);
 
     /**
      * Enter a parse tree produced by the {@code LetExpr}

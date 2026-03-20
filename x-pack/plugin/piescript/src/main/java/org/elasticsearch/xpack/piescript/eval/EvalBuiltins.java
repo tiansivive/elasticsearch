@@ -62,6 +62,17 @@ final class EvalBuiltins {
             }
             case "List.length" -> listener.onResponse(new Value.DoubleVal(requireList(args.get(0), name).elements().size()));
             case "List.isEmpty" -> listener.onResponse(new Value.BooleanVal(requireList(args.get(0), name).elements().isEmpty()));
+            case "List.at" -> {
+                int idx = (int) requireDouble(args.get(0), name);
+                var elems = requireList(args.get(1), name).elements();
+                if (idx < 0 || idx >= elems.size()) {
+                    listener.onFailure(
+                        new EvaluationException("List.at: index " + idx + " out of bounds for list of size " + elems.size())
+                    );
+                } else {
+                    listener.onResponse(elems.get(idx));
+                }
+            }
             case "Math.abs" -> listener.onResponse(new Value.DoubleVal(Math.abs(requireDouble(args.get(0), name))));
             case "Math.floor" -> listener.onResponse(new Value.DoubleVal(Math.floor(requireDouble(args.get(0), name))));
             case "Math.ceil" -> listener.onResponse(new Value.DoubleVal(Math.ceil(requireDouble(args.get(0), name))));
@@ -88,6 +99,19 @@ final class EvalBuiltins {
                 var rec = (Value.RecordVal) v;
                 return rec.fields().get("nodes");
             }));
+            case "Shard.open" -> EvalShard.open(
+                eval,
+                requireIndexVal(args.get(0), name),
+                requireRecord(args.get(1), name),
+                requireRecord(args.get(2), name),
+                listener
+            );
+            case "Shard.consume" -> EvalShard.consume(
+                requireSearcherVal(args.get(1), name),
+                (int) requireDouble(args.get(0), name),
+                listener
+            );
+            case "Shard.read" -> EvalShard.read(requireDocRefVal(args.get(0), name), listener);
             default -> listener.onFailure(new EvaluationException("unknown built-in: " + name));
         }
     }
@@ -132,6 +156,34 @@ final class EvalBuiltins {
         return switch (value) {
             case Value.ListVal s -> s;
             default -> throw new AssertionError("type checker bug: expected List for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.IndexVal requireIndexVal(Value value, String builtinName) {
+        return switch (value) {
+            case Value.IndexVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected Index for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.RecordVal requireRecord(Value value, String builtinName) {
+        return switch (value) {
+            case Value.RecordVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected Record for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.SearcherVal requireSearcherVal(Value value, String builtinName) {
+        return switch (value) {
+            case Value.SearcherVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected Searcher for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.DocRefVal requireDocRefVal(Value value, String builtinName) {
+        return switch (value) {
+            case Value.DocRefVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected DocRef for " + builtinName + ", got " + value);
         };
     }
 

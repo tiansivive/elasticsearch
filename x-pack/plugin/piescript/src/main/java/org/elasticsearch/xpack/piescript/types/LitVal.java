@@ -9,6 +9,8 @@ package org.elasticsearch.xpack.piescript.types;
 
 import org.apache.lucene.util.BytesRef;
 
+import java.util.Map;
+
 /**
  * Literal values carried by {@code CoreExpr.Lit} nodes. Each variant aligns with
  * an ES DataType (see Phase 1 plan D1.3):
@@ -20,6 +22,7 @@ import org.apache.lucene.util.BytesRef;
  *   <li>{@code "hello"} → KeywordLit (BytesRef, matches ESQL's Literal.keyword())</li>
  *   <li>{@code true}/{@code false} → BooleanLit</li>
  *   <li>{@code null} → NullLit</li>
+ *   <li>{@code use "index" as idx} → IndexLit (name + field metadata, D-050)</li>
  * </ul>
  */
 public sealed interface LitVal {
@@ -35,4 +38,14 @@ public sealed interface LitVal {
     record BooleanLit(boolean value) implements LitVal {}
 
     record NullLit() implements LitVal {}
+
+    /**
+     * Index literal produced by {@code use} declarations. Carries the index name
+     * and field type metadata resolved by the index resolution pre-pass.
+     * The UUID is a cluster-state concern resolved at evaluation time, not
+     * baked into the Core IR.
+     *
+     * @param fieldTypes maps field names to ES type descriptors (e.g., "keyword", "long")
+     */
+    record IndexLit(String name, Map<String, String> fieldTypes) implements LitVal {}
 }

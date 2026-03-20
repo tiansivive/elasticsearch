@@ -50,7 +50,7 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      * <p>The default implementation does nothing.</p>
      */
     @Override
-    public void enterTopBinding(PiescriptAntlrParser.TopBindingContext ctx) {}
+    public void enterTopLet(PiescriptAntlrParser.TopLetContext ctx) {}
 
     /**
      * {@inheritDoc}
@@ -58,7 +58,23 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      * <p>The default implementation does nothing.</p>
      */
     @Override
-    public void exitTopBinding(PiescriptAntlrParser.TopBindingContext ctx) {}
+    public void exitTopLet(PiescriptAntlrParser.TopLetContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void enterTopUse(PiescriptAntlrParser.TopUseContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitTopUse(PiescriptAntlrParser.TopUseContext ctx) {}
 
     /**
      * {@inheritDoc}

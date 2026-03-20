@@ -78,4 +78,31 @@ public sealed interface Value {
      * @param channelId unique channel identifier within that node
      */
     record ChannelVal(String nodeId, String channelId) implements Value {}
+
+    /**
+     * An index reference carrying name, UUID, and field type metadata.
+     * Serializable — travels in closures sent to data nodes.
+     * Created by {@code use} declarations after index resolution pre-pass.
+     *
+     * @param fieldTypes maps field names to ES type descriptors (e.g., "keyword", "long")
+     */
+    record IndexVal(String name, String uuid, Map<String, String> fieldTypes) implements Value {}
+
+    /**
+     * Opaque Lucene searcher state. Non-serializable, node-local.
+     * Created by {@code Shard.open}, consumed by {@code Shard.consume}.
+     * The {@link SearcherState} holds the engine searcher, compiled weight,
+     * per-segment scorers, and mutable consumption cursor.
+     */
+    record SearcherVal(SearcherState state) implements Value {}
+
+    /**
+     * Opaque Lucene document reference. Non-serializable, tied to its Searcher.
+     * Created by {@code Shard.consume} for each matching document.
+     *
+     * @param leafContext the segment containing this document
+     * @param docId the segment-local document ID
+     * @param searcherState back-reference to the owning searcher (for field reading)
+     */
+    record DocRefVal(org.apache.lucene.index.LeafReaderContext leafContext, int docId, SearcherState searcherState) implements Value {}
 }

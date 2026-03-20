@@ -981,4 +981,66 @@ public class ElaboratorTests extends ESTestCase {
         var result = elaborate("Index.nodes");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
+
+    // ──── use declarations and Block D types (D-050) ────
+
+    public void testUseDeclarationProducesCoreLetWithIndexLit() {
+        var mapping = new ResolvedMapping(
+            "logs-test",
+            Map.of("status", field(DataType.INTEGER), "message", field(DataType.KEYWORD)),
+            Set.of()
+        );
+        var result = elaborateWithMappings("use \"logs-test\" as idx; idx", Map.of("logs-test", mapping));
+        assertThat(result, instanceOf(CoreLet.class));
+        var let = (CoreLet) result;
+        assertThat(let.debugName(), is("idx"));
+        assertThat(let.rhs(), instanceOf(CoreLit.class));
+        var lit = (CoreLit) let.rhs();
+        assertThat(lit.value(), instanceOf(LitVal.IndexLit.class));
+        var indexLit = (LitVal.IndexLit) lit.value();
+        assertEquals("logs-test", indexLit.name());
+    }
+
+    public void testUseDeclarationTypeIsIndexR() {
+        var mapping = new ResolvedMapping("logs-test", Map.of("user_name", field(DataType.KEYWORD), "age", field(DataType.LONG)), Set.of());
+        var result = elaborateWithMappings("use \"logs-test\" as idx; idx", Map.of("logs-test", mapping));
+        var type = resolveType(result);
+        assertThat(type, instanceOf(MonoType.AppType.class));
+        var appType = (MonoType.AppType) type;
+        assertEquals(new MonoType.TCon("Index"), appType.constructor());
+        assertThat(appType.argument(), instanceOf(MonoType.RecordType.class));
+        var recordType = (MonoType.RecordType) appType.argument();
+        assertEquals(KEYWORD, recordType.row().fields().get("user_name"));
+        assertEquals(DOUBLE, recordType.row().fields().get("age"));
+    }
+
+    public void testUseDeclarationNoMappingThrows() {
+        var e = expectThrows(ElaborationException.class, () -> elaborateWithMappings("use \"nonexistent\" as idx; idx", Map.of()));
+        assertThat(e.getMessage(), containsString("no resolved mapping"));
+    }
+
+    public void testUseDeclarationSkipsMetaFields() {
+        var mapping = new ResolvedMapping("test", Map.of("status", field(DataType.INTEGER), "_id", field(DataType.KEYWORD)), Set.of());
+        var result = elaborateWithMappings("use \"test\" as idx; idx", Map.of("test", mapping));
+        var type = resolveType(result);
+        var appType = (MonoType.AppType) type;
+        var recordType = (MonoType.RecordType) appType.argument();
+        assertTrue(recordType.row().fields().containsKey("status"));
+        assertFalse(recordType.row().fields().containsKey("_id"));
+    }
+
+    public void testShardOpenTypeIsArrow() {
+        var result = elaborate("Shard.open");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testShardConsumeTypeIsArrow() {
+        var result = elaborate("Shard.consume");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testShardReadTypeIsArrow() {
+        var result = elaborate("Shard.read");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
 }

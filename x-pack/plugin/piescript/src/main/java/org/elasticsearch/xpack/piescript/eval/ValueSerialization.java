@@ -38,6 +38,7 @@ public final class ValueSerialization {
     private static final byte TAG_BUILTIN = 8;
     private static final byte TAG_LIST = 9;
     private static final byte TAG_CHANNEL = 10;
+    private static final byte TAG_INDEX = 11;
 
     public static void writeValue(StreamOutput out, Value value) throws IOException {
         switch (value) {
@@ -89,6 +90,14 @@ public final class ValueSerialization {
                 out.writeString(v.nodeId());
                 out.writeString(v.channelId());
             }
+            case Value.IndexVal v -> {
+                out.writeByte(TAG_INDEX);
+                out.writeString(v.name());
+                out.writeString(v.uuid());
+                out.writeMap(v.fieldTypes(), StreamOutput::writeString);
+            }
+            case Value.SearcherVal ignored -> throw new IOException("SearcherVal is not serializable (node-local only)");
+            case Value.DocRefVal ignored -> throw new IOException("DocRefVal is not serializable (node-local only)");
         }
     }
 
@@ -119,6 +128,12 @@ public final class ValueSerialization {
             }
             case TAG_LIST -> new Value.ListVal(in.readCollectionAsList(ValueSerialization::readValue));
             case TAG_CHANNEL -> new Value.ChannelVal(in.readString(), in.readString());
+            case TAG_INDEX -> {
+                var name = in.readString();
+                var uuid = in.readString();
+                var fieldTypes = in.readMap(StreamInput::readString);
+                yield new Value.IndexVal(name, uuid, fieldTypes);
+            }
             default -> throw new IOException("unknown Value tag: " + tag);
         };
     }

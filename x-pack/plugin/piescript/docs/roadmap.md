@@ -3,8 +3,10 @@
 > **Living doc** — update status markers as work progresses. Add new phases/sub-phases as they are
 > planned.
 >
-> **Revised**: 2026-03-19. Block C fully complete (C.1–C.5). Numeric unification (D-020 resolved),
-> math builtins, and multi-node integration tests added.
+> **Revised**: 2026-03-20. Block D fully complete. Local data access via `use` declarations,
+> `Index r` type, `Shard.open`/`Shard.consume`/`Shard.read`, qualified builtin names, `DocRef r`
+> type threading, non-serializable value wire rejection. The MVP distributed vertical slice is
+> feature-complete.
 >
 > Previous revision (2026-03-17): Blocks B–E restructured around the distributed vertical slice
 > (D-042). Block B is now ES topology; Block C is cross-node execution; Block D is local data
@@ -50,7 +52,7 @@ distributed computing with code mobility, coordinated by the Join Calculus.
 | Block A | `spawn` + single-value `when` — local async coordination | :white_check_mark: |
 | Block B | ES topology as typed values — `topology`, node/shard records, `List` type rename, list utilities | :white_check_mark: |
 | Block C | Cross-node code execution — `send`, `spawn!`, closure serialization, channel registry, multi-node tests | :white_check_mark: |
-| Block D | Local data access — `scan` on data nodes inside shipped closures | :memo: |
+| Block D | Local data access — `use`, `Index r`, `Shard.open`/`consume`/`read`, qualified builtins | :white_check_mark: |
 
 **Stretch goal** (valuable but not required for the vertical slice):
 
@@ -248,6 +250,8 @@ or when downstream work requires them.
 | Opaque `ESQL_BODY` lexer token | T2.1 | ESQL body captured as backtick-delimited raw text (`` query `FROM ...` ``); index pattern extracted via Java string parsing. Future: parse `FROM <pattern>` structurally in the ANTLR grammar. |
 | Empty mapping diagnostics | — | When `buildRowFields` produces an empty row (index exists but field caps returns no usable fields), emit a diagnostic on `ElaborationState` rather than silently producing `List { }`. Downstream type errors ("missing fields … in `{ }`") are confusing when the real issue is a missing or unmapped index. |
 | String concat operator (`<>`) | Phase 1 tech debt | No way to concatenate `Keyword` values. Proposed: `<>` for string concat (aligns with Haskell `Semigroup`, Elixir convention). Separate `++` for list concat. Both are future typeclass candidates (`Semigroup.<>`). |
+| `RowType` not a first-class `MonoType` | D-050 (high priority) | Rows are separate from `MonoType`. `r` in `DocRef r` is `Kind.TYPE` not `Kind.ROW`, so `DocRef Double` is well-kinded — unsound. Fix: make `RowType` a `MonoType` variant with `Kind.ROW`, add row-kinded metas/rigids. |
+| No `Label` kind | D-050 (future) | `Shard.read` is wildcard-only (returns full record). Type-safe single-field projection requires `Label` kind with type-level string singletons and a `Project` type family. |
 
 See also [General Tech Debt — ES Conventions & Plugin Infrastructure](#general-tech-debt--es-conventions--plugin-infrastructure)
 for cross-cutting items (TransportVersion, logging, ActionType naming, thread pool, endpoint merge).
@@ -442,40 +446,68 @@ The core distributed computing story. Ship a closure to a remote node, get a res
 
 ---
 
-## Block D — Local Data Access (`scan`) :memo:
+## Block D — Local Data Access (`use` + `Shard.*`) :white_check_mark:
 
-> **Revised**: 2026-03-17. Replaces old Block D (push-down compilation). See D-042.
+> **Revised**: 2026-03-20. Block D complete. See D-050.
 
 Access data on a data node without going through ESQL. Completes the distributed vertical slice.
 
 **What it delivers:**
-- `scan` as a builtin function — takes a shard reference (from Block B topology records), returns
-  data. For the vertical slice: returns `ListVal` (materialized).
-- Implementation: `IndexSearcher` / Lucene on the local shard. Runs inside closures shipped via
-  `send`.
+- `use "index-name" as idx` — top-level declaration that binds a typed `Index r` value. Row type
+  `r` resolved from field capabilities at elaboration time via `IndexResolutionPrePass`.
+- `Shard.open : Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)` — acquires
+  a Lucene `IndexSearcher` asynchronously and delivers it via a channel.
+- `Shard.consume : Double → Searcher r → List (DocRef r)` — iterates `DocIdSetIterator` for up
+  to N docs (synchronous).
+- `Shard.read : DocRef r → r` — reads all doc-value fields from a document reference (synchronous,
+  throws on missing doc values).
+- `SearcherVal` and `DocRefVal` are non-serializable — attempting to send them over the wire
+  fails with `IOException`.
+- Qualified builtin names for all builtins (`Shard.open`, `Index.routing`, `List.map`, etc.).
+- `Index r` type carrying name, UUID, and field metadata. UUID resolved at evaluation time from
+  `ClusterService`, keeping Core IR cluster-state-free.
 - The `RawData` lazy type (typeclass-driven push-down to Lucene) is a future optimization, not
   required for the vertical slice.
 
 | Task | Status |
 |------|--------|
-| `scan` builtin function (grammar or prelude) | :memo: |
-| Shard-local Lucene query execution | :memo: |
-| Result conversion to `ListVal` | :memo: |
-| Integration test: `send` closure with `scan` to data node, verify results | :memo: |
+| Qualified builtin names (parser + Prelude + EvalBuiltins) | :white_check_mark: |
+| `use` declaration (grammar + elaboration + pre-pass extension) | :white_check_mark: |
+| `Index r` / `Searcher r` / `DocRef r` types + `IndexVal` / `SearcherVal` / `DocRefVal` values | :white_check_mark: |
+| `Shard.open` — async searcher acquisition via channel | :white_check_mark: |
+| `Shard.consume` — DocIdSetIterator-based iteration | :white_check_mark: |
+| `Shard.read` — wildcard doc-value field read (returns `r`) | :white_check_mark: |
+| `EvalDependencies` + wiring (UUID in shard records, `IndicesService`) | :white_check_mark: |
+| `Index.routing`/`shards`/`nodes` accept `Index r` only (no raw `Keyword`) | :white_check_mark: |
+| Serialization: `IndexVal` round-trip, `SearcherVal`/`DocRefVal` rejection | :white_check_mark: |
+| Unit tests (parser, elaborator, evaluator, serialization) | :white_check_mark: |
+| Single-node integration tests (`use`, shards, open+consume+read, consume-exhausted) | :white_check_mark: |
+| Multi-node negative test (non-serializable value over the wire) | :white_check_mark: |
 
-**Full vertical slice example** (after Blocks B+C+D):
+**Known tech debt from Block D:**
+- `RowType` is not a first-class `MonoType` — `r` in `DocRef r` is `Kind.TYPE` not `Kind.ROW`
+- No `Label` kind — `Shard.read` is wildcard-only, no type-safe single-field projection
+
+**Full vertical slice example** (working today):
 
 ```
-let topo = topology "my-index"
-in let target = head topo.shards
-in let ch = spawn!
-in send target.node.inbox (fn () ->
-  let data = scan target |> filter (fn r -> r.status == "active")
-  in send ch data
-)
-in when (ch results) ->
-  results |> map (fn r -> { id: r.id, status: r.status })
+use "my-index" as idx;
+let topo = Cluster.topology "cluster";
+let shards = Index.shards idx;
+let shard = List.head shards;
+let node = List.head (Index.nodes idx);
+let ch = spawn!;
+let u = send node.inbox (fn info ->
+  let data_ch = Shard.open idx shard { match_all: true };
+  when (data_ch searcher) ->
+    let docs = Shard.consume 100.0 searcher;
+    send ch (List.map (fn ref -> Shard.read ref) docs)
+);
+when (ch results) ->
+  List.map (fn r -> { name: r.name }) results
 ```
+
+**Ref**: [D-050](decisions.md#d-050), [Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1)
 
 ---
 

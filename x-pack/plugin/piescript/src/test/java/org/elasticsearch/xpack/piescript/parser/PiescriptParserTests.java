@@ -458,6 +458,36 @@ public class PiescriptParserTests extends ESTestCase {
         assertParses("spawn !true");
     }
 
+    // ──── use declarations (Block D) ────
+
+    public void testUseDeclaration() {
+        assertParses("use \"logs-test\" as idx; idx");
+    }
+
+    public void testUseDeclarationWithHyphen() {
+        assertParses("use \"logs-test-2024\" as idx; idx");
+    }
+
+    public void testUseDeclarationWithDot() {
+        assertParses("use \".logs-test\" as idx; idx");
+    }
+
+    public void testUseDeclarationMultiple() {
+        assertParses("use \"index_a\" as a; use \"index_b\" as b; a");
+    }
+
+    public void testUseDeclarationWithBodyExpression() {
+        assertParses("use \"logs\" as idx; Index.shards idx");
+    }
+
+    public void testUseDeclarationMissingAs() {
+        expectThrows(PiescriptParsingException.class, () -> parse("use \"logs\" idx; idx"));
+    }
+
+    public void testUseDeclarationMissingString() {
+        expectThrows(PiescriptParsingException.class, () -> parse("use as idx; idx"));
+    }
+
     // ──── Error cases ────
 
     public void testEmptyProgram() {

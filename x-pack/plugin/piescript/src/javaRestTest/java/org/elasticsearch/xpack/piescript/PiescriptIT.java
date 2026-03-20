@@ -311,7 +311,7 @@ public class PiescriptIT extends ESRestTestCase {
     // ──── Index routing builtin (D-048) ────
 
     public void testRoutingReturnsShardAndNodeInfo() throws IOException {
-        Request request = piescriptRequest("Index.routing \"piescript-test\"");
+        Request request = piescriptRequest("use \"piescript-test\" as idx; Index.routing idx");
         Response response = client().performRequest(request);
         assertOK(response);
 
@@ -331,6 +331,7 @@ public class PiescriptIT extends ESRestTestCase {
         Map<String, Object> firstShard = shards.get(0);
         assertThat(firstShard.containsKey("index"), equalTo(true));
         assertThat(firstShard.get("index"), equalTo("piescript-test"));
+        assertThat(firstShard.containsKey("uuid"), equalTo(true));
         assertThat(firstShard.containsKey("shard_id"), equalTo(true));
         assertThat(firstShard.containsKey("primary"), equalTo(true));
         assertThat(firstShard.containsKey("state"), equalTo(true));
@@ -352,7 +353,7 @@ public class PiescriptIT extends ESRestTestCase {
     }
 
     public void testRoutingNonExistentIndexThrows() throws IOException {
-        Request request = piescriptRequest("Index.routing \"nonexistent-index-xyz\"");
+        Request request = piescriptRequest("use \"nonexistent-index-xyz\" as idx; Index.routing idx");
         ResponseException e = expectThrows(ResponseException.class, () -> client().performRequest(request));
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
     }
@@ -390,6 +391,84 @@ public class PiescriptIT extends ESRestTestCase {
         Map<String, Object> responseMap = entityAsMap(response);
         assertThat(responseMap.get("type"), equalTo("Boolean"));
         assertThat(responseMap.get("result"), equalTo(false));
+    }
+
+    // ──── Block D: local data access (D-050) ────
+
+    public void testUseDeclarationTypechecks() throws IOException {
+        Request request = piescriptDevRequest("use \"piescript-typed\" as idx; idx");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        String type = (String) responseMap.get("type");
+        assertThat(type, containsString("Index"));
+    }
+
+    public void testUseShardsReturnsList() throws IOException {
+        Request request = piescriptRequest("use \"piescript-typed\" as idx; Index.shards idx");
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        Object result = responseMap.get("result");
+        assertThat(result, instanceOf(List.class));
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> shards = (List<Map<String, Object>>) result;
+        assertThat(shards.size(), greaterThanOrEqualTo(1));
+
+        Map<String, Object> firstShard = shards.get(0);
+        assertThat(firstShard.containsKey("index"), equalTo(true));
+        assertThat(firstShard.containsKey("uuid"), equalTo(true));
+        assertThat(firstShard.containsKey("shard_id"), equalTo(true));
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testShardOpenConsumeRead() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            let shards = Index.shards idx;
+            let shard = List.head shards;
+            let ch = Shard.open idx shard { match_all: true };
+            when (ch searcher) ->
+              let docs = Shard.consume 10.0 searcher;
+              List.map (fn ref -> Shard.read ref) docs
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        Object result = responseMap.get("result");
+        assertThat(result, instanceOf(List.class));
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) result;
+        assertThat(rows, hasSize(3));
+
+        for (Map<String, Object> row : rows) {
+            assertThat(row.containsKey("name"), equalTo(true));
+            assertThat(row.containsKey("age"), equalTo(true));
+            assertThat(row.containsKey("active"), equalTo(true));
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testShardConsumeReturnsEmptyWhenExhausted() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            let shards = Index.shards idx;
+            let shard = List.head shards;
+            let ch = Shard.open idx shard { match_all: true };
+            when (ch searcher) ->
+              let first = Shard.consume 100.0 searcher;
+              let second = Shard.consume 100.0 searcher;
+              List.length second
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("result"), equalTo(0));
     }
 
     private static Request piescriptRequest(String program) {

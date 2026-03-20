@@ -59,6 +59,9 @@ public final class Elaborator {
 
     static final MonoType LIST = new MonoType.TCon("List");
     static final MonoType CHANNEL = new MonoType.TCon("Channel");
+    static final MonoType INDEX = new MonoType.TCon("Index");
+    static final MonoType SEARCHER = new MonoType.TCon("Searcher");
+    static final MonoType DOCREF = new MonoType.TCon("DocRef");
     static final MonoType DATETIME = new MonoType.TCon("DateTime");
     static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
     static final MonoType IP = new MonoType.TCon("Ip");
@@ -86,7 +89,10 @@ public final class Elaborator {
         Map.entry("CartesianShape", CARTESIAN_SHAPE),
         Map.entry("Unsupported", UNSUPPORTED),
         Map.entry("List", LIST),
-        Map.entry("Channel", CHANNEL)
+        Map.entry("Channel", CHANNEL),
+        Map.entry("Index", INDEX),
+        Map.entry("Searcher", SEARCHER),
+        Map.entry("DocRef", DOCREF)
     );
 
     final ElaborationState state;
@@ -364,6 +370,13 @@ public final class Elaborator {
             start.getLine(),
             start.getCharPositionInLine() + 1
         );
+    }
+
+    /**
+     * Strip surrounding quotes and unescape a QUOTED_STRING token's text.
+     */
+    static String unquote(String quotedText) {
+        return unescapeString(quotedText.substring(1, quotedText.length() - 1));
     }
 
     // ──── String unescaping ────

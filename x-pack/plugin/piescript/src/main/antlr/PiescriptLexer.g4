@@ -23,6 +23,8 @@ SPAWN_BANG: 'spawn!';
 SPAWN     : 'spawn';
 SEND      : 'send';
 WHEN      : 'when';
+USE       : 'use';
+AS        : 'as';
 PAR       : 'par';
 DO        : 'do';
 UNDERSCORE: '_';
