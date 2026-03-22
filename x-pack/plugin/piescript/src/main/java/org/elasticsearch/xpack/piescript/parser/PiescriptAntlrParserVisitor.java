@@ -249,6 +249,14 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
     T visitApplication(PiescriptAntlrParser.ApplicationContext ctx);
 
     /**
+     * Visit a parse tree produced by the {@code EmptyList}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitEmptyList(PiescriptAntlrParser.EmptyListContext ctx);
+
+    /**
      * Visit a parse tree produced by the {@code EmptyRecord}
      * labeled alternative in {@link PiescriptAntlrParser#primary}.
      * @param ctx the parse tree
@@ -319,6 +327,14 @@ public interface PiescriptAntlrParserVisitor<T> extends ParseTreeVisitor<T> {
      * @return the visitor result
      */
     T visitFalseLiteral(PiescriptAntlrParser.FalseLiteralContext ctx);
+
+    /**
+     * Visit a parse tree produced by the {@code ListLiteral}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     * @return the visitor result
+     */
+    T visitListLiteral(PiescriptAntlrParser.ListLiteralContext ctx);
 
     /**
      * Visit a parse tree produced by the {@code StringLiteral}

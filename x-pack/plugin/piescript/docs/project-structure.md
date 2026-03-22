@@ -168,7 +168,8 @@ x-pack/plugin/piescript/
 |------|---------|
 | `core/CoreExpr.java` | Abstract sealed base class extending `Node<CoreExpr>`. Provides default `writeTo`/`getWriteableName` (throws — Core IR is not serialized). All concrete node types are permitted subclasses. |
 | `core/CoreField.java` | Helper record pairing a label with a value expression. Convenience for constructing and inspecting `CoreRecord` and `CoreUpdate` nodes. |
-| `core/Exprs.java` | Static factory methods for concise `CoreExpr` construction (Block C.4). Exports `SRC` (`Source.EMPTY`) and builders for all 16 `CoreExpr` variants: `lit`, `var`, `free`, `lam`, `app`, `let`, `rec`, `proj`, `update`, `prim`, `add`/`sub`/`mul`/`gt`/`eq`, `typeAbs`, `typeApp`, `query`, `spawn`, `spawnBang`, `send`, `when`, `binding`, `field`. Infers types where possible (e.g., `lam` computes arrow type, `rec` builds record type from fields). Intended for `import static` use. |
+| `core/CoreList.java` | List literal in Core IR (Block E). Children are element expressions, all sharing the same element type. Type is `List a`. Elaborated from `[e1, e2, ...]` syntax. 17th variant in the `CoreExpr` sealed hierarchy. |
+| `core/Exprs.java` | Static factory methods for concise `CoreExpr` construction (Block C.4). Exports `SRC` (`Source.EMPTY`) and builders for all 17 `CoreExpr` variants: `lit`, `var`, `free`, `lam`, `app`, `let`, `rec`, `proj`, `update`, `prim`, `add`/`sub`/`mul`/`gt`/`eq`, `typeAbs`, `typeApp`, `query`, `spawn`, `spawnBang`, `send`, `when`, `binding`, `field`. Infers types where possible (e.g., `lam` computes arrow type, `rec` builds record type from fields). Intended for `import static` use. |
 | `core/CoreVar.java` | Variable reference by de Bruijn index. Leaf node (no children). |
 | `core/CoreFree.java` | Free variable reference (module-level). Carries name and type, no de Bruijn index. Emitted for built-in functions resolved from the module map. |
 | `core/CoreLit.java` | Literal value (`LitVal`). Leaf node (no children). |
@@ -213,6 +214,8 @@ x-pack/plugin/piescript/
 | `eval/EsqlValueConverter.java` | Converts `EsqlQueryResponse` to `ListVal`. Each row becomes a `RecordVal` (column names as field keys). Cell conversion uses `instanceof` dispatch (`Integer`, `Long`, `Double`, `String`, `Boolean`, `null`, multi-value first-element). |
 | `eval/EvalDependencies.java` | Context record bundling `Client`, `Executor`, and `ClusterService` for the evaluator (D-044). Replaces the growing constructor parameter list. Scales to Block C (which will add `TransportService` and a channel registry). |
 | `eval/EvalTopology.java` | Implements the `topology` builtin (D-044). Reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting` → `DiscoveryNode` and converts to typed `RecordVal`/`ListVal` records. Returns both shard-centric and node-centric views. Only STARTED shards, exact index name only. |
+| `eval/EvalWrite.java` | Write builtins (D-051): `Shard.writer` (acquire primary shard write context), `Shard.write` (single-doc primary write via `applyIndexOperationOnPrimary`), `Shard.refresh` (trigger refresh for write visibility), `Shard.globalCheckpoint` (read replication checkpoint), `Index.bulk` (high-level Bulk API write). Also contains `RecordVal` → `XContentBuilder` conversion for `IndexRequest` source. |
+| `eval/WriterState.java` | State backing `WriterVal`. Holds `IndexShard` + `IndexService` references. Node-local, non-serializable. Created by `Shard.writer` on a primary shard (D-051). |
 | `eval/EvaluationException.java` | Unchecked runtime error for user-observable evaluation failures (null in arithmetic, division by zero). |
 
 ### Tests (`src/test`) — Unit Tests

@@ -105,4 +105,13 @@ public sealed interface Value {
      * @param searcherState back-reference to the owning searcher (for field reading)
      */
     record DocRefVal(org.apache.lucene.index.LeafReaderContext leafContext, int docId, SearcherState searcherState) implements Value {}
+
+    /**
+     * Opaque shard write context. Non-serializable, node-local.
+     * Created by {@code Shard.writer} on a primary shard, consumed by
+     * {@code Shard.write} and {@code Shard.refresh}. The {@link WriterState}
+     * holds the {@code IndexShard} and {@code IndexService} references.
+     * See D-051.
+     */
+    record WriterVal(WriterState state) implements Value {}
 }

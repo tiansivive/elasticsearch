@@ -16,6 +16,7 @@ import org.elasticsearch.xpack.piescript.core.CoreExprSerialization;
 import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
+import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
@@ -359,6 +360,14 @@ public class SerializationRoundTripTests extends ESTestCase {
         assertThat(ex.getMessage(), containsString("not serializable"));
     }
 
+    public void testValueWriterNotSerializable() {
+        var ex = expectThrows(IOException.class, () -> {
+            var out = new BytesStreamOutput();
+            ValueSerialization.writeValue(out, new Value.WriterVal(null));
+        });
+        assertThat(ex.getMessage(), containsString("not serializable"));
+    }
+
     // ──── Helpers ────
 
     private void assertMonoTypeRoundTrip(MonoType type) throws IOException {
@@ -495,6 +504,13 @@ public class SerializationRoundTripTests extends ESTestCase {
                 assertCoreExprEquals(e.channel(), a.channel());
                 assertCoreExprEquals(e.value(), a.value());
             }
+            case CoreList e -> {
+                var a = (CoreList) actual;
+                assertEquals(e.elements().size(), a.elements().size());
+                for (int i = 0; i < e.elements().size(); i++) {
+                    assertCoreExprEquals(e.elements().get(i), a.elements().get(i));
+                }
+            }
         }
     }
 
@@ -556,6 +572,7 @@ public class SerializationRoundTripTests extends ESTestCase {
             }
             case Value.SearcherVal ignored -> fail("SearcherVal should not be serialized");
             case Value.DocRefVal ignored -> fail("DocRefVal should not be serialized");
+            case Value.WriterVal ignored -> fail("WriterVal should not be serialized");
         }
     }
 }

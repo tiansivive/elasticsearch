@@ -12,10 +12,12 @@ import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.Response;
+import org.elasticsearch.client.ResponseException;
 import org.elasticsearch.test.TestClustersThreadFilter;
 import org.elasticsearch.test.cluster.ElasticsearchCluster;
 import org.elasticsearch.test.cluster.local.distribution.DistributionType;
 import org.elasticsearch.test.rest.ESRestTestCase;
+import org.junit.Before;
 import org.junit.ClassRule;
 
 import java.io.IOException;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
@@ -51,6 +54,25 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
     @Override
     protected String getTestRestCluster() {
         return cluster.getHttpAddresses();
+    }
+
+    @Before
+    public void setupWriteIndex() throws IOException {
+        if (indexExists("piescript-mn-write") == false) {
+            Request createIndex = new Request("PUT", "/piescript-mn-write");
+            createIndex.setJsonEntity("""
+                {
+                  "settings": {"number_of_shards": 3, "number_of_replicas": 0},
+                  "mappings": {
+                    "properties": {
+                      "name":  {"type": "keyword"},
+                      "score": {"type": "double"}
+                    }
+                  }
+                }
+                """);
+            assertOK(adminClient().performRequest(createIndex));
+        }
     }
 
     // ──── Topology ────
@@ -174,6 +196,42 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
         assertThat(result.get("s"), equalTo(4));
         assertThat(result.get("a"), equalTo(42));
         assertThat(result.get("p"), equalTo(1024));
+    }
+
+    // ──── Block E: write primitives (D-051) ────
+
+    public void testRemoteShardWrite() throws IOException {
+        var result = evalRecord(
+            "use \"piescript-mn-write\" as dest; "
+                + "let shards = Index.shards dest "
+                + "in let primary = List.head (List.filter (fn s -> s.primary) shards) "
+                + "in let ch = spawn! "
+                + "in let u = send primary.node.inbox (fn info -> "
+                + "  let wch = Shard.writer dest primary "
+                + "  in when (wch writer) -> "
+                + "    let r = Shard.write writer \"remote-write-1\" { name: \"remote-write\", score: 99 } "
+                + "    in send ch { node: info.name, seq_no: r.seq_no }"
+                + ") "
+                + "in when (ch result) -> result"
+        );
+        assertThat(result.get("node"), instanceOf(String.class));
+        assertThat(((Number) result.get("seq_no")).doubleValue(), greaterThanOrEqualTo(0.0));
+    }
+
+    public void testWriterValNotSerializableOverWire() throws IOException {
+        Request request = piescriptRequest(
+            "use \"piescript-mn-write\" as dest; "
+                + "let shards = Index.shards dest "
+                + "in let primary = List.head (List.filter (fn s -> s.primary) shards) "
+                + "in let ch = spawn! "
+                + "in let u = send primary.node.inbox (fn info -> "
+                + "  let wch = Shard.writer dest primary "
+                + "  in when (wch writer) -> send ch writer"
+                + ") "
+                + "in when (ch w) -> w"
+        );
+        var e = expectThrows(ResponseException.class, () -> client().performRequest(request));
+        assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
     }
 
     // ──── Helpers ────

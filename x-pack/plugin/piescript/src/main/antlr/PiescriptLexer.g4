@@ -61,6 +61,8 @@ LPAREN    : '(';
 RPAREN    : ')';
 LBRACE    : '{';
 RBRACE    : '}';
+LBRACKET  : '[';
+RBRACKET  : ']';
 
 // ──── Literals ────
 INTEGER_LITERAL
