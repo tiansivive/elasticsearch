@@ -423,6 +423,20 @@ public interface PiescriptAntlrParserListener extends ParseTreeListener {
     void exitApplication(PiescriptAntlrParser.ApplicationContext ctx);
 
     /**
+     * Enter a parse tree produced by the {@code EmptyList}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     */
+    void enterEmptyList(PiescriptAntlrParser.EmptyListContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code EmptyList}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     */
+    void exitEmptyList(PiescriptAntlrParser.EmptyListContext ctx);
+
+    /**
      * Enter a parse tree produced by the {@code EmptyRecord}
      * labeled alternative in {@link PiescriptAntlrParser#primary}.
      * @param ctx the parse tree
@@ -547,6 +561,20 @@ public interface PiescriptAntlrParserListener extends ParseTreeListener {
      * @param ctx the parse tree
      */
     void exitFalseLiteral(PiescriptAntlrParser.FalseLiteralContext ctx);
+
+    /**
+     * Enter a parse tree produced by the {@code ListLiteral}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     */
+    void enterListLiteral(PiescriptAntlrParser.ListLiteralContext ctx);
+
+    /**
+     * Exit a parse tree produced by the {@code ListLiteral}
+     * labeled alternative in {@link PiescriptAntlrParser#primary}.
+     * @param ctx the parse tree
+     */
+    void exitListLiteral(PiescriptAntlrParser.ListLiteralContext ctx);
 
     /**
      * Enter a parse tree produced by the {@code StringLiteral}

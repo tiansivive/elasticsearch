@@ -97,6 +97,22 @@ public class PiescriptIT extends ESRestTestCase {
                 """);
             assertOK(adminClient().performRequest(bulkTyped));
         }
+
+        if (indexExists("piescript-write-dest") == false) {
+            Request createDest = new Request("PUT", "/piescript-write-dest");
+            createDest.setJsonEntity("""
+                {
+                  "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+                  "mappings": {
+                    "properties": {
+                      "name":  {"type": "keyword"},
+                      "score": {"type": "double"}
+                    }
+                  }
+                }
+                """);
+            assertOK(adminClient().performRequest(createDest));
+        }
     }
 
     public void testQueryTypechecking() throws IOException {
@@ -469,6 +485,100 @@ public class PiescriptIT extends ESRestTestCase {
 
         Map<String, Object> responseMap = entityAsMap(response);
         assertThat(responseMap.get("result"), equalTo(0));
+    }
+
+    // ──── Block E: write primitives (D-051) ────
+
+    @SuppressWarnings("unchecked")
+    public void testShardWriterAndWrite() throws IOException {
+        String program = """
+            use "piescript-write-dest" as dest;
+            let shards = Index.shards dest;
+            let shard = List.head shards;
+            let wch = Shard.writer dest shard;
+            when (wch writer) ->
+              let r1 = Shard.write writer "test-alice" { name: "test-alice", score: 95.5 };
+              let r2 = Shard.write writer "test-bob" { name: "test-bob", score: 87.0 };
+              let rch = Shard.refresh writer;
+              when (rch ack) ->
+                let rdr = Shard.open dest shard { match_all: true };
+                when (rdr searcher) ->
+                  let docs = Shard.consume 100.0 searcher;
+                  List.length docs
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        int count = ((Number) responseMap.get("result")).intValue();
+        assertThat(count, greaterThanOrEqualTo(2));
+    }
+
+    public void testShardWriteWithId() throws IOException {
+        String program = """
+            use "piescript-write-dest" as dest;
+            let shards = Index.shards dest;
+            let shard = List.head shards;
+            let wch = Shard.writer dest shard;
+            when (wch writer) ->
+              let r1 = Shard.write writer "idempotent-1" { name: "idempotent", score: 1.0 };
+              let r2 = Shard.write writer "idempotent-1" { name: "idempotent-v2", score: 2.0 };
+              r2
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat((String) responseMap.get("type"), containsString("{"));
+    }
+
+    @SuppressWarnings("unchecked")
+    public void testIndexBulk() throws IOException {
+        String program = """
+            let ch = Index.bulk "piescript-bulk-test" [{ name: "bulk-alice", score: 90 }, { name: "bulk-bob", score: 80 }];
+            when (ch result) -> result
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        Map<String, Object> result = (Map<String, Object>) responseMap.get("result");
+        assertThat(((Number) result.get("total")).intValue(), equalTo(2));
+        assertThat(((Number) result.get("written")).intValue(), equalTo(2));
+        assertThat(((Number) result.get("failed")).intValue(), equalTo(0));
+    }
+
+    public void testShardGlobalCheckpoint() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            let shards = Index.shards idx;
+            let shard = List.head shards;
+            Shard.globalCheckpoint idx shard
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("type"), equalTo("Double"));
+        double checkpoint = ((Number) responseMap.get("result")).doubleValue();
+        assertThat(checkpoint, greaterThanOrEqualTo(0.0));
+    }
+
+    public void testWriterValNotSerializableInResponse() throws IOException {
+        String program = """
+            use "piescript-write-dest" as dest;
+            let shards = Index.shards dest;
+            let shard = List.head shards;
+            let wch = Shard.writer dest shard;
+            when (wch writer) -> writer
+            """;
+        Request request = piescriptRequest(program);
+        var e = expectThrows(ResponseException.class, () -> client().performRequest(request));
+        assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
     }
 
     public void testSearcherValNotSerializableInResponse() throws IOException {

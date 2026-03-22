@@ -350,6 +350,17 @@ public class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor
      * {@link #visitChildren} on {@code ctx}.</p>
      */
     @Override
+    public T visitEmptyList(PiescriptAntlrParser.EmptyListContext ctx) {
+        return visitChildren(ctx);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation returns the result of calling
+     * {@link #visitChildren} on {@code ctx}.</p>
+     */
+    @Override
     public T visitEmptyRecord(PiescriptAntlrParser.EmptyRecordContext ctx) {
         return visitChildren(ctx);
     }
@@ -439,6 +450,17 @@ public class PiescriptAntlrParserBaseVisitor<T> extends AbstractParseTreeVisitor
      */
     @Override
     public T visitFalseLiteral(PiescriptAntlrParser.FalseLiteralContext ctx) {
+        return visitChildren(ctx);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation returns the result of calling
+     * {@link #visitChildren} on {@code ctx}.</p>
+     */
+    @Override
+    public T visitListLiteral(PiescriptAntlrParser.ListLiteralContext ctx) {
         return visitChildren(ctx);
     }
 

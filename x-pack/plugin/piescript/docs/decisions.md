@@ -2040,3 +2040,163 @@ Future options include scope-based release (spawn cleanup) or bracket patterns.
 - `Maybe` / ADTs for consume exhaustion signaling
 
 **Ref**: [Block D design discussion](01e7770e-9e20-41ae-a116-2e78142bb672), Block D plan
+
+---
+
+## D-051: Block E — Write primitives (`Shard.writer`, `Shard.write`, `Shard.refresh`, `Shard.globalCheckpoint`, `Index.bulk`) + list literal syntax
+
+**Status**: Accepted
+**Date**: 2026-03-22
+
+### Context
+
+The distributed vertical slice (Blocks A–D) is complete: piescript can discover topology, ship
+closures to data nodes, open Lucene searchers on shards, iterate and read documents, and
+coordinate results back via channels. But the data flow is read-only. Block E adds the write
+counterpart — shard-level document writes and a high-level Bulk API wrapper — closing the
+read-transform-write loop.
+
+The design mirrors Block D's read primitives: a two-tier architecture with shard-level control
+(bypassing transport for the primary write) alongside a high-level convenience that delegates to
+ES's Bulk API. Both tiers were designed through extensive analysis of ES's internal write path
+(Engine, IndexShard, TransportShardBulkAction, replication, indexing pressure, ingest pipelines)
+and the Transform execution model.
+
+Additionally, piescript lacked list literal syntax — lists could only be produced by `query`,
+`Shard.consume`, or list builtins. Block E adds `[e1, e2, ...]` syntax to unblock `Index.bulk`
+and general list construction.
+
+### Decision
+
+#### 1. Two-tier write architecture (mirrors read side)
+
+| Layer | Read (Block D) | Write (Block E) |
+|-------|---------------|----------------|
+| High-level | `query \`FROM idx\`` (ESQL) | `Index.bulk "dest" records` (Bulk API) |
+| Shard-level | `Shard.open` / `consume` / `read` | `Shard.writer` / `write` / `refresh` |
+| Monitoring | — | `Shard.globalCheckpoint` |
+
+#### 2. Shard-level primitives
+
+- `Shard.writer : ∀r. Index r → ShardRecord → Channel (Writer r)` — acquires a write context on
+  a primary shard. Validates primary + started state. Returns non-serializable `WriterVal` via
+  channel (same async pattern as `Shard.open`). Must run on the node hosting the primary shard.
+
+- `Shard.write : ∀r. Writer r → Keyword → r → WriteResult` — writes a single document to the
+  primary via `IndexShard.applyIndexOperationOnPrimary()`. The `Keyword` argument is the
+  document `_id` (separate from the record body — see §3). `WriteResult` is
+  `{ seq_no: Double, version: Double, result: Keyword }`. Primary-only write: no replication,
+  no ingest, no routing.
+
+- `Shard.refresh : ∀r. Writer r → Channel { refreshed: Boolean }` — triggers
+  `indexShard.refresh("piescript")`. Returns result via channel so the user can synchronize on
+  refresh completion before reading back written docs.
+
+- `Shard.globalCheckpoint : ∀r. Index r → ShardRecord → Double` — reads the global checkpoint
+  for a shard via `indexShard.seqNoStats().getGlobalCheckpoint()`. This is the same checkpoint
+  system Transforms use (`GetCheckpointAction`). Lets the user monitor replication progress.
+
+#### 3. Document `_id` as separate argument (D-050 §5 workaround)
+
+`Shard.write` takes `_id` as a separate `Keyword` argument rather than extracting it from the
+record body. This is a workaround for the `RowType`-not-first-class-`MonoType` limitation
+(D-050 deviation §5): since the type parameter `r` in `Writer r` has `Kind.TYPE` (a full record
+type) instead of `Kind.ROW`, we cannot express `{ _id: Keyword | r }` — extending a row with an
+additional field.
+
+With row-kinded type parameters, the signature would be:
+`Shard.write : ∀(r : Row). Writer r → { _id: Keyword | r } → WriteResult`
+
+This is now a concrete, practical motivation for the `RowType` → `MonoType` fix — it's not just
+a theoretical soundness issue but blocks natural API design.
+
+#### 4. `Index.bulk` (high-level Bulk API)
+
+`Index.bulk : ∀r. Keyword → List r → Channel { total: Double, written: Double, failed: Double }`
+
+Takes an index name (string) and a list of records. Converts each `RecordVal` to JSON via
+`XContentBuilder`, builds `IndexRequest`s (with optional `_id` extraction), assembles a
+`BulkRequest`, and executes via `client.execute(TransportBulkAction.TYPE, ...)`. Handles routing,
+replication, ingest pipelines, and index auto-creation. Result delivered via channel.
+
+#### 5. `RecordVal` → XContent conversion
+
+Recursive conversion from piescript `Value` to JSON for `IndexRequest` source. Handles `DoubleVal`
+(whole numbers as longs for clean JSON), `KeywordVal`, `BooleanVal`, `NullVal`, `RecordVal`
+(nested objects), `ListVal` (arrays). Non-convertible values (`ClosureVal`, `ChannelVal`,
+`SearcherVal`, `WriterVal`, etc.) throw `EvaluationException`.
+
+This is distinct from `ValueSerialization` (binary wire format for transport) and from
+`PiescriptResponse` (XContent for REST response display). Different output targets, different
+accepted value types.
+
+#### 6. `WriterVal` — non-serializable, node-local
+
+`WriterVal(WriterState)` holds `IndexShard` + `IndexService`. Non-serializable (throws `IOException`
+on serialization attempt, same as `SearcherVal`/`DocRefVal`). `Writer r` type constructor in the
+type system, registered in `Elaborator.TYPE_CONSTRUCTORS`.
+
+#### 7. List literal syntax `[e1, e2, ...]`
+
+New lexer tokens (`LBRACKET`, `RBRACKET`), parser rules (`EmptyList`, `ListLiteral`), and
+`CoreList` Core IR node (17th variant in the `CoreExpr` sealed hierarchy). Elements are elaborated
+with a shared meta for the element type — all elements must have the same type. `[]` is polymorphic
+(`List ?a`). Evaluation collects elements sequentially into a `ListVal`.
+
+#### 8. Batching: single-doc primitive, user-controlled batching
+
+The write primitive (`Shard.write`) is single-doc. Batching is user-controlled via `List.map`:
+`List.map (fn r -> Shard.write writer id r) records`. This mirrors the read side where
+`Shard.consume` pulls N docs and `Shard.read` reads one doc at a time.
+
+`List.map` with an effectful function is semantically `traverse` (effects are sequenced). This
+works correctly today because the evaluator sequences effects via `SubscribableListener` chains.
+Future: proper `List.traverse` / `mapM` combinator when effect tracking is explicit.
+
+### Known bypasses (explicitly deferred)
+
+These are intentional simplifications, not forgotten items:
+
+1. **Replication**: Shard-level writes are primary-only. Replicas catch up via translog (ES
+   background replication). User monitors via `Shard.globalCheckpoint`. Future: linearity (Phase 6)
+   enforces write→replicate protocol via session types.
+
+2. **Indexing pressure**: Shard-level writes bypass `IndexingPressure`. Future: integrate pressure
+   tracking into `WriterState` lifecycle or the monadic write description.
+
+3. **Ingest pipelines**: Shard-level writes skip ingest. `Index.bulk` runs default pipelines.
+   Future: `WriteContext` surfaces pipeline handles as first-class values the user can inspect,
+   selectively apply, or discard.
+
+4. **Mapping updates**: `MAPPING_UPDATE_REQUIRED` from Engine causes failure. Future: handle
+   mapping updates or require strict mappings via the write description.
+
+5. **Monadic write description**: The full CPS/session-typed write pipeline
+   (open → prepare → index → replicate → checkpoint → refresh) is future work, gated on linearity
+   (Phase 6). Each step would produce a linear value consumed by the next, encoding the write
+   protocol as a session type.
+
+6. **Painless push-down for updates**: `Write.update shard id (fn doc -> ...)` where the lambda
+   compiles to Painless via closure conversion (captured env → Painless parameters). Runs
+   atomically under the Engine's per-document lock. Future work.
+
+7. **Security pre-check**: `HasPrivilegesAction` during elaboration for write targets. Piescript
+   programs declare index dependencies statically (`use` declarations, `Index.bulk` targets) —
+   sufficient for a pre-flight privilege check before evaluation.
+
+8. **Cross-shard coordination**: Saga-style multi-shard writes via channels. Already possible with
+   existing primitives + Block E, but no built-in support. Global checkpoints enable cross-shard
+   consistency verification.
+
+### Consequences
+
+- Piescript can now read, transform, and write data: the full ETL loop.
+- The two-tier architecture gives 95% of users a simple `Index.bulk` path and 5% power users
+  direct `Shard.writer`/`write` control over where and how writes happen.
+- Shard-level writes bypass transport, ingest, and replication — maximum performance, maximum
+  responsibility. The type system cannot yet enforce the replication protocol (requires linearity).
+- The `_id`-as-separate-argument pattern concretely motivates the `RowType` → `MonoType` fix.
+- List literal syntax (`[...]`) is a general-purpose addition that unblocks `Index.bulk` and
+  benefits all piescript programs.
+
+**Ref**: [Block E design + implementation](104647a1-8ee2-4796-a7b3-f13317d8d22c)

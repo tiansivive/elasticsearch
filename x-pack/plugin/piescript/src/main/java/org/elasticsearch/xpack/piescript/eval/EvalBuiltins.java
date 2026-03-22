@@ -112,6 +112,28 @@ final class EvalBuiltins {
                 listener
             );
             case "Shard.read" -> EvalShard.read(requireDocRefVal(args.get(0), name), listener);
+            case "Shard.writer" -> EvalWrite.writer(eval, requireIndexVal(args.get(0), name), requireRecord(args.get(1), name), listener);
+            case "Shard.write" -> {
+                var docId = switch (args.get(1)) {
+                    case Value.KeywordVal k -> k.value();
+                    default -> throw new AssertionError("type checker bug: expected Keyword for Shard.write _id, got " + args.get(1));
+                };
+                EvalWrite.write(requireWriterVal(args.get(0), name), docId, requireRecord(args.get(2), name), listener);
+            }
+            case "Shard.refresh" -> EvalWrite.refresh(eval, requireWriterVal(args.get(0), name), listener);
+            case "Shard.globalCheckpoint" -> EvalWrite.globalCheckpoint(
+                eval,
+                requireIndexVal(args.get(0), name),
+                requireRecord(args.get(1), name),
+                listener
+            );
+            case "Index.bulk" -> {
+                var indexName = switch (args.get(0)) {
+                    case Value.KeywordVal k -> k.value();
+                    default -> throw new AssertionError("type checker bug: expected Keyword for Index.bulk, got " + args.get(0));
+                };
+                EvalWrite.bulk(eval, indexName, requireList(args.get(1), name), listener);
+            }
             default -> listener.onFailure(new EvaluationException("unknown built-in: " + name));
         }
     }
@@ -184,6 +206,13 @@ final class EvalBuiltins {
         return switch (value) {
             case Value.DocRefVal v -> v;
             default -> throw new AssertionError("type checker bug: expected DocRef for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.WriterVal requireWriterVal(Value value, String builtinName) {
+        return switch (value) {
+            case Value.WriterVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected Writer for " + builtinName + ", got " + value);
         };
     }
 

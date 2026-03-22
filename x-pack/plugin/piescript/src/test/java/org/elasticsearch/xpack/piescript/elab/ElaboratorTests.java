@@ -1043,4 +1043,31 @@ public class ElaboratorTests extends ESTestCase {
         var result = elaborate("Shard.read");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
     }
+
+    // ──── Block E: write builtins (D-051) ────
+
+    public void testShardWriterTypeIsArrow() {
+        var result = elaborate("Shard.writer");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testShardWriteTypeIsArrow() {
+        var result = elaborate("Shard.write");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testShardRefreshTypeIsArrow() {
+        var result = elaborate("Shard.refresh");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testShardGlobalCheckpointTypeIsArrow() {
+        var result = elaborate("Shard.globalCheckpoint");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    public void testIndexBulkTypeIsArrow() {
+        var result = elaborate("Index.bulk");
+        assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
 }

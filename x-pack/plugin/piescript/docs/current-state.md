@@ -3,9 +3,10 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-20 (Block D: Local data access. `use` declarations, `Index r` type,
-> `Shard.open`/`Shard.consume`/`Shard.read` primitives, qualified builtin names, `DocRef r` type
-> threading, negative serialization tests for non-serializable values. Block D is now complete.)
+> **Last updated**: 2026-03-22 (Block E: Write primitives. `Shard.writer`/`Shard.write`/
+> `Shard.refresh`/`Shard.globalCheckpoint` shard-level write builtins, `Index.bulk` high-level
+> Bulk API write, `WriterVal` non-serializable type, `RecordVal` → XContent conversion,
+> list literal syntax `[e1, e2, ...]` with `CoreList` IR node. Block E is now complete.)
 
 ## Summary
 
@@ -14,8 +15,11 @@ Concrete-Row Constraints + Eager Evaluation) is complete. Block A (spawn + singl
 complete. Block B (ES topology, `List` type rename, list utilities) is complete. Block C
 sub-blocks C.1–C.5 (cross-node code execution + builder DSL + multi-node integration tests) are
 complete. Block D (local data access via `use`, `Shard.open`, `Shard.consume`, `Shard.read`) is
-complete.** Piescript can now access local Lucene data on data nodes via the `use`/`Shard.*`
-primitives. `use "index-name" as idx` declares a typed `Index r` value whose row type `r` is
+complete. Block E (write primitives: `Shard.writer`/`write`/`refresh`/`globalCheckpoint`,
+`Index.bulk`, list literal syntax) is complete.** Piescript can now read, transform, and write
+data: the full ETL loop. Shard-level writes go directly through the Engine on primary shards
+(bypassing transport). `Index.bulk` delegates to the Bulk API for routing, replication, and
+ingest. List literals `[e1, e2, ...]` enable standalone list construction. `use "index-name" as idx` declares a typed `Index r` value whose row type `r` is
 resolved from field capabilities at elaboration time. `Shard.open` acquires a `Searcher r` for a
 shard, `Shard.consume` iterates `DocRef r` references, and `Shard.read` reads all doc-value fields
 from a `DocRef r` returning a record of type `r`. Non-serializable types (`SearcherVal`, `DocRefVal`)
@@ -51,10 +55,17 @@ for Phase 1 items carried forward.
 | `Index r` type (Block D) | `Index r` carries index name, UUID, and field metadata. UUID is resolved at evaluation time from `ClusterService` (not stored in Core IR). `r` is the row type derived from field capabilities. `Index.routing`, `Index.shards`, `Index.nodes` all accept `Index r` (not raw strings). |
 | `Shard.open` / `Shard.consume` / `Shard.read` (Block D) | `Shard.open : Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)` acquires a Lucene `IndexSearcher` asynchronously and delivers it via a channel. `Shard.consume : Double → Searcher r → List (DocRef r)` iterates `DocIdSetIterator` for up to N docs (synchronous). `Shard.read : DocRef r → r` reads all doc-value fields from a document reference (synchronous, throws on missing doc values). |
 | `Searcher r` / `DocRef r` types (Block D) | Opaque, non-serializable node-local types. `Searcher r` wraps Lucene `IndexSearcher` + `SearcherState`. `DocRef r` wraps a Lucene doc ID + `SearcherState` reference. Both parameterized by row type `r` for static type safety. Serialization of these types throws `IOException`. |
-| Qualified builtin names (Block D) | All builtins use qualified names: `Shard.open`, `Index.routing`, `List.map`, `Math.sqrt`, `Cluster.topology`, etc. Parser supports dotted identifiers for builtin dispatch. |
+| `Shard.writer` / `Shard.write` (Block E) | `Shard.writer : Index r → ShardRecord → Channel (Writer r)` acquires a write context on a primary shard. `Shard.write : Writer r → Keyword → r → WriteResult` writes a single document via `IndexShard.applyIndexOperationOnPrimary()`. The `Keyword` argument is the document `_id` (separate from the record body — D-050 §5 workaround). `WriteResult = { seq_no: Double, version: Double, result: Keyword }`. Primary-only, no replication/ingest. |
+| `Shard.refresh` (Block E) | `Shard.refresh : Writer r → Channel { refreshed: Boolean }` triggers `indexShard.refresh()` and delivers result via channel. Synchronize with `when` before reading back written docs. |
+| `Shard.globalCheckpoint` (Block E) | `Shard.globalCheckpoint : Index r → ShardRecord → Double` reads the global checkpoint (same system Transforms use). Monitors replication progress. Must run on the node hosting the shard. |
+| `Index.bulk` (Block E) | `Index.bulk : Keyword → List r → Channel { total: Double, written: Double, failed: Double }` writes records via the Bulk API. Handles routing, replication, ingest, index auto-creation. |
+| `Writer r` type (Block E) | `Writer r` is an opaque, non-serializable node-local type wrapping `IndexShard` + `IndexService`. Created by `Shard.writer` on a primary shard. Serialization throws `IOException`. |
+| `RecordVal` → XContent conversion (Block E) | Recursive conversion from piescript `Value` to JSON for `IndexRequest` source. Handles doubles, keywords, booleans, nulls, nested records, lists. Non-convertible values (closures, channels, etc.) throw `EvaluationException`. |
+| List literal syntax (Block E) | `[e1, e2, ...]` constructs a `ListVal` from element expressions. `[]` is polymorphic (`List ?a`). Elaborates to `CoreList` (17th `CoreExpr` variant). Elements must all have the same type (unified via constraints). |
+| Qualified builtin names (Block D + Block E) | All builtins use qualified names: `Shard.open`, `Shard.writer`, `Shard.write`, `Index.routing`, `Index.bulk`, `List.map`, `Math.sqrt`, `Cluster.topology`, etc. Parser supports dotted identifiers for builtin dispatch. |
 | `EvalTopology` (Block B + Block C) | Implements the `topology` builtin. Reads `ClusterState` → `RoutingTable` → `IndexRoutingTable` → `ShardRouting` → `DiscoveryNode` and converts to typed `RecordVal`/`ListVal` records. Node records include an `inbox` field (`ChannelVal(nodeId, "inbox")`) for sending closures to remote nodes. Shard records include `uuid` field. |
 | `Channel τ` type + `ChannelVal` (Block A + Block C) | `Channel` is a type constructor (`AppType(TCon("Channel"), tau)`). `ChannelVal(nodeId, channelId)` is a serializable channel reference (D-045). The actual `SubscribableListener<Value>` lives in the per-node `ChannelRegistry`. |
-| Serialization (Block C + Block D) | Full-fidelity serialization for 12 serializable `Value` variants (`ValueSerialization`), all 16 `CoreExpr` variants (`CoreExprSerialization`), and all `MonoType`, `RowType`, `LitVal`, `Op`, `Kind` types (`TypeSerialization`). `ClosureVal` serializes its `CoreExpr` body and `Value[]` environment recursively. `BuiltinVal` serializes name, arity, and partial args. `IndexVal` serializes name, UUID, and field type map. `SearcherVal` and `DocRefVal` explicitly throw `IOException` on serialization attempt. `LitVal.IndexLit` serializes name and field types (no UUID — resolved at eval time). 58 round-trip tests. |
+| Serialization (Block C + Block D + Block E) | Full-fidelity serialization for 12 serializable `Value` variants (`ValueSerialization`), all 17 `CoreExpr` variants including `CoreList` (`CoreExprSerialization`), and all `MonoType`, `RowType`, `LitVal`, `Op`, `Kind` types (`TypeSerialization`). `ClosureVal` serializes its `CoreExpr` body and `Value[]` environment recursively. `BuiltinVal` serializes name, arity, and partial args. `IndexVal` serializes name, UUID, and field type map. `SearcherVal`, `DocRefVal`, and `WriterVal` explicitly throw `IOException` on serialization attempt. `LitVal.IndexLit` serializes name and field types (no UUID — resolved at eval time). |
 | Transport layer (Block C) | `PiescriptSendAction` (`indices:data/read/piescript/send`), `PiescriptSendRequest` (channelId + serialized value), `TransportPiescriptSendAction` (handler with inbox and regular channel dispatch). `ChannelRegistry` is a singleton per node, shared across transport actions via Guice injection. |
 | `topology` builtin (Block B) | `topology "index-name"` returns a record with both shard-centric and node-centric views of the cluster topology. Shards include `index`, `shard_id`, `primary`, `state`, and nested `node` record. Nodes include `id`, `name`, `address`, and nested `shards` list. Only STARTED shards are included. Exact index name only (no wildcards). See D-044. |
 | `List` type (Block B, renamed from `Stream`) | `List` is the type constructor for in-memory lists (`TCon("List")`). `ListVal(List<Value>)` is the runtime representation. Renamed from `Stream`/`StreamVal` (D-043) to accurately reflect finite, eager, in-memory semantics. "Stream" reserved for future lazy/Exchange-backed streaming. |
@@ -64,7 +75,7 @@ for Phase 1 items carried forward.
 | Expression evaluation (Phase 1c) | Non-query programs go through parse → elaborate → evaluate pipeline, returning `{"type": "...", "result": ...}` |
 | Request validation | Empty/blank programs rejected with 400 |
 | Security | RBAC authorization via `shouldAuthorizeIndexActionNameOnly()`, operator privileges allowlist |
-| Integration tests | 27 single-node tests (`PiescriptIT`) + 10 multi-node tests (`PiescriptMultiNodeIT`) covering query type-checking, eager evaluation, expression evaluation, topology, list utilities, error handling, cross-node execution, `use` declarations, shard data access, and non-serializable value response rejection |
+| Integration tests | 33 single-node tests (`PiescriptIT`) + 12 multi-node tests (`PiescriptMultiNodeIT`) covering query type-checking, eager evaluation, expression evaluation, topology, list utilities, error handling, cross-node execution, `use` declarations, shard data access, shard writes, `Index.bulk`, global checkpoints, and non-serializable value response/wire rejection |
 | Build | Compiles, passes `check`, `spotlessJavaCheck`, `javaRestTest` |
 | ANTLR grammar | Lexer (`PiescriptLexer.g4`) and parser (`PiescriptAntlrParser.g4`) implementing full D1.17 surface syntax plus `SPAWN`, `WHEN`, `AMP` tokens and `SpawnExpr`/`WhenExpr` rules (Block A) |
 | Parser entry point | `PiescriptParser.java` — invokes ANTLR, produces parse tree; `parseToTreeString()` for CST inspection |
@@ -106,7 +117,6 @@ for Phase 1 items carried forward.
 | Wildcard / alias / data stream patterns in `topology` | Deferred | `topology` accepts exact index name only (D-044) |
 | Multi-project support in `topology` | Deferred | Uses `ProjectId.DEFAULT` (D-044) |
 | Non-STARTED shard states in `topology` | Deferred | Only STARTED shards included (D-044) |
-| `writeTo` sink primitive | Block E | No mechanism to write results to an index |
 | Scheduled async execution | Block E+ | No persistent task or scheduler |
 | Push-down optimizer | Deferred | Typeclass-driven push-down to Lucene (future optimization) |
 | Exchange integration | Deferred | No streaming data flow via ESQL's compute engine |
@@ -228,46 +238,51 @@ superset of the distributed vertical slice — it requires `writeTo` (Block E st
 
 ## Immediate Next Steps
 
-Phases 0–2, Block A, Block B, Block C (C.1–C.5), and Block D are complete. The language supports
-concurrent multi-index queries via `spawn`/`when`, cross-node code execution via `send`/inbox,
-typed functional composition over query results, structured record output, cluster topology
-discovery via `Cluster.topology`, list utilities (`List.head`/`List.tail`/`List.length`/
-`List.isEmpty`), math builtins (`Math.abs`/`Math.floor`/`Math.ceil`/`Math.round`/`Math.sqrt`/
-`Math.log`/`Math.min`/`Math.max`/`Math.pow`/`Math.toInt`), concise IR construction via the
-`Exprs`/`Values`/`Types` builder DSL, all numbers unified to `Double`, and local data access via
-`use`/`Shard.open`/`Shard.consume`/`Shard.read`. Multi-node integration tests
-(`PiescriptMultiNodeIT`) prove cross-node execution and non-serializable value rejection on a
-3-node cluster. See [mvp.md](mvp.md) for concrete examples.
+Phases 0–2, Blocks A through E are complete. The language supports concurrent multi-index queries
+via `spawn`/`when`, cross-node code execution via `send`/inbox, typed functional composition
+over query results, structured record output, cluster topology discovery, list utilities, math
+builtins, local data access via `use`/`Shard.open`/`Shard.consume`/`Shard.read`, **and now
+writing**: shard-level writes via `Shard.writer`/`Shard.write`/`Shard.refresh`, high-level writes
+via `Index.bulk`, replication monitoring via `Shard.globalCheckpoint`, and list literals
+`[e1, e2, ...]`.
 
-**The MVP vertical slice is now feature-complete.** All blocks (A through D) required for the
-distributed vertical slice are implemented. A piescript program can discover topology, ship
-closures to data nodes, open Lucene searchers on shards, iterate and read documents, and
-coordinate results back to the coordinator via channels.
+**The distributed vertical slice with read-write capability is complete.** A piescript program can
+discover topology, ship closures to data nodes, read local data, transform it, write results
+back to indices (via shard-level Engine writes or the Bulk API), refresh for visibility, and
+monitor replication via global checkpoints.
 
 **Next on the roadmap:**
 
-1. **Block E** (stretch goal) — `writeTo` sink. Persist results to an index via Bulk API.
-2. **High-priority tech debt** — `RowType` as first-class `MonoType` (see deviations §5).
-3. **Data access architecture** — `Query a` typeclass with ESQL/ShardPlan/List instances.
+1. **High-priority tech debt** — `RowType` as first-class `MonoType` (see deviations §5). Now
+   concretely motivated by D-051: `Shard.write` needs `{ _id: Keyword | r }` but cannot express
+   row extension because `r` has `Kind.TYPE` not `Kind.ROW`.
+2. **Data access architecture** — `Query a` typeclass with ESQL/ShardPlan/List instances.
+3. **Monadic write description** — CPS/session-typed write pipeline with linearity (Phase 6).
+4. **Painless push-down** — compile piescript lambdas to Painless for atomic per-doc updates.
 
 **Phase 1 tech debt** (opportunistic):
 
 - Replace `resolveDeep` in `CorePrinter` with environment-based Rigid resolution (D-032).
 - Switch `zonkOrKeep` to an `Optional`-returning `zonk` API (D-032).
 - `MonoType` → `Type` with `Forall` variant (D-038).
-- `RowType` → `MonoType` variant with `Kind.ROW` (D-050 deviation).
+- `RowType` → `MonoType` variant with `Kind.ROW` (D-050 deviation, **critical** — blocks
+  `{ _id: Keyword | r }` in write API, see D-051 §3).
 - `Label` kind + `Project` type family for type-safe field projection (D-050 future).
 
 See [roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt) for
 the full consolidated list.
 
-**Deferred work** (not on the vertical slice critical path):
+**Deferred work**:
 
 - Multi-value channels (streaming patterns) — old Block B, deferred
-- `writeTo` + scheduled execution — Block E stretch goal
+- Scheduled execution (persistent tasks) — post-Block E
 - Typeclass-driven push-down (RawData → Lucene) — future optimization
 - Exchange streaming (scale) — future, orchestrated explicitly by piescript
 - Push-down to ESQL text — deprioritized (typeclass approach is more general)
+- Monadic write description with session types — gated on linearity (Phase 6)
+- Painless push-down for writes — gated on closure conversion compiler pass
+- Security pre-check (`HasPrivilegesAction`) — collect read/write targets at elaboration time
+- Cross-shard coordination patterns (saga-style) — possible with channels, no built-in support
 - Wildcard / alias / data stream patterns in `topology` (D-044)
 - Multi-project support in `topology` (`ProjectId.DEFAULT` used) (D-044)
 - Non-STARTED shard states in `topology` (D-044)
@@ -277,7 +292,7 @@ Review:
 - [mvp.md](mvp.md) for concrete examples of what piescript enables today
 - [vision.md](vision.md) for the MVP goal and design philosophy
 - [roadmap.md](roadmap.md) for the updated block breakdown and MVP milestone
-- [decisions.md](decisions.md) for all architectural decisions (D-040 through D-050)
+- [decisions.md](decisions.md) for all architectural decisions (D-040 through D-051)
 
 **Ref**: [Phase 2 completion session](303bcf3e-9eef-4719-a47d-24c1ff27a675),
 [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
@@ -286,4 +301,5 @@ Review:
 Block B implementation session,
 [Block C.4/C.5, numeric unification, math builtins](c7b160cb-0062-4a7e-a930-c0ec2437d7ee),
 [Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1),
-[Block D testing, debug scripts, docs](40f62001-d515-4590-b3cd-95e5e999b33b)
+[Block D testing, debug scripts, docs](40f62001-d515-4590-b3cd-95e5e999b33b),
+[Block E design + implementation](104647a1-8ee2-4796-a7b3-f13317d8d22c)

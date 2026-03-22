@@ -203,6 +203,15 @@ public final class CorePrinter {
                 writeExpr(wh.body(), state, sb);
                 sb.append(')');
             }
+            case CoreList list -> {
+                sb.append('[');
+                var elements = list.elements();
+                for (int i = 0; i < elements.size(); i++) {
+                    if (i > 0) sb.append(", ");
+                    writeExpr(elements.get(i), state, sb);
+                }
+                sb.append(']');
+            }
         }
     }
 

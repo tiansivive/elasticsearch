@@ -203,6 +203,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.IndexVal v -> builder.field(fieldName, "<index:" + v.name() + ">");
             case Value.SearcherVal ignored -> builder.field(fieldName, "<searcher>");
             case Value.DocRefVal ignored -> builder.field(fieldName, "<docref>");
+            case Value.WriterVal ignored -> builder.field(fieldName, "<writer>");
         }
     }
 
@@ -234,6 +235,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.IndexVal v -> builder.value("<index:" + v.name() + ">");
             case Value.SearcherVal ignored -> builder.value("<searcher>");
             case Value.DocRefVal ignored -> builder.value("<docref>");
+            case Value.WriterVal ignored -> builder.value("<writer>");
         }
     }
 

@@ -23,6 +23,7 @@ import org.elasticsearch.xpack.piescript.core.CoreField;
 import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
+import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
@@ -109,6 +110,8 @@ public final class Evaluator {
             );
 
             case CoreRecord rec -> evaluateRecord(rec, env, listener);
+
+            case CoreList list -> evaluateList(list, env, listener);
 
             case CoreProject proj -> evaluate(proj.expr(), env, listener.delegateFailureAndWrap((l, record) -> {
                 var recVal = switch (record) {
@@ -232,6 +235,29 @@ public final class Evaluator {
         evaluate(values.get(index), env, listener.delegateFailureAndWrap((l, val) -> {
             fields.put(labels.get(index), val);
             evaluateRecordFields(labels, values, index + 1, env, fields, l);
+        }));
+    }
+
+    private void evaluateList(CoreList list, Value[] env, ActionListener<Value> listener) {
+        var elements = list.elements();
+        var results = new java.util.ArrayList<Value>(elements.size());
+        evaluateListElements(elements, 0, env, results, listener);
+    }
+
+    private void evaluateListElements(
+        java.util.List<CoreExpr> elements,
+        int index,
+        Value[] env,
+        java.util.ArrayList<Value> results,
+        ActionListener<Value> listener
+    ) {
+        if (index >= elements.size()) {
+            listener.onResponse(new Value.ListVal(results));
+            return;
+        }
+        evaluate(elements.get(index), env, listener.delegateFailureAndWrap((l, val) -> {
+            results.add(val);
+            evaluateListElements(elements, index + 1, env, results, l);
         }));
     }
 
