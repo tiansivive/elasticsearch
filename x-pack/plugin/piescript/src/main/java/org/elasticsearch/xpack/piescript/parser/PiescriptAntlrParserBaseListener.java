@@ -498,6 +498,22 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      * <p>The default implementation does nothing.</p>
      */
     @Override
+    public void enterEmptyList(PiescriptAntlrParser.EmptyListContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitEmptyList(PiescriptAntlrParser.EmptyListContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
     public void enterEmptyRecord(PiescriptAntlrParser.EmptyRecordContext ctx) {}
 
     /**
@@ -635,6 +651,22 @@ public class PiescriptAntlrParserBaseListener implements PiescriptAntlrParserLis
      */
     @Override
     public void exitFalseLiteral(PiescriptAntlrParser.FalseLiteralContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void enterListLiteral(PiescriptAntlrParser.ListLiteralContext ctx) {}
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The default implementation does nothing.</p>
+     */
+    @Override
+    public void exitListLiteral(PiescriptAntlrParser.ListLiteralContext ctx) {}
 
     /**
      * {@inheritDoc}

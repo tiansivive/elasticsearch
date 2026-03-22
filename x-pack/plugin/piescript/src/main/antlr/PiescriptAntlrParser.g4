@@ -101,6 +101,8 @@ primary
     | LBRACE recordField (COMMA recordField)* RBRACE     # RecordLiteral
     | LBRACE expr BAR recordUpdate (COMMA recordUpdate)* RBRACE  # RecordUpdateExpr
     | LBRACE UNDERSCORE BAR recordUpdate (COMMA recordUpdate)* RBRACE  # UpdateSugar
+    | LBRACKET RBRACKET                                   # EmptyList
+    | LBRACKET expr (COMMA expr)* RBRACKET               # ListLiteral
     | IF expr THEN expr ELSE expr                        # IfExpr
     | QUERY ESQL_BODY                                    # QueryExpr
     | block                                              # BlockExpr

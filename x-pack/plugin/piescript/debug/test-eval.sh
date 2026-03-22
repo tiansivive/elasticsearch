@@ -119,3 +119,33 @@ echo "=== Negative: SearcherVal not serializable in response (expect error) ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
   -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let ch = Shard.open idx shard { match_all: true }; when (ch searcher) -> searcher"}' | jq
+
+echo ""
+echo "=== Block E: Index.bulk (high-level write) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let ch = Index.bulk \"piescript-bulk-debug\" [{ name: \"debug-alice\", score: 95 }, { name: \"debug-bob\", score: 87 }]; when (ch result) -> result"}' | jq
+
+echo ""
+echo "=== Block E: Shard.writer + Shard.write + Shard.refresh (shard-level write) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let wch = Shard.writer idx shard; when (wch writer) -> let r = Shard.write writer \"piescript-write-1\" { message: \"written-by-piescript\", status: 200 }; let rch = Shard.refresh writer; when (rch ack) -> { write_result: r, refreshed: ack.refreshed }"}' | jq
+
+echo ""
+echo "=== Block E: Shard.globalCheckpoint ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; Shard.globalCheckpoint idx shard"}' | jq
+
+echo ""
+echo "=== Block E: Shard.write with _id (idempotent) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let wch = Shard.writer idx shard; when (wch writer) -> Shard.write writer \"piescript-idempotent-1\" { message: \"idempotent-write\", status: 42 }"}' | jq
+
+echo ""
+echo "=== Block E: Negative: WriterVal not serializable (expect error) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let wch = Shard.writer idx shard; when (wch writer) -> writer"}' | jq

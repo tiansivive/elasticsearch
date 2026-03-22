@@ -16,6 +16,7 @@ import org.elasticsearch.xpack.esql.core.tree.Location;
 import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreFree;
+import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
@@ -62,6 +63,7 @@ public final class Elaborator {
     static final MonoType INDEX = new MonoType.TCon("Index");
     static final MonoType SEARCHER = new MonoType.TCon("Searcher");
     static final MonoType DOCREF = new MonoType.TCon("DocRef");
+    static final MonoType WRITER = new MonoType.TCon("Writer");
     static final MonoType DATETIME = new MonoType.TCon("DateTime");
     static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
     static final MonoType IP = new MonoType.TCon("Ip");
@@ -92,7 +94,8 @@ public final class Elaborator {
         Map.entry("Channel", CHANNEL),
         Map.entry("Index", INDEX),
         Map.entry("Searcher", SEARCHER),
-        Map.entry("DocRef", DOCREF)
+        Map.entry("DocRef", DOCREF),
+        Map.entry("Writer", WRITER)
     );
 
     final ElaborationState state;
@@ -248,6 +251,20 @@ public final class Elaborator {
             case PiescriptAntlrParser.EmptyRecordContext e -> {
                 var row = RowType.closed(Map.of());
                 yield new CoreRecord(source(e).source, List.of(), List.of(), new MonoType.RecordType(row));
+            }
+            case PiescriptAntlrParser.EmptyListContext e -> {
+                var elemMeta = state.freshType(ctx.bindingLevel());
+                yield new CoreList(source(e).source, List.of(), new MonoType.AppType(LIST, elemMeta));
+            }
+            case PiescriptAntlrParser.ListLiteralContext l -> {
+                var elemMeta = state.freshType(ctx.bindingLevel());
+                var elaborated = new java.util.ArrayList<CoreExpr>();
+                for (var elemCtx : l.expr()) {
+                    var elem = elaborate(elemCtx, ctx);
+                    state.emitConstraint(elem.type(), elemMeta, elemCtx.getStart().getLine(), elemCtx.getStart().getCharPositionInLine());
+                    elaborated.add(elem);
+                }
+                yield new CoreList(source(l).source, elaborated, new MonoType.AppType(LIST, elemMeta));
             }
             case PiescriptAntlrParser.RecordLiteralContext r -> Records.record(this, r, ctx);
             case PiescriptAntlrParser.ProjectionContext p -> Records.projection(this, p, ctx);

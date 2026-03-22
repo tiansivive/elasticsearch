@@ -48,6 +48,7 @@ public final class CoreExprSerialization {
     private static final byte TAG_SPAWN = 13;
     private static final byte TAG_WHEN = 14;
     private static final byte TAG_SEND = 15;
+    private static final byte TAG_LIST = 16;
 
     public static void writeCoreExpr(StreamOutput out, CoreExpr expr) throws IOException {
         switch (expr) {
@@ -157,6 +158,11 @@ public final class CoreExprSerialization {
                 writeCoreExpr(out, send.value());
                 TypeSerialization.writeMonoType(out, send.type());
             }
+            case CoreList list -> {
+                out.writeByte(TAG_LIST);
+                out.writeCollection(list.elements(), (o, child) -> writeCoreExpr(o, child));
+                TypeSerialization.writeMonoType(out, list.type());
+            }
         }
     }
 
@@ -253,6 +259,11 @@ public final class CoreExprSerialization {
                 var value = readCoreExpr(in);
                 var type = TypeSerialization.readMonoType(in);
                 yield new CoreSend(WIRE_SOURCE, channel, value, type);
+            }
+            case TAG_LIST -> {
+                var elements = in.readCollectionAsList(CoreExprSerialization::readCoreExpr);
+                var type = TypeSerialization.readMonoType(in);
+                yield new CoreList(WIRE_SOURCE, elements, type);
             }
             default -> throw new IOException("unknown CoreExpr tag: " + tag);
         };

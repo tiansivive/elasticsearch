@@ -144,6 +144,40 @@ in when (ch0 r0) & (ch1 r1) & (ch2 r2) ->
   { shard_0: r0, shard_1: r1, shard_2: r2 }'
 post "$(jq -n --arg p "$PROG11" '{"program": $p}')"
 
+# ── 12. Block E: Remote shard write via shipped closure ──
+echo ""
+echo "=== 12. Remote Shard.writer + Shard.write (primary write on data node) ==="
+PROG12='use "piescript-test" as idx;
+let shards = Index.shards idx
+in let primary = List.head (List.filter (fn s -> s.primary) shards)
+in let ch = spawn!
+in let u = send primary.node.inbox (fn info ->
+  let wch = Shard.writer idx primary
+  in when (wch writer) ->
+    let r = Shard.write writer "remote-written-1" { name: "remote-written", age: 99, score: 7.77, active: true }
+    in send ch { node: info.name, seq_no: r.seq_no, version: r.version, result: r.result }
+)
+in when (ch result) -> result'
+post "$(jq -n --arg p "$PROG12" '{"program": $p}')"
+
+# ── 13. Block E: Index.bulk from coordinator ──
+echo ""
+echo "=== 13. Index.bulk (high-level Bulk API write) ==="
+post '{"program": "let ch = Index.bulk \"piescript-mn-bulk\" [{ name: \"mn-alice\", score: 90 }, { name: \"mn-bob\", score: 80 }]; when (ch result) -> result"}'
+
+# ── 14. Block E: Shard.globalCheckpoint (shipped to data node) ──
+echo ""
+echo "=== 14. Shard.globalCheckpoint ==="
+PROG14='use "piescript-test" as idx;
+let shards = Index.shards idx
+in let shard = List.head shards
+in let ch = spawn!
+in let u = send shard.node.inbox (fn info ->
+  send ch { node: info.name, checkpoint: Shard.globalCheckpoint idx shard }
+)
+in when (ch result) -> result'
+post "$(jq -n --arg p "$PROG14" '{"program": $p}')"
+
 echo ""
 echo "========================================"
 echo "  Done"

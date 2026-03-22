@@ -56,6 +56,11 @@ import static java.util.Map.entry;
  *   Shard.open       : ∀r. Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)
  *   Shard.consume    : ∀r. Double → Searcher r → List (DocRef r)
  *   Shard.read       : ∀r. DocRef r → r
+ *   Shard.writer     : ∀r. Index r → ShardRecord → Channel (Writer r)
+ *   Shard.write      : ∀r. Writer r → Keyword → r → { seq_no: Double, version: Double, result: Keyword }
+ *   Shard.refresh    : ∀r. Writer r → Channel { refreshed: Boolean }
+ *   Shard.globalCheckpoint : ∀r. Index r → ShardRecord → Double
+ *   Index.bulk       : ∀r. Keyword → List r → Channel { total: Double, written: Double, failed: Double }
  * </pre>
  *
  * <p>{@code Cluster.topology "cluster"} returns cluster-level info: the local (coordinator)
@@ -108,7 +113,12 @@ public final class Prelude {
         entry("Index.nodes", 1),
         entry("Shard.open", 3),
         entry("Shard.consume", 2),
-        entry("Shard.read", 1)
+        entry("Shard.read", 1),
+        entry("Shard.writer", 2),
+        entry("Shard.write", 3),
+        entry("Shard.refresh", 1),
+        entry("Shard.globalCheckpoint", 2),
+        entry("Index.bulk", 2)
     );
 
     private static Map<String, TypeScheme> buildModule() {
@@ -138,6 +148,11 @@ public final class Prelude {
         module.put("Shard.open", shardOpenScheme());
         module.put("Shard.consume", shardConsumeScheme());
         module.put("Shard.read", shardReadScheme());
+        module.put("Shard.writer", shardWriterScheme());
+        module.put("Shard.write", shardWriteScheme());
+        module.put("Shard.refresh", shardRefreshScheme());
+        module.put("Shard.globalCheckpoint", shardGlobalCheckpointScheme());
+        module.put("Index.bulk", indexBulkScheme());
         return Map.copyOf(module);
     }
 
@@ -339,5 +354,61 @@ public final class Prelude {
 
     static MonoType.AppType docref(MonoType schema) {
         return new MonoType.AppType(Elaborator.DOCREF, schema);
+    }
+
+    static MonoType.AppType writer(MonoType schema) {
+        return new MonoType.AppType(Elaborator.WRITER, schema);
+    }
+
+    // Shard.writer : ∀r. Index r → ShardRecord → Channel (Writer r)
+    private static TypeScheme shardWriterScheme() {
+        var nb = nodeBase();
+        var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
+        shardRecordFields.put("node", nb);
+        var shardRecordType = record(shardRecordFields);
+
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), new MonoType.Arrow(shardRecordType, channel(writer(A0)))));
+    }
+
+    // Shard.write : ∀r. Writer r → Keyword → r → WriteResult
+    // The Keyword argument is the document _id (separate from the record body).
+    // Future: with RowType as first-class MonoType, this becomes
+    // Shard.write : ∀(r : Row). Writer r → { _id: Keyword | r } → WriteResult
+    // WriteResult = { seq_no: Double, version: Double, result: Keyword }
+    private static TypeScheme shardWriteScheme() {
+        var writeResult = record(Map.of("seq_no", DBL, "version", DBL, "result", KW));
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(writer(A0), new MonoType.Arrow(KW, new MonoType.Arrow(A0, writeResult))));
+    }
+
+    // Shard.refresh : ∀r. Writer r → Channel { refreshed: Boolean }
+    private static TypeScheme shardRefreshScheme() {
+        var refreshResult = record(Map.of("refreshed", BOOL));
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(writer(A0), channel(refreshResult)));
+    }
+
+    // Shard.globalCheckpoint : ∀r. Index r → ShardRecord → Double
+    private static TypeScheme shardGlobalCheckpointScheme() {
+        var nb = nodeBase();
+        var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
+        shardRecordFields.put("node", nb);
+        var shardRecordType = record(shardRecordFields);
+
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), new MonoType.Arrow(shardRecordType, DBL)));
+    }
+
+    // Index.bulk : ∀r. Keyword → List r → Channel { total: Double, written: Double, failed: Double }
+    private static TypeScheme indexBulkScheme() {
+        var bulkResult = record(Map.of("total", DBL, "written", DBL, "failed", DBL));
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(KW, new MonoType.Arrow(list(A0), channel(bulkResult))));
     }
 }

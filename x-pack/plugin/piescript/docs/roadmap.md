@@ -3,10 +3,14 @@
 > **Living doc** — update status markers as work progresses. Add new phases/sub-phases as they are
 > planned.
 >
-> **Revised**: 2026-03-20. Block D fully complete. Local data access via `use` declarations,
+> **Revised**: 2026-03-22. Block E complete. Write primitives: `Shard.writer`/`Shard.write`/
+> `Shard.refresh`/`Shard.globalCheckpoint` (shard-level), `Index.bulk` (high-level Bulk API),
+> `WriterVal` non-serializable type, `RecordVal` → XContent conversion, list literal syntax
+> `[e1, e2, ...]` with `CoreList` IR node. The read-write distributed vertical slice is complete.
+>
+> Previous revision (2026-03-20): Block D fully complete. Local data access via `use` declarations,
 > `Index r` type, `Shard.open`/`Shard.consume`/`Shard.read`, qualified builtin names, `DocRef r`
-> type threading, non-serializable value wire rejection. The MVP distributed vertical slice is
-> feature-complete.
+> type threading, non-serializable value wire rejection.
 >
 > Previous revision (2026-03-17): Blocks B–E restructured around the distributed vertical slice
 > (D-042). Block B is now ES topology; Block C is cross-node execution; Block D is local data
@@ -54,11 +58,11 @@ distributed computing with code mobility, coordinated by the Join Calculus.
 | Block C | Cross-node code execution — `send`, `spawn!`, closure serialization, channel registry, multi-node tests | :white_check_mark: |
 | Block D | Local data access — `use`, `Index r`, `Shard.open`/`consume`/`read`, qualified builtins | :white_check_mark: |
 
-**Stretch goal** (valuable but not required for the vertical slice):
+**Stretch goal (completed):**
 
 | Block | What it adds | Status |
 |-------|-------------|--------|
-| Block E | `writeTo` — persist results to an index (Bulk API). Transform replacement story. | :memo: |
+| Block E | Write primitives — `Shard.writer`/`write`/`refresh`/`globalCheckpoint`, `Index.bulk`, list literals | :white_check_mark: |
 
 **Post-MVP enhancements**:
 
@@ -250,7 +254,7 @@ or when downstream work requires them.
 | Opaque `ESQL_BODY` lexer token | T2.1 | ESQL body captured as backtick-delimited raw text (`` query `FROM ...` ``); index pattern extracted via Java string parsing. Future: parse `FROM <pattern>` structurally in the ANTLR grammar. |
 | Empty mapping diagnostics | — | When `buildRowFields` produces an empty row (index exists but field caps returns no usable fields), emit a diagnostic on `ElaborationState` rather than silently producing `List { }`. Downstream type errors ("missing fields … in `{ }`") are confusing when the real issue is a missing or unmapped index. |
 | String concat operator (`<>`) | Phase 1 tech debt | No way to concatenate `Keyword` values. Proposed: `<>` for string concat (aligns with Haskell `Semigroup`, Elixir convention). Separate `++` for list concat. Both are future typeclass candidates (`Semigroup.<>`). |
-| `RowType` not a first-class `MonoType` | D-050 (high priority) | Rows are separate from `MonoType`. `r` in `DocRef r` is `Kind.TYPE` not `Kind.ROW`, so `DocRef Double` is well-kinded — unsound. Fix: make `RowType` a `MonoType` variant with `Kind.ROW`, add row-kinded metas/rigids. |
+| `RowType` not a first-class `MonoType` | D-050 (critical) | Rows are separate from `MonoType`. `r` in `DocRef r` / `Writer r` is `Kind.TYPE` not `Kind.ROW`, so `DocRef Double` is well-kinded — unsound. **Concretely blocks D-051**: `Shard.write` needs `{ _id: Keyword \| r }` but cannot express row extension. Fix: make `RowType` a `MonoType` variant with `Kind.ROW`, add row-kinded metas/rigids. |
 | No `Label` kind | D-050 (future) | `Shard.read` is wildcard-only (returns full record). Type-safe single-field projection requires `Label` kind with type-level string singletons and a `Project` type family. |
 | No runtime error provenance | — | `EvaluationException` has no source location. Builtin failures (e.g., `Shard.open` on wrong node) cannot point to the call site. Requires threading `Source` through evaluation — either on `CoreExpr` during eval, stamped on `BuiltinVal`, or via a provenance stack. Critical for distributed debugging where errors occur inside shipped closures on remote nodes. |
 
@@ -513,22 +517,39 @@ when (ch results) ->
 
 ---
 
-## Block E — Writing Sinks (`writeTo`) :memo: (Stretch Goal)
+## Block E — Write Primitives :white_check_mark:
 
-> **Revised**: 2026-03-17. Moved from old Block C. Not required for the distributed vertical slice.
+> **Revised**: 2026-03-22. Block E complete. See D-051.
 
-Persist piescript results to an index via the Bulk API. Makes piescript a replacement for ES
-Transforms. Depends on the distributed vertical slice being complete (Blocks B–D) for the full
-story, but could be implemented independently for coordinator-only use.
+Two-tier write architecture mirroring the read side (Block D). Shard-level primitives bypass
+transport for direct Engine writes on primary shards. High-level `Index.bulk` delegates to the
+Bulk API. List literal syntax added as a prerequisite.
 
 | Task | Status |
 |------|--------|
-| `writeTo` sink primitive (Core IR + grammar + typing) | :memo: |
-| Bulk API integration (batch writes from stream results) | :memo: |
-| Integration tests (write-back, error handling) | :memo: |
+| `Shard.writer` — acquire write context on primary shard (async, channel) | :white_check_mark: |
+| `Shard.write` — single-doc primary write via `applyIndexOperationOnPrimary` | :white_check_mark: |
+| `Shard.refresh` — trigger refresh (async, channel) for write visibility | :white_check_mark: |
+| `Shard.globalCheckpoint` — read replication global checkpoint | :white_check_mark: |
+| `Index.bulk` — high-level Bulk API write (routing, replication, ingest, auto-create) | :white_check_mark: |
+| `WriterVal` — non-serializable node-local type + serialization rejection | :white_check_mark: |
+| `RecordVal` → XContent conversion for `IndexRequest` source | :white_check_mark: |
+| List literal syntax `[e1, e2, ...]` — lexer, parser, `CoreList` IR, elaboration, evaluation | :white_check_mark: |
+| Unit tests (type inference, serialization rejection, `CoreList` round-trip) | :white_check_mark: |
+| Single-node integration tests (write, refresh, bulk, checkpoint, WriterVal rejection) | :white_check_mark: |
+| Multi-node integration tests (remote shard write, WriterVal wire rejection) | :white_check_mark: |
+
+**Known bypasses** (documented in D-051):
+- Replication: shard-level writes are primary-only; replicas catch up via translog
+- Indexing pressure: shard-level writes bypass `IndexingPressure`
+- Ingest: shard-level writes skip ingest pipelines
+- `_id` as separate argument: workaround for `RowType` not being first-class `MonoType` (D-050 §5)
+- `List.map` over `Shard.write` is semantically `traverse`: future `List.traverse` combinator
 
 Scheduled execution (persistent tasks, REST API for managing piescript jobs, checkpointing) is
-deferred until `writeTo` lands and the scheduler story is needed.
+deferred until the scheduler story is needed.
+
+**Ref**: [D-051](decisions.md#d-051), [Block E design + implementation](104647a1-8ee2-4796-a7b3-f13317d8d22c)
 
 ---
 
