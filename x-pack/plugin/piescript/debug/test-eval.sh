@@ -149,3 +149,33 @@ echo "=== Block E: Negative: WriterVal not serializable (expect error) ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
   -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let wch = Shard.writer idx shard; when (wch writer) -> writer"}' | jq
+
+echo ""
+echo "=== Block F: ESQL.from + ESQL.where + ESQL.limit ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.where (fn r -> r.status > 400) |> ESQL.limit 10;"}' | jq
+
+echo ""
+echo "=== Block F: ESQL.from + ESQL.keep ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.keep [\"message\"] |> ESQL.limit 5;"}' | jq
+
+echo ""
+echo "=== Block F: ESQL.explain ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.where (fn r -> r.status == 200) |> ESQL.limit 3)"}' | jq
+
+echo ""
+echo "=== Block F: ESQL.where with captured variable ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; let threshold = 400; query ESQL.from idx |> ESQL.where (fn r -> r.status > threshold) |> ESQL.limit 10;"}' | jq
+
+echo ""
+echo "=== Block F: ESQL.sort ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.sort (fn r -> r.status) |> ESQL.limit 10;"}' | jq
