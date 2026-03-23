@@ -160,11 +160,11 @@ public final class CorePrinter {
                 sb.append(state != null ? writeType(TypeWalker.resolveDeep(typeApp.typeArg(), state)) : writeType(typeApp.typeArg()));
                 sb.append(')');
             }
-            case CoreQuery q -> {
-                sb.append("(query ");
-                sb.append(q.indexPattern());
+            case CoreQueryExec qe -> {
+                sb.append("(query-exec ");
+                writeExpr(qe.plan(), state, sb);
                 sb.append(" : ");
-                sb.append(state != null ? writeType(TypeWalker.resolveDeep(q.type(), state)) : writeType(q.type()));
+                sb.append(state != null ? writeType(TypeWalker.resolveDeep(qe.type(), state)) : writeType(qe.type()));
                 sb.append(')');
             }
             case CoreSpawn sp -> {

@@ -24,7 +24,7 @@ public class PiescriptAntlrParser extends Parser {
 		INTEGER_LITERAL=41, DECIMAL_LITERAL=42, QUOTED_STRING=43, IDENTIFIER=44, 
 		LINE_COMMENT=45, MULTILINE_COMMENT=46, WS=47, UPPER_IDENT=48, LOWER_IDENT=49, 
 		USE=50, AS=51, SPAWN_BANG=52, SPAWN=53, SEND=54, WHEN=55, AMP=56, LBRACKET=57, 
-		RBRACKET=58, ESQL_BODY=59;
+		RBRACKET=58;
 	public static final int
 		RULE_ident = 0, RULE_program = 1, RULE_topBinding = 2, RULE_expr = 3, 
 		RULE_whenBinding = 4, RULE_pipeExpr = 5, RULE_orExpr = 6, RULE_andExpr = 7, 
@@ -62,7 +62,7 @@ public class PiescriptAntlrParser extends Parser {
 			"BAR", "LPAREN", "RPAREN", "LBRACE", "RBRACE", "INTEGER_LITERAL", "DECIMAL_LITERAL", 
 			"QUOTED_STRING", "IDENTIFIER", "LINE_COMMENT", "MULTILINE_COMMENT", "WS", 
 			"UPPER_IDENT", "LOWER_IDENT", "USE", "AS", "SPAWN_BANG", "SPAWN", "SEND", 
-			"WHEN", "AMP", "LBRACKET", "RBRACKET", "ESQL_BODY"
+			"WHEN", "AMP", "LBRACKET", "RBRACKET"
 		};
 	}
 	private static final String[] _SYMBOLIC_NAMES = makeSymbolicNames();
@@ -1486,7 +1486,10 @@ public class PiescriptAntlrParser extends Parser {
 	}
 	public static class QueryExprContext extends PrimaryContext {
 		public TerminalNode QUERY() { return getToken(PiescriptAntlrParser.QUERY, 0); }
-		public TerminalNode ESQL_BODY() { return getToken(PiescriptAntlrParser.ESQL_BODY, 0); }
+		public ExprContext expr() {
+			return getRuleContext(ExprContext.class,0);
+		}
+		public TerminalNode SEMICOLON() { return getToken(PiescriptAntlrParser.SEMICOLON, 0); }
 		public QueryExprContext(PrimaryContext ctx) { copyFrom(ctx); }
 	}
 	public static class ProjectionContext extends PrimaryContext {
@@ -1624,7 +1627,7 @@ public class PiescriptAntlrParser extends Parser {
 			int _alt;
 			enterOuterAlt(_localctx, 1);
 			{
-			setState(294);
+			setState(296);
 			_errHandler.sync(this);
 			switch ( getInterpreter().adaptivePredict(_input,21,_ctx) ) {
 			case 1:
@@ -1905,7 +1908,9 @@ public class PiescriptAntlrParser extends Parser {
 				setState(291);
 				match(QUERY);
 				setState(292);
-				match(ESQL_BODY);
+				expr();
+				setState(293);
+				match(SEMICOLON);
 				}
 				break;
 			case 19:
@@ -1913,13 +1918,13 @@ public class PiescriptAntlrParser extends Parser {
 				_localctx = new BlockExprContext(_localctx);
 				_ctx = _localctx;
 				_prevctx = _localctx;
-				setState(293);
+				setState(295);
 				block();
 				}
 				break;
 			}
 			_ctx.stop = _input.LT(-1);
-			setState(301);
+			setState(303);
 			_errHandler.sync(this);
 			_alt = getInterpreter().adaptivePredict(_input,22,_ctx);
 			while ( _alt!=2 && _alt!=org.antlr.v4.runtime.atn.ATN.INVALID_ALT_NUMBER ) {
@@ -1930,16 +1935,16 @@ public class PiescriptAntlrParser extends Parser {
 					{
 					_localctx = new ProjectionContext(new PrimaryContext(_parentctx, _parentState));
 					pushNewRecursionContext(_localctx, _startState, RULE_primary);
-					setState(296);
-					if (!(precpred(_ctx, 1))) throw new FailedPredicateException(this, "precpred(_ctx, 1)");
-					setState(297);
-					match(DOT);
 					setState(298);
+					if (!(precpred(_ctx, 1))) throw new FailedPredicateException(this, "precpred(_ctx, 1)");
+					setState(299);
+					match(DOT);
+					setState(300);
 					ident();
 					}
 					} 
 				}
-				setState(303);
+				setState(305);
 				_errHandler.sync(this);
 				_alt = getInterpreter().adaptivePredict(_input,22,_ctx);
 			}
@@ -1976,11 +1981,11 @@ public class PiescriptAntlrParser extends Parser {
 		try {
 			enterOuterAlt(_localctx, 1);
 			{
-			setState(304);
-			ident();
-			setState(305);
-			match(COLON);
 			setState(306);
+			ident();
+			setState(307);
+			match(COLON);
+			setState(308);
 			expr();
 			}
 		}
@@ -2015,11 +2020,11 @@ public class PiescriptAntlrParser extends Parser {
 		try {
 			enterOuterAlt(_localctx, 1);
 			{
-			setState(308);
-			ident();
-			setState(309);
-			match(ASSIGN);
 			setState(310);
+			ident();
+			setState(311);
+			match(ASSIGN);
+			setState(312);
 			expr();
 			}
 		}
@@ -2059,9 +2064,9 @@ public class PiescriptAntlrParser extends Parser {
 			int _alt;
 			enterOuterAlt(_localctx, 1);
 			{
-			setState(312);
+			setState(314);
 			match(LBRACE);
-			setState(314); 
+			setState(316); 
 			_errHandler.sync(this);
 			_alt = 1;
 			do {
@@ -2069,7 +2074,7 @@ public class PiescriptAntlrParser extends Parser {
 				case 1:
 					{
 					{
-					setState(313);
+					setState(315);
 					blockStmt();
 					}
 					}
@@ -2077,13 +2082,13 @@ public class PiescriptAntlrParser extends Parser {
 				default:
 					throw new NoViableAltException(this);
 				}
-				setState(316); 
+				setState(318); 
 				_errHandler.sync(this);
 				_alt = getInterpreter().adaptivePredict(_input,23,_ctx);
 			} while ( _alt!=2 && _alt!=org.antlr.v4.runtime.atn.ATN.INVALID_ALT_NUMBER );
-			setState(318);
+			setState(320);
 			expr();
-			setState(319);
+			setState(321);
 			match(RBRACE);
 			}
 		}
@@ -2138,34 +2143,34 @@ public class PiescriptAntlrParser extends Parser {
 		enterRule(_localctx, 36, RULE_blockStmt);
 		int _la;
 		try {
-			setState(334);
+			setState(336);
 			_errHandler.sync(this);
 			switch ( getInterpreter().adaptivePredict(_input,25,_ctx) ) {
 			case 1:
 				_localctx = new BlockLetContext(_localctx);
 				enterOuterAlt(_localctx, 1);
 				{
-				setState(321);
+				setState(323);
 				match(LET);
-				setState(322);
+				setState(324);
 				ident();
-				setState(325);
+				setState(327);
 				_errHandler.sync(this);
 				_la = _input.LA(1);
 				if (_la==COLON) {
 					{
-					setState(323);
+					setState(325);
 					match(COLON);
-					setState(324);
+					setState(326);
 					type();
 					}
 				}
 
-				setState(327);
-				match(ASSIGN);
-				setState(328);
-				expr();
 				setState(329);
+				match(ASSIGN);
+				setState(330);
+				expr();
+				setState(331);
 				match(SEMICOLON);
 				}
 				break;
@@ -2173,9 +2178,9 @@ public class PiescriptAntlrParser extends Parser {
 				_localctx = new BlockExprStmtContext(_localctx);
 				enterOuterAlt(_localctx, 2);
 				{
-				setState(331);
+				setState(333);
 				expr();
-				setState(332);
+				setState(334);
 				match(SEMICOLON);
 				}
 				break;
@@ -2226,7 +2231,7 @@ public class PiescriptAntlrParser extends Parser {
 		ParamContext _localctx = new ParamContext(_ctx, getState());
 		enterRule(_localctx, 38, RULE_param);
 		try {
-			setState(343);
+			setState(345);
 			_errHandler.sync(this);
 			switch (_input.LA(1)) {
 			case UPPER_IDENT:
@@ -2234,7 +2239,7 @@ public class PiescriptAntlrParser extends Parser {
 				_localctx = new UntypedParamContext(_localctx);
 				enterOuterAlt(_localctx, 1);
 				{
-				setState(336);
+				setState(338);
 				ident();
 				}
 				break;
@@ -2242,15 +2247,15 @@ public class PiescriptAntlrParser extends Parser {
 				_localctx = new TypedParamContext(_localctx);
 				enterOuterAlt(_localctx, 2);
 				{
-				setState(337);
-				match(LPAREN);
-				setState(338);
-				ident();
 				setState(339);
-				match(COLON);
+				match(LPAREN);
 				setState(340);
-				type();
+				ident();
 				setState(341);
+				match(COLON);
+				setState(342);
+				type();
+				setState(343);
 				match(RPAREN);
 				}
 				break;
@@ -2301,18 +2306,18 @@ public class PiescriptAntlrParser extends Parser {
 		TypeContext _localctx = new TypeContext(_ctx, getState());
 		enterRule(_localctx, 40, RULE_type);
 		try {
-			setState(350);
+			setState(352);
 			_errHandler.sync(this);
 			switch ( getInterpreter().adaptivePredict(_input,27,_ctx) ) {
 			case 1:
 				_localctx = new FunctionTypeContext(_localctx);
 				enterOuterAlt(_localctx, 1);
 				{
-				setState(345);
-				typeApp(0);
-				setState(346);
-				match(ARROW);
 				setState(347);
+				typeApp(0);
+				setState(348);
+				match(ARROW);
+				setState(349);
 				type();
 				}
 				break;
@@ -2320,7 +2325,7 @@ public class PiescriptAntlrParser extends Parser {
 				_localctx = new TypeNonArrowContext(_localctx);
 				enterOuterAlt(_localctx, 2);
 				{
-				setState(349);
+				setState(351);
 				typeApp(0);
 				}
 				break;
@@ -2384,11 +2389,11 @@ public class PiescriptAntlrParser extends Parser {
 			_ctx = _localctx;
 			_prevctx = _localctx;
 
-			setState(353);
+			setState(355);
 			typeAtom();
 			}
 			_ctx.stop = _input.LT(-1);
-			setState(359);
+			setState(361);
 			_errHandler.sync(this);
 			_alt = getInterpreter().adaptivePredict(_input,28,_ctx);
 			while ( _alt!=2 && _alt!=org.antlr.v4.runtime.atn.ATN.INVALID_ALT_NUMBER ) {
@@ -2399,14 +2404,14 @@ public class PiescriptAntlrParser extends Parser {
 					{
 					_localctx = new TypeApplicationContext(new TypeAppContext(_parentctx, _parentState));
 					pushNewRecursionContext(_localctx, _startState, RULE_typeApp);
-					setState(355);
+					setState(357);
 					if (!(precpred(_ctx, 2))) throw new FailedPredicateException(this, "precpred(_ctx, 2)");
-					setState(356);
+					setState(358);
 					typeAtom();
 					}
 					} 
 				}
-				setState(361);
+				setState(363);
 				_errHandler.sync(this);
 				_alt = getInterpreter().adaptivePredict(_input,28,_ctx);
 			}
@@ -2463,14 +2468,14 @@ public class PiescriptAntlrParser extends Parser {
 		TypeAtomContext _localctx = new TypeAtomContext(_ctx, getState());
 		enterRule(_localctx, 44, RULE_typeAtom);
 		try {
-			setState(372);
+			setState(374);
 			_errHandler.sync(this);
 			switch (_input.LA(1)) {
 			case UPPER_IDENT:
 				_localctx = new TypeConContext(_localctx);
 				enterOuterAlt(_localctx, 1);
 				{
-				setState(362);
+				setState(364);
 				match(UPPER_IDENT);
 				}
 				break;
@@ -2478,7 +2483,7 @@ public class PiescriptAntlrParser extends Parser {
 				_localctx = new TypeVarContext(_localctx);
 				enterOuterAlt(_localctx, 2);
 				{
-				setState(363);
+				setState(365);
 				match(LOWER_IDENT);
 				}
 				break;
@@ -2486,11 +2491,11 @@ public class PiescriptAntlrParser extends Parser {
 				_localctx = new RecordTypeContext(_localctx);
 				enterOuterAlt(_localctx, 3);
 				{
-				setState(364);
-				match(LBRACE);
-				setState(365);
-				rowType();
 				setState(366);
+				match(LBRACE);
+				setState(367);
+				rowType();
+				setState(368);
 				match(RBRACE);
 				}
 				break;
@@ -2498,11 +2503,11 @@ public class PiescriptAntlrParser extends Parser {
 				_localctx = new ParenTypeContext(_localctx);
 				enterOuterAlt(_localctx, 4);
 				{
-				setState(368);
-				match(LPAREN);
-				setState(369);
-				type();
 				setState(370);
+				match(LPAREN);
+				setState(371);
+				type();
+				setState(372);
 				match(RPAREN);
 				}
 				break;
@@ -2547,32 +2552,32 @@ public class PiescriptAntlrParser extends Parser {
 		try {
 			enterOuterAlt(_localctx, 1);
 			{
-			setState(374);
+			setState(376);
 			rowField();
-			setState(379);
+			setState(381);
 			_errHandler.sync(this);
 			_la = _input.LA(1);
 			while (_la==COMMA) {
 				{
 				{
-				setState(375);
+				setState(377);
 				match(COMMA);
-				setState(376);
+				setState(378);
 				rowField();
 				}
 				}
-				setState(381);
+				setState(383);
 				_errHandler.sync(this);
 				_la = _input.LA(1);
 			}
-			setState(384);
+			setState(386);
 			_errHandler.sync(this);
 			_la = _input.LA(1);
 			if (_la==BAR) {
 				{
-				setState(382);
+				setState(384);
 				match(BAR);
-				setState(383);
+				setState(385);
 				match(LOWER_IDENT);
 				}
 			}
@@ -2610,11 +2615,11 @@ public class PiescriptAntlrParser extends Parser {
 		try {
 			enterOuterAlt(_localctx, 1);
 			{
-			setState(386);
-			ident();
-			setState(387);
-			match(COLON);
 			setState(388);
+			ident();
+			setState(389);
+			match(COLON);
+			setState(390);
 			type();
 			}
 		}
@@ -2708,7 +2713,7 @@ public class PiescriptAntlrParser extends Parser {
 	}
 
 	public static final String _serializedATN =
-		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3=\u0189\4\2\t\2\4"+
+		"\3\u608b\ua72a\u8133\ub9ed\u417c\u3be7\u7786\u5964\3<\u018b\4\2\t\2\4"+
 		"\3\t\3\4\4\t\4\4\5\t\5\4\6\t\6\4\7\t\7\4\b\t\b\4\t\t\t\4\n\t\n\4\13\t"+
 		"\13\4\f\t\f\4\r\t\r\4\16\t\16\4\17\t\17\4\20\t\20\4\21\t\21\4\22\t\22"+
 		"\4\23\t\23\4\24\t\24\4\25\t\25\4\26\t\26\4\27\t\27\4\30\t\30\4\31\t\31"+
@@ -2730,22 +2735,22 @@ public class PiescriptAntlrParser extends Parser {
 		"\20\3\20\3\20\3\20\3\20\3\20\3\20\3\20\7\20\u010b\n\20\f\20\16\20\u010e"+
 		"\13\20\3\20\3\20\3\20\3\20\3\20\3\20\3\20\3\20\7\20\u0118\n\20\f\20\16"+
 		"\20\u011b\13\20\3\20\3\20\3\20\3\20\3\20\3\20\3\20\3\20\3\20\3\20\3\20"+
-		"\3\20\5\20\u0129\n\20\3\20\3\20\3\20\7\20\u012e\n\20\f\20\16\20\u0131"+
-		"\13\20\3\21\3\21\3\21\3\21\3\22\3\22\3\22\3\22\3\23\3\23\6\23\u013d\n"+
-		"\23\r\23\16\23\u013e\3\23\3\23\3\23\3\24\3\24\3\24\3\24\5\24\u0148\n\24"+
-		"\3\24\3\24\3\24\3\24\3\24\3\24\3\24\5\24\u0151\n\24\3\25\3\25\3\25\3\25"+
-		"\3\25\3\25\3\25\5\25\u015a\n\25\3\26\3\26\3\26\3\26\3\26\5\26\u0161\n"+
-		"\26\3\27\3\27\3\27\3\27\3\27\7\27\u0168\n\27\f\27\16\27\u016b\13\27\3"+
-		"\30\3\30\3\30\3\30\3\30\3\30\3\30\3\30\3\30\3\30\5\30\u0177\n\30\3\31"+
-		"\3\31\3\31\7\31\u017c\n\31\f\31\16\31\u017f\13\31\3\31\3\31\5\31\u0183"+
+		"\3\20\3\20\3\20\5\20\u012b\n\20\3\20\3\20\3\20\7\20\u0130\n\20\f\20\16"+
+		"\20\u0133\13\20\3\21\3\21\3\21\3\21\3\22\3\22\3\22\3\22\3\23\3\23\6\23"+
+		"\u013f\n\23\r\23\16\23\u0140\3\23\3\23\3\23\3\24\3\24\3\24\3\24\5\24\u014a"+
+		"\n\24\3\24\3\24\3\24\3\24\3\24\3\24\3\24\5\24\u0153\n\24\3\25\3\25\3\25"+
+		"\3\25\3\25\3\25\3\25\5\25\u015c\n\25\3\26\3\26\3\26\3\26\3\26\5\26\u0163"+
+		"\n\26\3\27\3\27\3\27\3\27\3\27\7\27\u016a\n\27\f\27\16\27\u016d\13\27"+
+		"\3\30\3\30\3\30\3\30\3\30\3\30\3\30\3\30\3\30\3\30\5\30\u0179\n\30\3\31"+
+		"\3\31\3\31\7\31\u017e\n\31\f\31\16\31\u0181\13\31\3\31\3\31\5\31\u0185"+
 		"\n\31\3\32\3\32\3\32\3\32\3\32\2\n\f\16\20\26\30\34\36,\33\2\4\6\b\n\f"+
 		"\16\20\22\24\26\30\32\34\36 \"$&(*,.\60\62\2\b\3\2\62\63\3\2\25\26\3\2"+
-		"\27\32\3\2\33\34\3\2\35\37\4\2\34\34  \2\u01a7\2\64\3\2\2\2\49\3\2\2\2"+
+		"\27\32\3\2\33\34\3\2\35\37\4\2\34\34  \2\u01a9\2\64\3\2\2\2\49\3\2\2\2"+
 		"\6Q\3\2\2\2\b{\3\2\2\2\n}\3\2\2\2\f\u0082\3\2\2\2\16\u008d\3\2\2\2\20"+
 		"\u0098\3\2\2\2\22\u00a8\3\2\2\2\24\u00af\3\2\2\2\26\u00b1\3\2\2\2\30\u00bc"+
-		"\3\2\2\2\32\u00ca\3\2\2\2\34\u00cc\3\2\2\2\36\u0128\3\2\2\2 \u0132\3\2"+
-		"\2\2\"\u0136\3\2\2\2$\u013a\3\2\2\2&\u0150\3\2\2\2(\u0159\3\2\2\2*\u0160"+
-		"\3\2\2\2,\u0162\3\2\2\2.\u0176\3\2\2\2\60\u0178\3\2\2\2\62\u0184\3\2\2"+
+		"\3\2\2\2\32\u00ca\3\2\2\2\34\u00cc\3\2\2\2\36\u012a\3\2\2\2 \u0134\3\2"+
+		"\2\2\"\u0138\3\2\2\2$\u013c\3\2\2\2&\u0152\3\2\2\2(\u015b\3\2\2\2*\u0162"+
+		"\3\2\2\2,\u0164\3\2\2\2.\u0178\3\2\2\2\60\u017a\3\2\2\2\62\u0186\3\2\2"+
 		"\2\64\65\t\2\2\2\65\3\3\2\2\2\668\5\6\4\2\67\66\3\2\2\28;\3\2\2\29\67"+
 		"\3\2\2\29:\3\2\2\2:<\3\2\2\2;9\3\2\2\2<>\5\b\5\2=?\7$\2\2>=\3\2\2\2>?"+
 		"\3\2\2\2?@\3\2\2\2@A\7\2\2\3A\5\3\2\2\2BC\7\3\2\2CF\5\2\2\2DE\7#\2\2E"+
@@ -2786,68 +2791,68 @@ public class PiescriptAntlrParser extends Parser {
 		"\2\2\u00cc\u00cd\b\17\1\2\u00cd\u00ce\5\36\20\2\u00ce\u00d3\3\2\2\2\u00cf"+
 		"\u00d0\f\3\2\2\u00d0\u00d2\5\36\20\2\u00d1\u00cf\3\2\2\2\u00d2\u00d5\3"+
 		"\2\2\2\u00d3\u00d1\3\2\2\2\u00d3\u00d4\3\2\2\2\u00d4\35\3\2\2\2\u00d5"+
-		"\u00d3\3\2\2\2\u00d6\u00d7\b\20\1\2\u00d7\u00d8\7!\2\2\u00d8\u0129\5\2"+
-		"\2\2\u00d9\u0129\7+\2\2\u00da\u0129\7,\2\2\u00db\u0129\7-\2\2\u00dc\u0129"+
-		"\7\t\2\2\u00dd\u0129\7\n\2\2\u00de\u0129\7\13\2\2\u00df\u0129\5\2\2\2"+
+		"\u00d3\3\2\2\2\u00d6\u00d7\b\20\1\2\u00d7\u00d8\7!\2\2\u00d8\u012b\5\2"+
+		"\2\2\u00d9\u012b\7+\2\2\u00da\u012b\7,\2\2\u00db\u012b\7-\2\2\u00dc\u012b"+
+		"\7\t\2\2\u00dd\u012b\7\n\2\2\u00de\u012b\7\13\2\2\u00df\u012b\5\2\2\2"+
 		"\u00e0\u00e1\7\'\2\2\u00e1\u00e2\5\b\5\2\u00e2\u00e3\7#\2\2\u00e3\u00e4"+
-		"\5*\26\2\u00e4\u00e5\7(\2\2\u00e5\u0129\3\2\2\2\u00e6\u00e7\7\'\2\2\u00e7"+
-		"\u00e8\5\b\5\2\u00e8\u00e9\7(\2\2\u00e9\u0129\3\2\2\2\u00ea\u00eb\7)\2"+
-		"\2\u00eb\u0129\7*\2\2\u00ec\u00ed\7)\2\2\u00ed\u00f2\5 \21\2\u00ee\u00ef"+
+		"\5*\26\2\u00e4\u00e5\7(\2\2\u00e5\u012b\3\2\2\2\u00e6\u00e7\7\'\2\2\u00e7"+
+		"\u00e8\5\b\5\2\u00e8\u00e9\7(\2\2\u00e9\u012b\3\2\2\2\u00ea\u00eb\7)\2"+
+		"\2\u00eb\u012b\7*\2\2\u00ec\u00ed\7)\2\2\u00ed\u00f2\5 \21\2\u00ee\u00ef"+
 		"\7\"\2\2\u00ef\u00f1\5 \21\2\u00f0\u00ee\3\2\2\2\u00f1\u00f4\3\2\2\2\u00f2"+
 		"\u00f0\3\2\2\2\u00f2\u00f3\3\2\2\2\u00f3\u00f5\3\2\2\2\u00f4\u00f2\3\2"+
-		"\2\2\u00f5\u00f6\7*\2\2\u00f6\u0129\3\2\2\2\u00f7\u00f8\7)\2\2\u00f8\u00f9"+
+		"\2\2\u00f5\u00f6\7*\2\2\u00f6\u012b\3\2\2\2\u00f7\u00f8\7)\2\2\u00f8\u00f9"+
 		"\5\b\5\2\u00f9\u00fa\7&\2\2\u00fa\u00ff\5\"\22\2\u00fb\u00fc\7\"\2\2\u00fc"+
 		"\u00fe\5\"\22\2\u00fd\u00fb\3\2\2\2\u00fe\u0101\3\2\2\2\u00ff\u00fd\3"+
 		"\2\2\2\u00ff\u0100\3\2\2\2\u0100\u0102\3\2\2\2\u0101\u00ff\3\2\2\2\u0102"+
-		"\u0103\7*\2\2\u0103\u0129\3\2\2\2\u0104\u0105\7)\2\2\u0105\u0106\7\20"+
+		"\u0103\7*\2\2\u0103\u012b\3\2\2\2\u0104\u0105\7)\2\2\u0105\u0106\7\20"+
 		"\2\2\u0106\u0107\7&\2\2\u0107\u010c\5\"\22\2\u0108\u0109\7\"\2\2\u0109"+
 		"\u010b\5\"\22\2\u010a\u0108\3\2\2\2\u010b\u010e\3\2\2\2\u010c\u010a\3"+
 		"\2\2\2\u010c\u010d\3\2\2\2\u010d\u010f\3\2\2\2\u010e\u010c\3\2\2\2\u010f"+
-		"\u0110\7*\2\2\u0110\u0129\3\2\2\2\u0111\u0112\7;\2\2\u0112\u0129\7<\2"+
+		"\u0110\7*\2\2\u0110\u012b\3\2\2\2\u0111\u0112\7;\2\2\u0112\u012b\7<\2"+
 		"\2\u0113\u0114\7;\2\2\u0114\u0119\5\b\5\2\u0115\u0116\7\"\2\2\u0116\u0118"+
 		"\5\b\5\2\u0117\u0115\3\2\2\2\u0118\u011b\3\2\2\2\u0119\u0117\3\2\2\2\u0119"+
 		"\u011a\3\2\2\2\u011a\u011c\3\2\2\2\u011b\u0119\3\2\2\2\u011c\u011d\7<"+
-		"\2\2\u011d\u0129\3\2\2\2\u011e\u011f\7\6\2\2\u011f\u0120\5\b\5\2\u0120"+
+		"\2\2\u011d\u012b\3\2\2\2\u011e\u011f\7\6\2\2\u011f\u0120\5\b\5\2\u0120"+
 		"\u0121\7\7\2\2\u0121\u0122\5\b\5\2\u0122\u0123\7\b\2\2\u0123\u0124\5\b"+
-		"\5\2\u0124\u0129\3\2\2\2\u0125\u0126\7\r\2\2\u0126\u0129\7=\2\2\u0127"+
-		"\u0129\5$\23\2\u0128\u00d6\3\2\2\2\u0128\u00d9\3\2\2\2\u0128\u00da\3\2"+
-		"\2\2\u0128\u00db\3\2\2\2\u0128\u00dc\3\2\2\2\u0128\u00dd\3\2\2\2\u0128"+
-		"\u00de\3\2\2\2\u0128\u00df\3\2\2\2\u0128\u00e0\3\2\2\2\u0128\u00e6\3\2"+
-		"\2\2\u0128\u00ea\3\2\2\2\u0128\u00ec\3\2\2\2\u0128\u00f7\3\2\2\2\u0128"+
-		"\u0104\3\2\2\2\u0128\u0111\3\2\2\2\u0128\u0113\3\2\2\2\u0128\u011e\3\2"+
-		"\2\2\u0128\u0125\3\2\2\2\u0128\u0127\3\2\2\2\u0129\u012f\3\2\2\2\u012a"+
-		"\u012b\f\3\2\2\u012b\u012c\7!\2\2\u012c\u012e\5\2\2\2\u012d\u012a\3\2"+
-		"\2\2\u012e\u0131\3\2\2\2\u012f\u012d\3\2\2\2\u012f\u0130\3\2\2\2\u0130"+
-		"\37\3\2\2\2\u0131\u012f\3\2\2\2\u0132\u0133\5\2\2\2\u0133\u0134\7#\2\2"+
-		"\u0134\u0135\5\b\5\2\u0135!\3\2\2\2\u0136\u0137\5\2\2\2\u0137\u0138\7"+
-		"%\2\2\u0138\u0139\5\b\5\2\u0139#\3\2\2\2\u013a\u013c\7)\2\2\u013b\u013d"+
-		"\5&\24\2\u013c\u013b\3\2\2\2\u013d\u013e\3\2\2\2\u013e\u013c\3\2\2\2\u013e"+
-		"\u013f\3\2\2\2\u013f\u0140\3\2\2\2\u0140\u0141\5\b\5\2\u0141\u0142\7*"+
-		"\2\2\u0142%\3\2\2\2\u0143\u0144\7\3\2\2\u0144\u0147\5\2\2\2\u0145\u0146"+
-		"\7#\2\2\u0146\u0148\5*\26\2\u0147\u0145\3\2\2\2\u0147\u0148\3\2\2\2\u0148"+
-		"\u0149\3\2\2\2\u0149\u014a\7%\2\2\u014a\u014b\5\b\5\2\u014b\u014c\7$\2"+
-		"\2\u014c\u0151\3\2\2\2\u014d\u014e\5\b\5\2\u014e\u014f\7$\2\2\u014f\u0151"+
-		"\3\2\2\2\u0150\u0143\3\2\2\2\u0150\u014d\3\2\2\2\u0151\'\3\2\2\2\u0152"+
-		"\u015a\5\2\2\2\u0153\u0154\7\'\2\2\u0154\u0155\5\2\2\2\u0155\u0156\7#"+
-		"\2\2\u0156\u0157\5*\26\2\u0157\u0158\7(\2\2\u0158\u015a\3\2\2\2\u0159"+
-		"\u0152\3\2\2\2\u0159\u0153\3\2\2\2\u015a)\3\2\2\2\u015b\u015c\5,\27\2"+
-		"\u015c\u015d\7\24\2\2\u015d\u015e\5*\26\2\u015e\u0161\3\2\2\2\u015f\u0161"+
-		"\5,\27\2\u0160\u015b\3\2\2\2\u0160\u015f\3\2\2\2\u0161+\3\2\2\2\u0162"+
-		"\u0163\b\27\1\2\u0163\u0164\5.\30\2\u0164\u0169\3\2\2\2\u0165\u0166\f"+
-		"\4\2\2\u0166\u0168\5.\30\2\u0167\u0165\3\2\2\2\u0168\u016b\3\2\2\2\u0169"+
-		"\u0167\3\2\2\2\u0169\u016a\3\2\2\2\u016a-\3\2\2\2\u016b\u0169\3\2\2\2"+
-		"\u016c\u0177\7\62\2\2\u016d\u0177\7\63\2\2\u016e\u016f\7)\2\2\u016f\u0170"+
-		"\5\60\31\2\u0170\u0171\7*\2\2\u0171\u0177\3\2\2\2\u0172\u0173\7\'\2\2"+
-		"\u0173\u0174\5*\26\2\u0174\u0175\7(\2\2\u0175\u0177\3\2\2\2\u0176\u016c"+
-		"\3\2\2\2\u0176\u016d\3\2\2\2\u0176\u016e\3\2\2\2\u0176\u0172\3\2\2\2\u0177"+
-		"/\3\2\2\2\u0178\u017d\5\62\32\2\u0179\u017a\7\"\2\2\u017a\u017c\5\62\32"+
-		"\2\u017b\u0179\3\2\2\2\u017c\u017f\3\2\2\2\u017d\u017b\3\2\2\2\u017d\u017e"+
-		"\3\2\2\2\u017e\u0182\3\2\2\2\u017f\u017d\3\2\2\2\u0180\u0181\7&\2\2\u0181"+
-		"\u0183\7\63\2\2\u0182\u0180\3\2\2\2\u0182\u0183\3\2\2\2\u0183\61\3\2\2"+
-		"\2\u0184\u0185\5\2\2\2\u0185\u0186\7#\2\2\u0186\u0187\5*\26\2\u0187\63"+
-		"\3\2\2\2\"9>FQWbt{\u008a\u0095\u00a0\u00a8\u00af\u00b9\u00c4\u00ca\u00d3"+
-		"\u00f2\u00ff\u010c\u0119\u0128\u012f\u013e\u0147\u0150\u0159\u0160\u0169"+
-		"\u0176\u017d\u0182";
+		"\5\2\u0124\u012b\3\2\2\2\u0125\u0126\7\r\2\2\u0126\u0127\5\b\5\2\u0127"+
+		"\u0128\7$\2\2\u0128\u012b\3\2\2\2\u0129\u012b\5$\23\2\u012a\u00d6\3\2"+
+		"\2\2\u012a\u00d9\3\2\2\2\u012a\u00da\3\2\2\2\u012a\u00db\3\2\2\2\u012a"+
+		"\u00dc\3\2\2\2\u012a\u00dd\3\2\2\2\u012a\u00de\3\2\2\2\u012a\u00df\3\2"+
+		"\2\2\u012a\u00e0\3\2\2\2\u012a\u00e6\3\2\2\2\u012a\u00ea\3\2\2\2\u012a"+
+		"\u00ec\3\2\2\2\u012a\u00f7\3\2\2\2\u012a\u0104\3\2\2\2\u012a\u0111\3\2"+
+		"\2\2\u012a\u0113\3\2\2\2\u012a\u011e\3\2\2\2\u012a\u0125\3\2\2\2\u012a"+
+		"\u0129\3\2\2\2\u012b\u0131\3\2\2\2\u012c\u012d\f\3\2\2\u012d\u012e\7!"+
+		"\2\2\u012e\u0130\5\2\2\2\u012f\u012c\3\2\2\2\u0130\u0133\3\2\2\2\u0131"+
+		"\u012f\3\2\2\2\u0131\u0132\3\2\2\2\u0132\37\3\2\2\2\u0133\u0131\3\2\2"+
+		"\2\u0134\u0135\5\2\2\2\u0135\u0136\7#\2\2\u0136\u0137\5\b\5\2\u0137!\3"+
+		"\2\2\2\u0138\u0139\5\2\2\2\u0139\u013a\7%\2\2\u013a\u013b\5\b\5\2\u013b"+
+		"#\3\2\2\2\u013c\u013e\7)\2\2\u013d\u013f\5&\24\2\u013e\u013d\3\2\2\2\u013f"+
+		"\u0140\3\2\2\2\u0140\u013e\3\2\2\2\u0140\u0141\3\2\2\2\u0141\u0142\3\2"+
+		"\2\2\u0142\u0143\5\b\5\2\u0143\u0144\7*\2\2\u0144%\3\2\2\2\u0145\u0146"+
+		"\7\3\2\2\u0146\u0149\5\2\2\2\u0147\u0148\7#\2\2\u0148\u014a\5*\26\2\u0149"+
+		"\u0147\3\2\2\2\u0149\u014a\3\2\2\2\u014a\u014b\3\2\2\2\u014b\u014c\7%"+
+		"\2\2\u014c\u014d\5\b\5\2\u014d\u014e\7$\2\2\u014e\u0153\3\2\2\2\u014f"+
+		"\u0150\5\b\5\2\u0150\u0151\7$\2\2\u0151\u0153\3\2\2\2\u0152\u0145\3\2"+
+		"\2\2\u0152\u014f\3\2\2\2\u0153\'\3\2\2\2\u0154\u015c\5\2\2\2\u0155\u0156"+
+		"\7\'\2\2\u0156\u0157\5\2\2\2\u0157\u0158\7#\2\2\u0158\u0159\5*\26\2\u0159"+
+		"\u015a\7(\2\2\u015a\u015c\3\2\2\2\u015b\u0154\3\2\2\2\u015b\u0155\3\2"+
+		"\2\2\u015c)\3\2\2\2\u015d\u015e\5,\27\2\u015e\u015f\7\24\2\2\u015f\u0160"+
+		"\5*\26\2\u0160\u0163\3\2\2\2\u0161\u0163\5,\27\2\u0162\u015d\3\2\2\2\u0162"+
+		"\u0161\3\2\2\2\u0163+\3\2\2\2\u0164\u0165\b\27\1\2\u0165\u0166\5.\30\2"+
+		"\u0166\u016b\3\2\2\2\u0167\u0168\f\4\2\2\u0168\u016a\5.\30\2\u0169\u0167"+
+		"\3\2\2\2\u016a\u016d\3\2\2\2\u016b\u0169\3\2\2\2\u016b\u016c\3\2\2\2\u016c"+
+		"-\3\2\2\2\u016d\u016b\3\2\2\2\u016e\u0179\7\62\2\2\u016f\u0179\7\63\2"+
+		"\2\u0170\u0171\7)\2\2\u0171\u0172\5\60\31\2\u0172\u0173\7*\2\2\u0173\u0179"+
+		"\3\2\2\2\u0174\u0175\7\'\2\2\u0175\u0176\5*\26\2\u0176\u0177\7(\2\2\u0177"+
+		"\u0179\3\2\2\2\u0178\u016e\3\2\2\2\u0178\u016f\3\2\2\2\u0178\u0170\3\2"+
+		"\2\2\u0178\u0174\3\2\2\2\u0179/\3\2\2\2\u017a\u017f\5\62\32\2\u017b\u017c"+
+		"\7\"\2\2\u017c\u017e\5\62\32\2\u017d\u017b\3\2\2\2\u017e\u0181\3\2\2\2"+
+		"\u017f\u017d\3\2\2\2\u017f\u0180\3\2\2\2\u0180\u0184\3\2\2\2\u0181\u017f"+
+		"\3\2\2\2\u0182\u0183\7&\2\2\u0183\u0185\7\63\2\2\u0184\u0182\3\2\2\2\u0184"+
+		"\u0185\3\2\2\2\u0185\61\3\2\2\2\u0186\u0187\5\2\2\2\u0187\u0188\7#\2\2"+
+		"\u0188\u0189\5*\26\2\u0189\63\3\2\2\2\"9>FQWbt{\u008a\u0095\u00a0\u00a8"+
+		"\u00af\u00b9\u00c4\u00ca\u00d3\u00f2\u00ff\u010c\u0119\u012a\u0131\u0140"+
+		"\u0149\u0152\u015b\u0162\u016b\u0178\u017f\u0184";
 	public static final ATN _ATN =
 		new ATNDeserializer().deserialize(_serializedATN.toCharArray());
 	static {

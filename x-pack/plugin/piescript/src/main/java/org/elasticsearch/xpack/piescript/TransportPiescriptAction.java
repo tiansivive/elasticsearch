@@ -92,13 +92,12 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
     private void executeEval(String program, ActionListener<PiescriptResponse> listener) {
         try {
             var cst = parser.parse(program);
-            var queries = IndexResolutionPrePass.collectQueries(cst);
             var useIndexNames = IndexResolutionPrePass.collectUseDeclarations(cst);
 
-            if (queries.isEmpty() && useIndexNames.isEmpty()) {
+            if (useIndexNames.isEmpty()) {
                 elaborateAndEvaluate(cst, null, listener);
             } else {
-                indexResolutionPrePass.resolve(queries, useIndexNames, listener.delegateFailureAndWrap((l, resolvedMappings) -> {
+                indexResolutionPrePass.resolve(useIndexNames, listener.delegateFailureAndWrap((l, resolvedMappings) -> {
                     executor.execute(() -> elaborateAndEvaluate(cst, resolvedMappings, l));
                 }));
             }
@@ -144,12 +143,11 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         }
 
         try {
-            var queries = IndexResolutionPrePass.collectQueries(cst);
             var useIndexNames = IndexResolutionPrePass.collectUseDeclarations(cst);
-            if (queries.isEmpty() && useIndexNames.isEmpty()) {
+            if (useIndexNames.isEmpty()) {
                 elaborateAndEvaluateDev(cst, treeString, null, listener);
             } else {
-                indexResolutionPrePass.resolve(queries, useIndexNames, ActionListener.wrap(resolvedMappings -> {
+                indexResolutionPrePass.resolve(useIndexNames, ActionListener.wrap(resolvedMappings -> {
                     executor.execute(() -> elaborateAndEvaluateDev(cst, treeString, resolvedMappings, listener));
                 }, e -> { listener.onResponse(devTypeError(treeString, "index resolution failed: " + e.getMessage())); }));
             }

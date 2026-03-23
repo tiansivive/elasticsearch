@@ -134,6 +134,48 @@ final class EvalBuiltins {
                 };
                 EvalWrite.bulk(eval, indexName, requireList(args.get(1), name), listener);
             }
+            // ──── ESQL.* builtins (Block F — D-052) ────
+            // NbE-style: closures are partially evaluated with a Symbol("") row,
+            // producing a Symbol carrying the compiled ESQL fragment.
+            case "ESQL.from" -> {
+                var idx = requireIndexVal(args.get(0), name);
+                listener.onResponse(new Value.Symbol("FROM " + idx.name()));
+            }
+            case "ESQL.where" -> esqlClosureCommand(eval, "WHERE", args, listener);
+            case "ESQL.eval" -> esqlEvalCommand(eval, args, listener);
+            case "ESQL.keep" -> {
+                var fields = requireList(args.get(0), name).elements().stream().map(v -> ((Value.KeywordVal) v).value()).toList();
+                var pipeline = requireSymbol(args.get(1), name);
+                listener.onResponse(new Value.Symbol(pipeline.esql() + " | KEEP " + String.join(", ", fields)));
+            }
+            case "ESQL.drop" -> {
+                var fields = requireList(args.get(0), name).elements().stream().map(v -> ((Value.KeywordVal) v).value()).toList();
+                var pipeline = requireSymbol(args.get(1), name);
+                listener.onResponse(new Value.Symbol(pipeline.esql() + " | DROP " + String.join(", ", fields)));
+            }
+            case "ESQL.limit" -> {
+                int count = (int) requireDouble(args.get(0), name);
+                var pipeline = requireSymbol(args.get(1), name);
+                listener.onResponse(new Value.Symbol(pipeline.esql() + " | LIMIT " + count));
+            }
+            case "ESQL.sort" -> esqlSortCommand(eval, false, args, listener);
+            case "ESQL.sortDesc" -> esqlSortCommand(eval, true, args, listener);
+            case "ESQL.rename" -> {
+                var entries = requireList(args.get(0), name).elements();
+                var parts = new java.util.ArrayList<String>();
+                for (var entry : entries) {
+                    var rec = requireRecord(entry, name);
+                    parts.add(
+                        ((Value.KeywordVal) rec.fields().get("from")).value() + " AS " + ((Value.KeywordVal) rec.fields().get("to")).value()
+                    );
+                }
+                var pipeline = requireSymbol(args.get(1), name);
+                listener.onResponse(new Value.Symbol(pipeline.esql() + " | RENAME " + String.join(", ", parts)));
+            }
+            case "ESQL.explain" -> {
+                var pipeline = requireSymbol(args.get(0), name);
+                listener.onResponse(new Value.KeywordVal(pipeline.esql()));
+            }
             default -> listener.onFailure(new EvaluationException("unknown built-in: " + name));
         }
     }
@@ -222,6 +264,83 @@ final class EvalBuiltins {
             case Value.IntegerVal v -> (double) v.value();
             case Value.LongVal v -> (double) v.value();
             default -> throw new AssertionError("type checker bug: expected Double for " + builtinName + ", got " + value);
+        };
+    }
+
+    private static Value.Symbol requireSymbol(Value value, String builtinName) {
+        return switch (value) {
+            case Value.Symbol s -> s;
+            default -> throw new AssertionError("type checker bug: expected Symbol for " + builtinName + ", got " + value);
+        };
+    }
+
+    /**
+     * Partially evaluate a closure with {@code Symbol("")} as the row argument,
+     * then append the resulting ESQL fragment as {@code | COMMAND <fragment>}.
+     * Used by {@code ESQL.where}.
+     */
+    private static void esqlClosureCommand(Evaluator eval, String command, java.util.List<Value> args, ActionListener<Value> listener) {
+        var closure = args.get(0);
+        var pipeline = requireSymbol(args.get(1), "ESQL." + command.toLowerCase());
+        eval.applyFunction(closure, new Value.Symbol(""), listener.delegateFailureAndWrap((l, result) -> {
+            var fragment = requireSymbol(result, "ESQL." + command.toLowerCase() + " closure result");
+            l.onResponse(new Value.Symbol(pipeline.esql() + " | " + command + " " + fragment.esql()));
+        }));
+    }
+
+    /**
+     * Partially evaluate a closure with {@code Symbol("")} as the row argument,
+     * expecting a record result. Compiles each field as {@code label = fragment}.
+     * Used by {@code ESQL.eval}.
+     */
+    private static void esqlEvalCommand(Evaluator eval, java.util.List<Value> args, ActionListener<Value> listener) {
+        var closure = args.get(0);
+        var pipeline = requireSymbol(args.get(1), "ESQL.eval");
+        eval.applyFunction(closure, new Value.Symbol(""), listener.delegateFailureAndWrap((l, result) -> {
+            if (result instanceof Value.RecordVal rec) {
+                var parts = new java.util.ArrayList<String>();
+                for (var entry : rec.fields().entrySet()) {
+                    parts.add(entry.getKey() + " = " + compileValueToEsql(entry.getValue()));
+                }
+                l.onResponse(new Value.Symbol(pipeline.esql() + " | EVAL " + String.join(", ", parts)));
+            } else {
+                l.onFailure(new EvaluationException("ESQL.eval: closure must produce a record, got " + result.getClass().getSimpleName()));
+            }
+        }));
+    }
+
+    /**
+     * Partially evaluate a sort key closure with {@code Symbol("")} as the row argument.
+     * Used by {@code ESQL.sort} and {@code ESQL.sortDesc}.
+     */
+    private static void esqlSortCommand(Evaluator eval, boolean descending, java.util.List<Value> args, ActionListener<Value> listener) {
+        var closure = args.get(0);
+        var pipeline = requireSymbol(args.get(1), "ESQL.sort");
+        eval.applyFunction(closure, new Value.Symbol(""), listener.delegateFailureAndWrap((l, result) -> {
+            var fragment = requireSymbol(result, "ESQL.sort closure result");
+            l.onResponse(new Value.Symbol(pipeline.esql() + " | SORT " + fragment.esql() + (descending ? " DESC" : " ASC")));
+        }));
+    }
+
+    /**
+     * Compile a {@link Value} to an ESQL expression fragment. Symbols pass through;
+     * concrete values become ESQL literals.
+     */
+    static String compileValueToEsql(Value value) {
+        return switch (value) {
+            case Value.Symbol s -> s.esql();
+            case Value.DoubleVal d -> {
+                double v = d.value();
+                yield v == Math.floor(v) && Double.isFinite(v) ? String.valueOf((long) v) : String.valueOf(v);
+            }
+            case Value.IntegerVal i -> String.valueOf(i.value());
+            case Value.LongVal l -> String.valueOf(l.value());
+            case Value.KeywordVal k -> "\"" + k.value().replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+            case Value.BooleanVal b -> b.value() ? "true" : "false";
+            case Value.NullVal ignored -> "null";
+            default -> throw new EvaluationException(
+                "cannot compile to ESQL: " + value.getClass().getSimpleName() + " is not an ESQL-compatible value"
+            );
         };
     }
 }

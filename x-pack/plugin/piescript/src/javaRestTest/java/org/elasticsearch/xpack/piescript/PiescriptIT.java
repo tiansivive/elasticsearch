@@ -594,6 +594,91 @@ public class PiescriptIT extends ESRestTestCase {
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
     }
 
+    // ──── ESQL query compilation (Block F — D-052) ────
+
+    public void testEsqlFromWhereLimit() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            query ESQL.from idx |> ESQL.where (fn r -> r.active == true) |> ESQL.limit 10;
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        assertThat(body.get("type"), equalTo("List { active: Boolean, age: Double, name: Keyword }"));
+        @SuppressWarnings("unchecked")
+        var result = (List<Map<String, Object>>) body.get("result");
+        assertThat(result, hasSize(2));
+        for (var row : result) {
+            assertThat(row.get("active"), equalTo(true));
+        }
+    }
+
+    public void testEsqlFromKeep() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            query ESQL.from idx |> ESQL.keep ["name"] |> ESQL.limit 10;
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        @SuppressWarnings("unchecked")
+        var result = (List<Map<String, Object>>) body.get("result");
+        assertThat(result, hasSize(3));
+        for (var row : result) {
+            assertTrue(row.containsKey("name"));
+        }
+    }
+
+    public void testEsqlExplain() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            ESQL.explain (ESQL.from idx |> ESQL.where (fn r -> r.age > 28) |> ESQL.limit 5)
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        var esqlString = (String) body.get("result");
+        assertThat(esqlString, containsString("FROM piescript-typed"));
+        assertThat(esqlString, containsString("WHERE"));
+        assertThat(esqlString, containsString("age"));
+        assertThat(esqlString, containsString("LIMIT 5"));
+    }
+
+    public void testEsqlWhereCapturedVariable() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            let threshold = 30;
+            query ESQL.from idx |> ESQL.where (fn r -> r.age > threshold) |> ESQL.limit 10;
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        @SuppressWarnings("unchecked")
+        var result = (List<Map<String, Object>>) body.get("result");
+        for (var row : result) {
+            assertThat(((Number) row.get("age")).doubleValue(), org.hamcrest.Matchers.greaterThan(30.0));
+        }
+    }
+
+    public void testEsqlSort() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            query ESQL.from idx |> ESQL.sort (fn r -> r.age) |> ESQL.limit 10;
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        @SuppressWarnings("unchecked")
+        var result = (List<Map<String, Object>>) body.get("result");
+        assertThat(result, hasSize(3));
+        double prevAge = -1;
+        for (var row : result) {
+            double age = ((Number) row.get("age")).doubleValue();
+            assertThat(age, org.hamcrest.Matchers.greaterThanOrEqualTo(prevAge));
+            prevAge = age;
+        }
+    }
+
     private static Request piescriptRequest(String program) {
         Request request = new Request("POST", "/_piescript/eval");
         String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"");
