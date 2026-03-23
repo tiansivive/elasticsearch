@@ -59,6 +59,7 @@ public final class Unifier {
             case MonoType.AppType(var c1, var a1) when rb instanceof MonoType.AppType(var c2, var a2) -> unify(c1, c2, state).or(
                 () -> unify(a1, a2, state)
             );
+            case RowType row1 when rb instanceof RowType row2 -> unifyRows(state.resolveRow(row1), state.resolveRow(row2), state);
             default -> Optional.of(new TypeError.Mismatch(ra, rb));
         };
     }

@@ -178,6 +178,23 @@ in let u = send shard.node.inbox (fn info ->
 in when (ch result) -> result'
 post "$(jq -n --arg p "$PROG14" '{"program": $p}')"
 
+# ── 15. Block F: ESQL query compilation ──
+echo ""
+echo "=== 15. ESQL.from + ESQL.where + ESQL.limit ==="
+post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.where (fn r -> r.active == true) |> ESQL.limit 10;"}'
+
+echo ""
+echo "=== 16. ESQL.explain (compiled ESQL string) ==="
+post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.where (fn r -> r.age > 30) |> ESQL.keep [\"name\", \"age\"] |> ESQL.limit 5)"}'
+
+echo ""
+echo "=== 17. ESQL.where with captured variable ==="
+post '{"program": "use \"piescript-test\" as idx; let threshold = 25; query ESQL.from idx |> ESQL.where (fn r -> r.age > threshold) |> ESQL.limit 10;"}'
+
+echo ""
+echo "=== 18. ESQL.sort ascending ==="
+post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.sort (fn r -> r.age) |> ESQL.limit 10;"}'
+
 echo ""
 echo "========================================"
 echo "  Done"
