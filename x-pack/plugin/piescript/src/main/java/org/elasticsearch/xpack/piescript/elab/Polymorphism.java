@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
 /**
@@ -119,21 +120,33 @@ final class Polymorphism {
             // silently skipped. A future cleanup could run resolveDeep on the
             // whole scheme body before walking, removing the need for ad-hoc
             // flattening here.
+            case MonoType.RecordType(var row) when row instanceof RowType rowType -> {
+                var flat = elab.state.resolveRow(rowType);
+                var newFields = new LinkedHashMap<String, MonoType>();
+                for (var entry : flat.fields().entrySet()) {
+                    newFields.put(entry.getKey(), instantiateBody(elab, entry.getValue(), rigidSubst));
+                }
+                Optional<MonoType> newRowVar = flat.tail().map(rv -> {
+                    var resolved = elab.state.zonkOrKeep(rv);
+                    if (resolved instanceof MonoType.Rigid r && rigidSubst.containsKey(r.id())) {
+                        var replacement = rigidSubst.get(r.id());
+                        return replacement instanceof MonoType.Meta ? replacement : rv;
+                    }
+                    return resolved instanceof MonoType.Meta ? resolved : rv;
+                });
+                yield new MonoType.RecordType(new RowType(newFields, newRowVar));
+            }
             case MonoType.RecordType(var row) -> {
+                yield new MonoType.RecordType(instantiateBody(elab, row, rigidSubst));
+            }
+            case RowType row -> {
                 var flat = elab.state.resolveRow(row);
                 var newFields = new LinkedHashMap<String, MonoType>();
                 for (var entry : flat.fields().entrySet()) {
                     newFields.put(entry.getKey(), instantiateBody(elab, entry.getValue(), rigidSubst));
                 }
-                var newRowVar = flat.rowVar().map(rv -> {
-                    var resolved = elab.state.zonkOrKeep(rv);
-                    if (resolved instanceof MonoType.Rigid r && rigidSubst.containsKey(r.id())) {
-                        var replacement = rigidSubst.get(r.id());
-                        return replacement instanceof MonoType.Meta m ? m : rv;
-                    }
-                    return resolved instanceof MonoType.Meta m ? m : rv;
-                });
-                yield new MonoType.RecordType(new RowType(newFields, newRowVar));
+                Optional<MonoType> newTail = flat.tail().map(t -> instantiateBody(elab, t, rigidSubst));
+                yield new RowType(newFields, newTail);
             }
             case MonoType.AppType(var c, var a) -> new MonoType.AppType(
                 instantiateBody(elab, c, rigidSubst),

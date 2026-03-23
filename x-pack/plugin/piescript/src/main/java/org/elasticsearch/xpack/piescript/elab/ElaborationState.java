@@ -43,7 +43,7 @@ import java.util.Optional;
 public final class ElaborationState {
 
     private int metaSupply;
-    private final Map<Integer, Object> zonker;
+    private final Map<Integer, MonoType> zonker;
     private final List<Constraint> constraints;
     private Map<String, ResolvedMapping> resolvedMappings;
     private final List<String> diagnostics;
@@ -83,10 +83,11 @@ public final class ElaborationState {
 
     /**
      * Record a solution for the given meta. The caller is responsible for
-     * ensuring the solution type matches the meta's kind (MonoType for
-     * Kind.TYPE, RowType for Kind.ROW).
+     * ensuring the solution type matches the meta's kind: a non-row
+     * {@link MonoType} for {@link Kind#TYPE}, a {@link RowType} for
+     * {@link Kind#ROW}.
      */
-    public void solve(int metaId, Object solution) {
+    public void solve(int metaId, MonoType solution) {
         zonker.put(metaId, solution);
     }
 
@@ -98,7 +99,7 @@ public final class ElaborationState {
      *
      * @return the resolved solution, or empty if the meta is unsolved
      */
-    public Optional<Object> resolve(int metaId) {
+    public Optional<MonoType> resolve(int metaId) {
         return Optional.ofNullable(zonker.get(metaId)).flatMap(solution -> switch (solution) {
             case MonoType.Meta next when isSolved(next.id()) -> resolve(next.id());
             default -> Optional.of(solution);
@@ -125,36 +126,32 @@ public final class ElaborationState {
      */
     public MonoType zonkOrKeep(MonoType type) {
         return switch (type) {
-            case MonoType.Meta meta -> resolve(meta.id()).filter(MonoType.class::isInstance)
-                .map(MonoType.class::cast)
-                .map(this::zonkOrKeep)
-                .orElse(type);
+            case MonoType.Meta meta -> resolve(meta.id()).map(this::zonkOrKeep).orElse(type);
             default -> type;
         };
     }
 
     /**
-     * Flatten a row by following its tail through the zonker. If the row var is
-     * solved to a {@link RowType}, merge the tail's fields into the parent and recurse.
+     * Flatten a row by following its tail through the zonker. If the tail is a
+     * solved meta pointing to a {@link RowType}, merge the tail's fields into
+     * the parent and recurse.
      */
     public RowType resolveRow(RowType row) {
-        if (row.rowVar().isEmpty()) return row;
-        var meta = row.rowVar().get();
-        var resolved = zonkOrKeep(meta);
-        if (resolved instanceof MonoType.Meta m && !m.equals(meta)) {
-            return new RowType(row.fields(), Optional.of(m));
-        }
-        var solution = resolve(meta.id());
-        if (solution.isPresent() && solution.get() instanceof RowType tailRow) {
+        if (row.tail().isEmpty()) return row;
+        var tail = zonkOrKeep(row.tail().get());
+        if (tail instanceof RowType tailRow) {
             var merged = new LinkedHashMap<>(row.fields());
             merged.putAll(tailRow.fields());
-            return resolveRow(new RowType(merged, tailRow.rowVar()));
+            return resolveRow(new RowType(merged, tailRow.tail()));
+        }
+        if (!tail.equals(row.tail().get())) {
+            return new RowType(row.fields(), Optional.of(tail));
         }
         return row;
     }
 
     /** Read-only view of the zonker for inspection (e.g., generalization). */
-    public Map<Integer, Object> zonker() {
+    public Map<Integer, MonoType> zonker() {
         return Collections.unmodifiableMap(zonker);
     }
 

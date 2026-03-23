@@ -74,6 +74,7 @@ public final class Prelude {
 
     private static final MonoType.Rigid A0 = new MonoType.Rigid(-1, Kind.TYPE);
     private static final MonoType.Rigid B0 = new MonoType.Rigid(-2, Kind.TYPE);
+    private static final MonoType.Rigid R0 = new MonoType.Rigid(-3, Kind.ROW);
 
     private static final MonoType KW = Elaborator.KEYWORD;
     private static final MonoType DBL = Elaborator.DOUBLE;
@@ -255,7 +256,7 @@ public final class Prelude {
         return TypeScheme.mono(new MonoType.Arrow(KW, resultType));
     }
 
-    // routing : ∀r. Index r → { shards: List ShardRecord, nodes: List NodeRecord } (D-048, D-050)
+    // routing : ∀(r:Row). Index r → { shards: List ShardRecord, nodes: List NodeRecord } (D-048, D-050)
     private static TypeScheme routingScheme() {
         var nb = nodeBase();
         var shardCore = shardCoreFields();
@@ -264,34 +265,34 @@ public final class Prelude {
         shardRecordFields.put("node", nb);
         var shardRecord = record(shardRecordFields);
 
-        var nodeRecordFields = new LinkedHashMap<>(nb.row().fields());
+        var nodeRecordFields = new LinkedHashMap<>(((RowType) nb.row()).fields());
         nodeRecordFields.put("shards", list(record(shardCore)));
         var nodeRecordFull = record(nodeRecordFields);
 
         var resultType = record(Map.of("shards", list(shardRecord), "nodes", list(nodeRecordFull)));
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), resultType));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(R0), resultType));
     }
 
-    // shards : ∀r. Index r → List ShardRecord (convenience over routing)
+    // shards : ∀(r:Row). Index r → List ShardRecord (convenience over routing)
     private static TypeScheme shardsScheme() {
         var nb = nodeBase();
         var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
         shardRecordFields.put("node", nb);
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), list(record(shardRecordFields))));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(R0), list(record(shardRecordFields))));
     }
 
-    // nodes : ∀r. Index r → List NodeRecord (convenience over routing)
+    // nodes : ∀(r:Row). Index r → List NodeRecord (convenience over routing)
     private static TypeScheme nodesScheme() {
         var nb = nodeBase();
-        var nodeRecordFields = new LinkedHashMap<>(nb.row().fields());
+        var nodeRecordFields = new LinkedHashMap<>(((RowType) nb.row()).fields());
         nodeRecordFields.put("shards", list(record(shardCoreFields())));
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), list(record(nodeRecordFields))));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(R0), list(record(nodeRecordFields))));
     }
 
     // at : ∀a. Double → List a → a (0-based index access)
@@ -301,7 +302,7 @@ public final class Prelude {
         return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(list(A0), A0)));
     }
 
-    // Shard.open : ∀r. Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)
+    // Shard.open : ∀(r:Row). Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)
     private static TypeScheme shardOpenScheme() {
         var nb = nodeBase();
         var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
@@ -311,25 +312,25 @@ public final class Prelude {
         var queryType = record(Map.of("match_all", BOOL));
 
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
+        quantified.put(R0.id(), Kind.ROW);
         return new TypeScheme(
             quantified,
-            new MonoType.Arrow(index(A0), new MonoType.Arrow(shardRecordType, new MonoType.Arrow(queryType, channel(searcher(A0)))))
+            new MonoType.Arrow(index(R0), new MonoType.Arrow(shardRecordType, new MonoType.Arrow(queryType, channel(searcher(R0)))))
         );
     }
 
-    // Shard.consume : ∀r. Double → Searcher r → List (DocRef r)
+    // Shard.consume : ∀(r:Row). Double → Searcher r → List (DocRef r)
     private static TypeScheme shardConsumeScheme() {
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(searcher(A0), list(docref(A0)))));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(searcher(R0), list(docref(R0)))));
     }
 
-    // Shard.read : ∀r. DocRef r → r
+    // Shard.read : ∀(r:Row). DocRef r → Record r
     private static TypeScheme shardReadScheme() {
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(docref(A0), A0));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(docref(R0), new MonoType.RecordType(R0)));
     }
 
     static MonoType.RecordType record(Map<String, MonoType> fields) {
@@ -360,7 +361,7 @@ public final class Prelude {
         return new MonoType.AppType(Elaborator.WRITER, schema);
     }
 
-    // Shard.writer : ∀r. Index r → ShardRecord → Channel (Writer r)
+    // Shard.writer : ∀(r:Row). Index r → ShardRecord → Channel (Writer r)
     private static TypeScheme shardWriterScheme() {
         var nb = nodeBase();
         var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
@@ -368,31 +369,33 @@ public final class Prelude {
         var shardRecordType = record(shardRecordFields);
 
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), new MonoType.Arrow(shardRecordType, channel(writer(A0)))));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(R0), new MonoType.Arrow(shardRecordType, channel(writer(R0)))));
     }
 
-    // Shard.write : ∀r. Writer r → Keyword → r → WriteResult
+    // Shard.write : ∀(r:Row). Writer r → Keyword → Record r → WriteResult
     // The Keyword argument is the document _id (separate from the record body).
-    // Future: with RowType as first-class MonoType, this becomes
-    // Shard.write : ∀(r : Row). Writer r → { _id: Keyword | r } → WriteResult
+    // Future: Shard.write : ∀(r : Row). Writer r → { _id: Keyword | r } → WriteResult
     // WriteResult = { seq_no: Double, version: Double, result: Keyword }
     private static TypeScheme shardWriteScheme() {
         var writeResult = record(Map.of("seq_no", DBL, "version", DBL, "result", KW));
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(writer(A0), new MonoType.Arrow(KW, new MonoType.Arrow(A0, writeResult))));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(writer(R0), new MonoType.Arrow(KW, new MonoType.Arrow(new MonoType.RecordType(R0), writeResult)))
+        );
     }
 
-    // Shard.refresh : ∀r. Writer r → Channel { refreshed: Boolean }
+    // Shard.refresh : ∀(r:Row). Writer r → Channel { refreshed: Boolean }
     private static TypeScheme shardRefreshScheme() {
         var refreshResult = record(Map.of("refreshed", BOOL));
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(writer(A0), channel(refreshResult)));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(writer(R0), channel(refreshResult)));
     }
 
-    // Shard.globalCheckpoint : ∀r. Index r → ShardRecord → Double
+    // Shard.globalCheckpoint : ∀(r:Row). Index r → ShardRecord → Double
     private static TypeScheme shardGlobalCheckpointScheme() {
         var nb = nodeBase();
         var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
@@ -400,15 +403,18 @@ public final class Prelude {
         var shardRecordType = record(shardRecordFields);
 
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(index(A0), new MonoType.Arrow(shardRecordType, DBL)));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(R0), new MonoType.Arrow(shardRecordType, DBL)));
     }
 
-    // Index.bulk : ∀r. Keyword → List r → Channel { total: Double, written: Double, failed: Double }
+    // Index.bulk : ∀(r:Row). Keyword → List (Record r) → Channel { total: Double, written: Double, failed: Double }
     private static TypeScheme indexBulkScheme() {
         var bulkResult = record(Map.of("total", DBL, "written", DBL, "failed", DBL));
         var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        return new TypeScheme(quantified, new MonoType.Arrow(KW, new MonoType.Arrow(list(A0), channel(bulkResult))));
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(KW, new MonoType.Arrow(list(new MonoType.RecordType(R0)), channel(bulkResult)))
+        );
     }
 }

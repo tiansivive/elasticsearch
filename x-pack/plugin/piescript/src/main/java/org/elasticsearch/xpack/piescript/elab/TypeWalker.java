@@ -35,13 +35,22 @@ public final class TypeWalker {
             case MonoType.TCon t -> t;
             case MonoType.Rigid r -> r;
             case MonoType.Arrow(var param, var result) -> new MonoType.Arrow(resolveDeep(param, state), resolveDeep(result, state));
-            case MonoType.RecordType(var row) -> {
+            case MonoType.RecordType(var row) when row instanceof RowType rowType -> {
+                var flattened = state.resolveRow(rowType);
+                var newFields = new LinkedHashMap<String, MonoType>();
+                for (var entry : flattened.fields().entrySet()) {
+                    newFields.put(entry.getKey(), resolveDeep(entry.getValue(), state));
+                }
+                yield new MonoType.RecordType(new RowType(newFields, flattened.tail()));
+            }
+            case MonoType.RecordType(var row) -> new MonoType.RecordType(resolveDeep(row, state));
+            case RowType row -> {
                 var flattened = state.resolveRow(row);
                 var newFields = new LinkedHashMap<String, MonoType>();
                 for (var entry : flattened.fields().entrySet()) {
                     newFields.put(entry.getKey(), resolveDeep(entry.getValue(), state));
                 }
-                yield new MonoType.RecordType(new RowType(newFields, flattened.rowVar()));
+                yield new RowType(newFields, flattened.tail());
             }
             case MonoType.AppType(var ctor, var arg) -> new MonoType.AppType(resolveDeep(ctor, state), resolveDeep(arg, state));
         };
@@ -66,25 +75,28 @@ public final class TypeWalker {
                 collectMetas(param, bindingLevel, state, acc);
                 collectMetas(result, bindingLevel, state, acc);
             }
-            // Flatten the row so that fields behind solved row-variable tails
-            // are collected. Without this, metas reachable only through the
-            // row chain would escape generalization. A future cleanup could
-            // unify this with resolveDeep to avoid ad-hoc flattening.
-            case MonoType.RecordType(var row) -> {
-                var flat = state.resolveRow(row);
-                for (var fieldType : flat.fields().values()) {
-                    collectMetas(fieldType, bindingLevel, state, acc);
-                }
-                flat.rowVar().ifPresent(rv -> {
-                    if (rv.bindingLevel() >= bindingLevel && state.isSolved(rv.id()) == false) {
-                        acc.put(rv.id(), rv.kind());
-                    }
-                });
-            }
+            case MonoType.RecordType(var row) -> collectMetasInRow(row, bindingLevel, state, acc);
+            case RowType row -> collectMetasInRow(row, bindingLevel, state, acc);
             case MonoType.AppType(var ctor, var arg) -> {
                 collectMetas(ctor, bindingLevel, state, acc);
                 collectMetas(arg, bindingLevel, state, acc);
             }
+        }
+    }
+
+    private static void collectMetasInRow(MonoType row, int bindingLevel, ElaborationState state, Map<Integer, Kind> acc) {
+        if (row instanceof RowType rowType) {
+            var flat = state.resolveRow(rowType);
+            for (var fieldType : flat.fields().values()) {
+                collectMetas(fieldType, bindingLevel, state, acc);
+            }
+            flat.tail().ifPresent(t -> {
+                if (t instanceof MonoType.Meta rv && rv.bindingLevel() >= bindingLevel && state.isSolved(rv.id()) == false) {
+                    acc.put(rv.id(), rv.kind());
+                }
+            });
+        } else {
+            collectMetas(row, bindingLevel, state, acc);
         }
     }
 }

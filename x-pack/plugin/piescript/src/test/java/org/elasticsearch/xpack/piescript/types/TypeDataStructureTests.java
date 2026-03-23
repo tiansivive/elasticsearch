@@ -59,7 +59,7 @@ public class TypeDataStructureTests extends ESTestCase {
         var row = RowType.closed(Map.of("name", new MonoType.TCon("Keyword"), "age", new MonoType.TCon("Integer")));
         var record = new MonoType.RecordType(row);
         assertThat(record.row(), is(row));
-        assertThat(record.row().fields().size(), is(2));
+        assertThat(((RowType) record.row()).fields().size(), is(2));
     }
 
     public void testAppType() {
@@ -96,21 +96,21 @@ public class TypeDataStructureTests extends ESTestCase {
         var row = RowType.closed(Map.of("x", new MonoType.TCon("Integer")));
         assertThat(row.fields().size(), is(1));
         assertThat(row.fields().get("x"), is(new MonoType.TCon("Integer")));
-        assertTrue(row.rowVar().isEmpty());
+        assertTrue(row.tail().isEmpty());
     }
 
     public void testOpenRow() {
         var rowVar = new MonoType.Meta(0, 0, Kind.ROW);
         var row = RowType.open(Map.of("x", new MonoType.TCon("Integer")), rowVar);
         assertThat(row.fields().size(), is(1));
-        assertTrue(row.rowVar().isPresent());
-        assertThat(row.rowVar().get(), is(rowVar));
+        assertTrue(row.tail().isPresent());
+        assertThat(row.tail().get(), is(rowVar));
     }
 
     public void testEmptyClosedRow() {
         var row = RowType.closed(Map.of());
         assertTrue(row.fields().isEmpty());
-        assertTrue(row.rowVar().isEmpty());
+        assertTrue(row.tail().isEmpty());
     }
 
     // ──── TypeScheme ────

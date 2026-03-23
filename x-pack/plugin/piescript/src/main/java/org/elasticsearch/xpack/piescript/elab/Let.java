@@ -141,7 +141,7 @@ final class Let {
         }
 
         var rowType = RowType.closed(rowFields);
-        var indexType = new MonoType.AppType(Elaborator.INDEX, new MonoType.RecordType(rowType));
+        var indexType = new MonoType.AppType(Elaborator.INDEX, rowType);
 
         var litVal = new LitVal.IndexLit(rawIndexName, fieldTypes);
         var rhs = new CoreLit(src.source(), litVal, indexType);
