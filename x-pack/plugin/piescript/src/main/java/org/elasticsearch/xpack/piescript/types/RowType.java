@@ -12,14 +12,21 @@ import java.util.Optional;
 
 /**
  * Row type: a set of labeled fields plus an optional row variable tail.
+ * A first-class {@link MonoType} variant (D-050) — can appear as the argument
+ * to {@link MonoType.RecordType} and as a zonker solution for row-kinded metas.
  *
  * <p>Uses {@code Map<String, MonoType>} rather than recursive {@code Empty | Extend(label, type, tail)}
- * because rows are commutative — a Map captures this naturally. The optional {@code rowVar}
- * makes the row open (for row polymorphism in Phase 2) or closed (Phase 1).
+ * because rows are commutative — a Map captures this naturally. The optional {@code tail}
+ * makes the row open (for row polymorphism) or closed.
  *
- * <p>Phase 1 only uses closed rows. Open rows with Rémy-style unification are deferred to Phase 2.
+ * <p>The tail, when present, must be row-kinded: a {@link MonoType.Meta} with {@link Kind#ROW},
+ * a {@link MonoType.Rigid} with {@link Kind#ROW}, or another {@code RowType}.
  */
-public record RowType(Map<String, MonoType> fields, Optional<MonoType.Meta> rowVar) {
+public record RowType(Map<String, MonoType> fields, Optional<MonoType> tail) implements MonoType {
+
+    public RowType {
+        tail.ifPresent(t -> { assert MonoType.isRowKinded(t) : "RowType tail must be row-kinded, got: " + t; });
+    }
 
     /** Closed row with no row variable — all fields are known. */
     public static RowType closed(Map<String, MonoType> fields) {
@@ -27,7 +34,7 @@ public record RowType(Map<String, MonoType> fields, Optional<MonoType.Meta> rowV
     }
 
     /** Open row with a row variable tail — supports row polymorphism. */
-    public static RowType open(Map<String, MonoType> fields, MonoType.Meta var) {
-        return new RowType(fields, Optional.of(var));
+    public static RowType open(Map<String, MonoType> fields, MonoType tail) {
+        return new RowType(fields, Optional.of(tail));
     }
 }

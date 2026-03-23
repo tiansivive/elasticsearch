@@ -7,6 +7,7 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
+import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
 
@@ -50,7 +51,11 @@ public final class Unifier {
             case MonoType.Arrow(var p1, var r1) when rb instanceof MonoType.Arrow(var p2, var r2) -> unify(p1, p2, state).or(
                 () -> unify(r1, r2, state)
             );
-            case MonoType.RecordType(var row1) when rb instanceof MonoType.RecordType(var row2) -> unifyRows(row1, row2, state);
+            case MonoType.RecordType(var row1) when rb instanceof MonoType.RecordType(var row2) -> unifyRows(
+                asRowType(row1, state),
+                asRowType(row2, state),
+                state
+            );
             case MonoType.AppType(var c1, var a1) when rb instanceof MonoType.AppType(var c2, var a2) -> unify(c1, c2, state).or(
                 () -> unify(a1, a2, state)
             );
@@ -92,8 +97,8 @@ public final class Unifier {
         var onlyA = filterKeys(a.fields(), commonLabels);
         var onlyB = filterKeys(b.fields(), commonLabels);
 
-        var tailA = a.rowVar();
-        var tailB = b.rowVar();
+        var tailA = a.tail();
+        var tailB = b.tail();
 
         if (tailA.isEmpty() && tailB.isEmpty()) {
             if (onlyA.isEmpty() == false) return Optional.of(new TypeError.MissingFields(onlyA.keySet(), new MonoType.RecordType(b)));
@@ -103,24 +108,26 @@ public final class Unifier {
 
         if (tailA.isPresent() && tailB.isEmpty()) {
             if (onlyA.isEmpty() == false) return Optional.of(new TypeError.MissingFields(onlyA.keySet(), new MonoType.RecordType(b)));
-            return solveRowTail(tailA.get(), onlyB, Optional.empty(), state);
+            return solveRowTail(requireMeta(tailA.get()), onlyB, Optional.empty(), state);
         }
 
         if (tailA.isEmpty() && tailB.isPresent()) {
             if (onlyB.isEmpty() == false) return Optional.of(new TypeError.MissingFields(onlyB.keySet(), new MonoType.RecordType(a)));
-            return solveRowTail(tailB.get(), onlyA, Optional.empty(), state);
+            return solveRowTail(requireMeta(tailB.get()), onlyA, Optional.empty(), state);
         }
 
-        var freshTail = state.freshRow(Math.min(tailA.get().bindingLevel(), tailB.get().bindingLevel()));
-        var errA = solveRowTail(tailA.get(), onlyB, Optional.of(freshTail), state);
+        var metaA = requireMeta(tailA.get());
+        var metaB = requireMeta(tailB.get());
+        var freshTail = state.freshRow(Math.min(metaA.bindingLevel(), metaB.bindingLevel()));
+        var errA = solveRowTail(metaA, onlyB, Optional.of(freshTail), state);
         if (errA.isPresent()) return errA;
-        return solveRowTail(tailB.get(), onlyA, Optional.of(freshTail), state);
+        return solveRowTail(metaB, onlyA, Optional.of(freshTail), state);
     }
 
     private static Optional<TypeError> solveRowTail(
         MonoType.Meta tail,
         Map<String, MonoType> extraFields,
-        Optional<MonoType.Meta> newTail,
+        Optional<MonoType> newTail,
         ElaborationState state
     ) {
         var row = new RowType(extraFields, newTail);
@@ -131,6 +138,19 @@ public final class Unifier {
         }
         state.solve(tail.id(), row);
         return Optional.empty();
+    }
+
+    private static RowType asRowType(MonoType type, ElaborationState state) {
+        var resolved = state.zonkOrKeep(type);
+        if (resolved instanceof RowType row) return state.resolveRow(row);
+        if (resolved instanceof MonoType.Meta m && m.kind() == Kind.ROW) return RowType.open(Map.of(), m);
+        if (resolved instanceof MonoType.Rigid r && r.kind() == Kind.ROW) return RowType.open(Map.of(), r);
+        throw new AssertionError("expected row-kinded type, got: " + resolved);
+    }
+
+    private static MonoType.Meta requireMeta(MonoType type) {
+        if (type instanceof MonoType.Meta m) return m;
+        throw new AssertionError("expected Meta in row tail, got: " + type);
     }
 
     private static Map<String, MonoType> filterKeys(Map<String, MonoType> map, Set<String> exclude) {
@@ -154,15 +174,16 @@ public final class Unifier {
             case MonoType.Rigid r -> false;
             case MonoType.Arrow(var param, var result) -> occursIn(metaId, param, state) || occursIn(metaId, result, state);
             case MonoType.RecordType(var row) -> occursInRow(metaId, row, state);
+            case RowType row -> occursInRow(metaId, row, state);
             case MonoType.AppType(var ctor, var arg) -> occursIn(metaId, ctor, state) || occursIn(metaId, arg, state);
         };
     }
 
-    private static boolean occursInRow(int metaId, RowType rawRow, ElaborationState state) {
-        var row = state.resolveRow(rawRow);
+    private static boolean occursInRow(int metaId, MonoType rowType, ElaborationState state) {
+        var row = asRowType(rowType, state);
         for (var fieldType : row.fields().values()) {
             if (occursIn(metaId, fieldType, state)) return true;
         }
-        return row.rowVar().map(rv -> rv.id() == metaId).orElse(false);
+        return row.tail().map(t -> t instanceof MonoType.Meta m && m.id() == metaId).orElse(false);
     }
 }
