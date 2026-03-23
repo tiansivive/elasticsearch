@@ -104,7 +104,7 @@ primary
     | LBRACKET RBRACKET                                   # EmptyList
     | LBRACKET expr (COMMA expr)* RBRACKET               # ListLiteral
     | IF expr THEN expr ELSE expr                        # IfExpr
-    | QUERY ESQL_BODY                                    # QueryExpr
+    | QUERY expr SEMICOLON                                # QueryExpr
     | block                                              # BlockExpr
     | primary DOT ident                                  # Projection
     ;

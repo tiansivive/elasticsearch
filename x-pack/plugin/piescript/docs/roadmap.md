@@ -553,6 +553,39 @@ deferred until the scheduler story is needed.
 
 ---
 
+## Block F — T-LINQ ESQL Query Compilation :white_check_mark:
+
+> **Completed**: 2026-03-23. See D-052.
+
+Replace the opaque `query` backtick-delimited ESQL PoC with typed, composable ESQL query
+combinators compiled via NbE-style partial evaluation. Prerequisite D-050 (`RowType` as
+first-class `MonoType`) also completed.
+
+| Task | Status |
+|------|--------|
+| D-050: `RowType` as first-class `MonoType` (row-kinded metas/rigids) | :white_check_mark: |
+| `ESQL r` type constructor + 10 Prelude builtins + arities | :white_check_mark: |
+| `query expr ;` syntax (replaces old backtick ESQL entirely) | :white_check_mark: |
+| `CoreQueryExec` Core IR node (18th variant) | :white_check_mark: |
+| `Value.Symbol(String)` — NbE neutral for ESQL compilation | :white_check_mark: |
+| Evaluator: `CoreProject` on Symbol → `Symbol(field)` | :white_check_mark: |
+| `EvalPrimOps`: symbolic operand → compile to `Symbol("(left OP right)")` | :white_check_mark: |
+| `EvalBuiltins`: ESQL.* handlers build ESQL strings via Symbol | :white_check_mark: |
+| `CoreQueryExec` handler: extract string from Symbol, fire `EsqlQueryAction` | :white_check_mark: |
+| Unit tests (10 evaluator + 8 elaborator) | :white_check_mark: |
+| Integration tests (5 end-to-end REST API tests) | :white_check_mark: |
+
+**Known gaps (documented tech debt)**:
+- `ESQL.keep`/`drop`/`rename` take field names as runtime strings (`List Keyword`), not typed
+  closures. ESQL validates at execution time. Typed path is `ESQL.eval`.
+- `ESQL.stats` and aggregate builtins deferred (D-052 §7).
+- Internal `LogicalPlan` compilation deferred (D-052 §8).
+
+**Ref**: [D-052](decisions.md#d-052),
+[Block F design + D-050 + implementation](17d31f8b-e784-44ac-8271-7e1709e8a859)
+
+---
+
 ## Deferred: Multi-Value Channels :thought_balloon:
 
 > Old Block B, reworked. See D-042.

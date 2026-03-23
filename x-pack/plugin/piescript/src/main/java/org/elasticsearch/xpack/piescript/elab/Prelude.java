@@ -75,6 +75,7 @@ public final class Prelude {
     private static final MonoType.Rigid A0 = new MonoType.Rigid(-1, Kind.TYPE);
     private static final MonoType.Rigid B0 = new MonoType.Rigid(-2, Kind.TYPE);
     private static final MonoType.Rigid R0 = new MonoType.Rigid(-3, Kind.ROW);
+    private static final MonoType.Rigid S0 = new MonoType.Rigid(-4, Kind.ROW);
 
     private static final MonoType KW = Elaborator.KEYWORD;
     private static final MonoType DBL = Elaborator.DOUBLE;
@@ -119,7 +120,17 @@ public final class Prelude {
         entry("Shard.write", 3),
         entry("Shard.refresh", 1),
         entry("Shard.globalCheckpoint", 2),
-        entry("Index.bulk", 2)
+        entry("Index.bulk", 2),
+        entry("ESQL.from", 1),
+        entry("ESQL.where", 2),
+        entry("ESQL.eval", 2),
+        entry("ESQL.keep", 2),
+        entry("ESQL.drop", 2),
+        entry("ESQL.limit", 2),
+        entry("ESQL.sort", 2),
+        entry("ESQL.sortDesc", 2),
+        entry("ESQL.rename", 2),
+        entry("ESQL.explain", 1)
     );
 
     private static Map<String, TypeScheme> buildModule() {
@@ -154,6 +165,16 @@ public final class Prelude {
         module.put("Shard.refresh", shardRefreshScheme());
         module.put("Shard.globalCheckpoint", shardGlobalCheckpointScheme());
         module.put("Index.bulk", indexBulkScheme());
+        module.put("ESQL.from", esqlFromScheme());
+        module.put("ESQL.where", esqlWhereScheme());
+        module.put("ESQL.eval", esqlEvalScheme());
+        module.put("ESQL.keep", esqlKeepScheme());
+        module.put("ESQL.drop", esqlDropScheme());
+        module.put("ESQL.limit", esqlLimitScheme());
+        module.put("ESQL.sort", esqlSortScheme());
+        module.put("ESQL.sortDesc", esqlSortScheme());
+        module.put("ESQL.rename", esqlRenameScheme());
+        module.put("ESQL.explain", esqlExplainScheme());
         return Map.copyOf(module);
     }
 
@@ -416,5 +437,89 @@ public final class Prelude {
             quantified,
             new MonoType.Arrow(KW, new MonoType.Arrow(list(new MonoType.RecordType(R0)), channel(bulkResult)))
         );
+    }
+
+    // ──── ESQL builtins (Block F — D-052) ────
+
+    static MonoType.AppType esql(MonoType row) {
+        return new MonoType.AppType(Elaborator.ESQL, row);
+    }
+
+    // ESQL.from : ∀(r:Row). Index r → ESQL r
+    private static TypeScheme esqlFromScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(index(R0), esql(R0)));
+    }
+
+    // ESQL.where : ∀(r:Row). (Record r → Boolean) → ESQL r → ESQL r
+    private static TypeScheme esqlWhereScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(new MonoType.Arrow(new MonoType.RecordType(R0), BOOL), new MonoType.Arrow(esql(R0), esql(R0)))
+        );
+    }
+
+    // ESQL.eval : ∀(r:Row)(s:Row). (Record r → Record s) → ESQL r → ESQL s
+    private static TypeScheme esqlEvalScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(R0.id(), Kind.ROW);
+        quantified.put(S0.id(), Kind.ROW);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(
+                new MonoType.Arrow(new MonoType.RecordType(R0), new MonoType.RecordType(S0)),
+                new MonoType.Arrow(esql(R0), esql(S0))
+            )
+        );
+    }
+
+    // ESQL.keep : ∀(r:Row)(s:Row). List Keyword → ESQL r → ESQL s
+    private static TypeScheme esqlKeepScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(R0.id(), Kind.ROW);
+        quantified.put(S0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(list(KW), new MonoType.Arrow(esql(R0), esql(S0))));
+    }
+
+    // ESQL.drop : ∀(r:Row)(s:Row). List Keyword → ESQL r → ESQL s
+    private static TypeScheme esqlDropScheme() {
+        return esqlKeepScheme();
+    }
+
+    // ESQL.limit : ∀(r:Row). Double → ESQL r → ESQL r
+    private static TypeScheme esqlLimitScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(esql(R0), esql(R0))));
+    }
+
+    // ESQL.sort : ∀(r:Row)(a:Type). (Record r → a) → ESQL r → ESQL r
+    private static TypeScheme esqlSortScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(R0.id(), Kind.ROW);
+        quantified.put(A0.id(), Kind.TYPE);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(new MonoType.Arrow(new MonoType.RecordType(R0), A0), new MonoType.Arrow(esql(R0), esql(R0)))
+        );
+    }
+
+    // ESQL.rename : ∀(r:Row)(s:Row). List { from: Keyword, to: Keyword } → ESQL r → ESQL s
+    private static TypeScheme esqlRenameScheme() {
+        var renameEntry = record(Map.of("from", KW, "to", KW));
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(R0.id(), Kind.ROW);
+        quantified.put(S0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(list(renameEntry), new MonoType.Arrow(esql(R0), esql(S0))));
+    }
+
+    // ESQL.explain : ∀(r:Row). ESQL r → Keyword
+    private static TypeScheme esqlExplainScheme() {
+        var quantified = new LinkedHashMap<Integer, Kind>();
+        quantified.put(R0.id(), Kind.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(esql(R0), KW));
     }
 }

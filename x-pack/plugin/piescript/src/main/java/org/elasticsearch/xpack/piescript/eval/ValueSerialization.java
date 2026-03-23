@@ -99,6 +99,7 @@ public final class ValueSerialization {
             case Value.SearcherVal ignored -> throw new IOException("SearcherVal is not serializable (node-local only)");
             case Value.DocRefVal ignored -> throw new IOException("DocRefVal is not serializable (node-local only)");
             case Value.WriterVal ignored -> throw new IOException("WriterVal is not serializable (node-local only)");
+            case Value.Symbol ignored -> throw new IOException("Symbol is not serializable (ephemeral ESQL compilation)");
         }
     }
 

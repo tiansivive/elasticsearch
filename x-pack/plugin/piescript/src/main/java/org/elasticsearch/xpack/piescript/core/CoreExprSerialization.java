@@ -49,6 +49,7 @@ public final class CoreExprSerialization {
     private static final byte TAG_WHEN = 14;
     private static final byte TAG_SEND = 15;
     private static final byte TAG_LIST = 16;
+    private static final byte TAG_QUERY_EXEC = 17;
 
     public static void writeCoreExpr(StreamOutput out, CoreExpr expr) throws IOException {
         switch (expr) {
@@ -126,12 +127,6 @@ public final class CoreExprSerialization {
                 TypeSerialization.writeMonoType(out, tapp.typeArg());
                 TypeSerialization.writeMonoType(out, tapp.type());
             }
-            case CoreQuery q -> {
-                out.writeByte(TAG_QUERY);
-                out.writeString(q.esqlQuery());
-                out.writeString(q.indexPattern());
-                TypeSerialization.writeMonoType(out, q.type());
-            }
             case CoreSpawn sp -> {
                 out.writeByte(TAG_SPAWN);
                 boolean hasBody = sp.body() != null;
@@ -162,6 +157,11 @@ public final class CoreExprSerialization {
                 out.writeByte(TAG_LIST);
                 out.writeCollection(list.elements(), (o, child) -> writeCoreExpr(o, child));
                 TypeSerialization.writeMonoType(out, list.type());
+            }
+            case CoreQueryExec qe -> {
+                out.writeByte(TAG_QUERY_EXEC);
+                writeCoreExpr(out, qe.plan());
+                TypeSerialization.writeMonoType(out, qe.type());
             }
         }
     }
@@ -230,12 +230,6 @@ public final class CoreExprSerialization {
                 var type = TypeSerialization.readMonoType(in);
                 yield new CoreTypeApp(WIRE_SOURCE, polyExpr, typeArg, type);
             }
-            case TAG_QUERY -> {
-                var esqlQuery = in.readString();
-                var indexPattern = in.readString();
-                var type = TypeSerialization.readMonoType(in);
-                yield new CoreQuery(WIRE_SOURCE, esqlQuery, indexPattern, type);
-            }
             case TAG_SPAWN -> {
                 boolean hasBody = in.readBoolean();
                 var body = hasBody ? readCoreExpr(in) : null;
@@ -264,6 +258,11 @@ public final class CoreExprSerialization {
                 var elements = in.readCollectionAsList(CoreExprSerialization::readCoreExpr);
                 var type = TypeSerialization.readMonoType(in);
                 yield new CoreList(WIRE_SOURCE, elements, type);
+            }
+            case TAG_QUERY_EXEC -> {
+                var plan = readCoreExpr(in);
+                var type = TypeSerialization.readMonoType(in);
+                yield new CoreQueryExec(WIRE_SOURCE, plan, type);
             }
             default -> throw new IOException("unknown CoreExpr tag: " + tag);
         };

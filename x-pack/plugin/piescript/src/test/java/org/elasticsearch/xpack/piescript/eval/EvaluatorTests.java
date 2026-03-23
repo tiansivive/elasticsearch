@@ -725,14 +725,6 @@ public class EvaluatorTests extends ESTestCase {
         assertThat(result, is(new Value.DoubleVal(42)));
     }
 
-    public void testQueryWithoutClientThrows() {
-        var query = new org.elasticsearch.xpack.piescript.core.CoreQuery(SRC, "FROM test", "test", DBL);
-        var future = new PlainActionFuture<Value>();
-        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(query, future);
-        var ex = expectThrows(EvaluationException.class, future::actionGet);
-        assertThat(ex.getMessage(), containsString("requires a client"));
-    }
-
     // ──── List utility builtins (Block B) ────
 
     public void testHeadReturnFirstElement() {
@@ -905,6 +897,146 @@ public class EvaluatorTests extends ESTestCase {
     public void testMinPartialApplication() {
         assertThat(evaluate("let clamp = Math.min 100 in clamp 150"), is(new Value.DoubleVal(100.0)));
         assertThat(evaluate("let clamp = Math.min 100 in clamp 50"), is(new Value.DoubleVal(50.0)));
+    }
+
+    // ──── ESQL compilation via Symbol (Block F — D-052) ────
+
+    public void testEsqlFromProducesSymbol() {
+        var from = new CoreFree(SRC, "ESQL.from", DBL);
+        var idx = new Value.IndexVal("logs-*", "uuid", Map.of("status", "keyword"));
+        var expr = new CoreApp(SRC, from, new CoreVar(SRC, 0, "idx", DBL), DBL);
+        var result = evaluateWithEnv(expr, idx);
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("FROM logs-*", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlKeepAppendsToSymbol() {
+        var from = new Value.Symbol("FROM logs-*");
+        var keepFree = new CoreFree(SRC, "ESQL.keep", DBL);
+        var fieldList = new Value.ListVal(List.of(new Value.KeywordVal("name"), new Value.KeywordVal("age")));
+        var keepApplied = new CoreApp(SRC, keepFree, new CoreVar(SRC, 0, "fields", DBL), DBL);
+        var fullExpr = new CoreApp(SRC, keepApplied, new CoreVar(SRC, 1, "plan", DBL), DBL);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(fullExpr, new Value[] { fieldList, from }, future);
+        var result = future.actionGet();
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("FROM logs-* | KEEP name, age", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlLimitAppendsToSymbol() {
+        var from = new Value.Symbol("FROM logs-*");
+        var limitFree = new CoreFree(SRC, "ESQL.limit", DBL);
+        var limitApplied = new CoreApp(SRC, limitFree, new CoreVar(SRC, 0, "n", DBL), DBL);
+        var fullExpr = new CoreApp(SRC, limitApplied, new CoreVar(SRC, 1, "plan", DBL), DBL);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(
+            fullExpr,
+            new Value[] { new Value.DoubleVal(100), from },
+            future
+        );
+        var result = future.actionGet();
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("FROM logs-* | LIMIT 100", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlWhereCompilesPredicateViaSymbol() {
+        // Build: let threshold = 18 in ESQL.where (fn r -> r.age > threshold) (Symbol("FROM logs-*"))
+        // The lambda captures threshold from env. ESQL.where applies it with Symbol("") row.
+        var from = new Value.Symbol("FROM logs-*");
+        var threshold = new Value.DoubleVal(18);
+
+        // Lambda body: r.age > threshold. CoreVar(0)=r (param), CoreVar(1)=threshold (captured)
+        var predBody = new CorePrimOp(
+            SRC,
+            Op.GT,
+            List.of(new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "age", DBL), new CoreVar(SRC, 1, "threshold", DBL)),
+            DBL
+        );
+        var predLam = new CoreLam(SRC, "r", DBL, predBody, DBL);
+
+        // First evaluate the lambda to create a ClosureVal capturing [threshold] env
+        var closureFuture = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(predLam, new Value[] { threshold }, closureFuture);
+        var closure = closureFuture.actionGet();
+        assertThat(closure, instanceOf(Value.ClosureVal.class));
+
+        // Now apply ESQL.where: args = [closure, Symbol("FROM logs-*")]
+        var whereFree = new CoreFree(SRC, "ESQL.where", DBL);
+        var whereApplied = new CoreApp(SRC, whereFree, new CoreVar(SRC, 0, "pred", DBL), DBL);
+        var fullExpr = new CoreApp(SRC, whereApplied, new CoreVar(SRC, 1, "plan", DBL), DBL);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(fullExpr, new Value[] { closure, from }, future);
+        var result = future.actionGet();
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("FROM logs-* | WHERE (age > 18)", ((Value.Symbol) result).esql());
+    }
+
+    public void testSymbolProjectionProducesFieldName() {
+        var proj = new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "status", DBL);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(proj, new Value[] { new Value.Symbol("") }, future);
+        var result = future.actionGet();
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("status", ((Value.Symbol) result).esql());
+    }
+
+    public void testSymbolPrimOpCompilesBothOperands() {
+        var left = new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "price", DBL);
+        var right = new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "qty", DBL);
+        var mul = new CorePrimOp(SRC, Op.MUL, List.of(left, right), DBL);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(mul, new Value[] { new Value.Symbol("") }, future);
+        var result = future.actionGet();
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("(price * qty)", ((Value.Symbol) result).esql());
+    }
+
+    public void testSymbolBooleanOperators() {
+        var left = new CorePrimOp(
+            SRC,
+            Op.EQ,
+            List.of(new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "status", DBL), new CoreVar(SRC, 1, "val", DBL)),
+            DBL
+        );
+        var right = new CorePrimOp(
+            SRC,
+            Op.GT,
+            List.of(new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "age", DBL), new CoreVar(SRC, 2, "min", DBL)),
+            DBL
+        );
+        var and = new CorePrimOp(SRC, Op.AND, List.of(left, right), DBL);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(
+            and,
+            new Value[] { new Value.Symbol(""), new Value.KeywordVal("active"), new Value.DoubleVal(18) },
+            future
+        );
+        var result = future.actionGet();
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("((status == \"active\") AND (age > 18))", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlExplainReturnsString() {
+        var from = new Value.Symbol("FROM logs-*");
+        var explainFree = new CoreFree(SRC, "ESQL.explain", DBL);
+        var fullExpr = new CoreApp(SRC, explainFree, new CoreVar(SRC, 0, "plan", DBL), DBL);
+        var result = evaluateWithEnv(fullExpr, from);
+        assertThat(result, instanceOf(Value.KeywordVal.class));
+        assertEquals("FROM logs-*", ((Value.KeywordVal) result).value());
+    }
+
+    public void testCompileValueToEsqlLiterals() {
+        assertEquals("42", EvalBuiltins.compileValueToEsql(new Value.DoubleVal(42)));
+        assertEquals("3.14", EvalBuiltins.compileValueToEsql(new Value.DoubleVal(3.14)));
+        assertEquals("\"hello\"", EvalBuiltins.compileValueToEsql(new Value.KeywordVal("hello")));
+        assertEquals("true", EvalBuiltins.compileValueToEsql(new Value.BooleanVal(true)));
+        assertEquals("false", EvalBuiltins.compileValueToEsql(new Value.BooleanVal(false)));
+        assertEquals("null", EvalBuiltins.compileValueToEsql(new Value.NullVal()));
+        assertEquals("field", EvalBuiltins.compileValueToEsql(new Value.Symbol("field")));
+    }
+
+    public void testCompileValueToEsqlEscapesStrings() {
+        assertEquals("\"say \\\"hi\\\"\"", EvalBuiltins.compileValueToEsql(new Value.KeywordVal("say \"hi\"")));
     }
 
     private static EvalDependencies testDeps(java.util.concurrent.Executor executor) {

@@ -27,7 +27,7 @@ import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
-import org.elasticsearch.xpack.piescript.core.CoreQuery;
+import org.elasticsearch.xpack.piescript.core.CoreQueryExec;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreSend;
 import org.elasticsearch.xpack.piescript.core.CoreSpawn;
@@ -114,11 +114,16 @@ public final class Evaluator {
             case CoreList list -> evaluateList(list, env, listener);
 
             case CoreProject proj -> evaluate(proj.expr(), env, listener.delegateFailureAndWrap((l, record) -> {
-                var recVal = switch (record) {
-                    case Value.RecordVal r -> r;
-                    default -> throw new AssertionError("type checker bug: expected record, got " + record);
-                };
-                l.onResponse(recVal.fields().get(proj.label()));
+                if (record instanceof Value.Symbol sym) {
+                    var prefix = sym.esql().isEmpty() ? "" : sym.esql() + ".";
+                    l.onResponse(new Value.Symbol(prefix + proj.label()));
+                } else {
+                    var recVal = switch (record) {
+                        case Value.RecordVal r -> r;
+                        default -> throw new AssertionError("type checker bug: expected record, got " + record);
+                    };
+                    l.onResponse(recVal.fields().get(proj.label()));
+                }
             }));
 
             case CoreUpdate upd -> evaluate(upd.expr(), env, listener.delegateFailureAndWrap((l, base) -> {
@@ -134,20 +139,6 @@ public final class Evaluator {
             case CoreTypeApp typeApp -> evaluate(typeApp.polyExpr(), env, listener);
 
             case CorePrimOp primOp -> EvalPrimOps.evaluate(this, primOp, env, listener);
-
-            case CoreQuery q -> {
-                if (deps.client() == null) {
-                    listener.onFailure(new EvaluationException("query evaluation requires a client"));
-                    return;
-                }
-                var request = EsqlQueryRequest.syncEsqlQueryRequest(q.esqlQuery());
-                deps.client()
-                    .execute(
-                        EsqlQueryAction.INSTANCE,
-                        request,
-                        listener.delegateFailureAndWrap((l, response) -> l.onResponse(EsqlValueConverter.convertResponse(response)))
-                    );
-            }
 
             case CoreSpawn spawn -> {
                 var channelId = deps.channelRegistry().nextChannelId();
@@ -182,6 +173,24 @@ public final class Evaluator {
             }));
 
             case CoreWhen when -> EvalCoordination.evaluateWhen(this, when, env, listener);
+
+            case CoreQueryExec qe -> evaluate(qe.plan(), env, listener.delegateFailureAndWrap((l, result) -> {
+                if (result instanceof Value.Symbol sym) {
+                    if (deps.client() == null) {
+                        l.onFailure(new EvaluationException("query evaluation requires a client"));
+                        return;
+                    }
+                    var request = EsqlQueryRequest.syncEsqlQueryRequest(sym.esql());
+                    deps.client()
+                        .execute(
+                            EsqlQueryAction.INSTANCE,
+                            request,
+                            l.delegateFailureAndWrap((l2, response) -> l2.onResponse(EsqlValueConverter.convertResponse(response)))
+                        );
+                } else {
+                    l.onFailure(new EvaluationException("query expression did not produce an ESQL Symbol"));
+                }
+            }));
         }
     }
 

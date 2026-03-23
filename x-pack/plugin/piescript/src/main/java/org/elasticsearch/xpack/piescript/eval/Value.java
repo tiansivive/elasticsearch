@@ -114,4 +114,16 @@ public sealed interface Value {
      * See D-051.
      */
     record WriterVal(WriterState state) implements Value {}
+
+    /**
+     * A symbolic ESQL expression fragment, built incrementally during evaluation
+     * via NbE-style partial evaluation (D-052). When the evaluator encounters
+     * operations on symbolic values (projections on the symbolic row, primops
+     * with symbolic operands), it compiles the result to an ESQL string and
+     * wraps it in a new {@code Symbol}. Non-serializable, ephemeral.
+     *
+     * <p>At the {@code query ... ;} boundary ({@code CoreQueryExec}), the
+     * final {@code Symbol} carries the complete ESQL pipeline string.
+     */
+    record Symbol(String esql) implements Value {}
 }

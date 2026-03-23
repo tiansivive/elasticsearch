@@ -65,10 +65,12 @@ x-pack/plugin/piescript/
     │       │   ├── CoreUpdate.java              # Record update
     │       │   ├── CorePrimOp.java              # Primitive operation
     │       │   ├── CorePrinter.java             # Pretty-printer for Core IR + types
-    │       │   ├── CoreExprSerialization.java   # Serialization for all 16 CoreExpr variants (Block C)
+    │       │   ├── CoreExprSerialization.java   # Serialization for all CoreExpr variants (Block C + F)
     │       │   ├── CoreSpawn.java               # spawn/spawn! (nullable body) (Block A + C)
     │       │   ├── CoreSend.java                # send channel value (Block C)
-    │       │   └── CoreWhen.java                # when synchronization (Block A)
+    │       │   ├── CoreWhen.java                # when synchronization (Block A)
+    │       │   ├── CoreQueryExec.java           # query ... ; boundary — ESQL plan materialization (Block F)
+    │       │   └── CoreList.java                # List literal [e1, e2, ...] (Block E)
     │       ├── elab/                      # Phase 1b: Elaboration machinery
     │       │   ├── ElaborationContext.java       # Immutable typing context (Γ + binding level)
     │       │   ├── ElaborationState.java        # Mutable global state (metavar supply + zonker)
@@ -77,21 +79,20 @@ x-pack/plugin/piescript/
     │       │   ├── Elaborator.java              # Bidirectional type checker + desugarer
     │       │   ├── TypeWalker.java             # Type-level traversal (generalize, instantiate, resolveDeep)
     │       │   ├── ElaborationException.java    # Fail-fast elaboration error
-    │       │   ├── IndexResolutionPrePass.java  # Async index resolution (Phase 2)
+    │       │   ├── IndexResolutionPrePass.java  # Async index resolution for use declarations (Phase 2 + Block F)
     │       │   ├── ResolvedMapping.java         # Resolved index mapping record (Phase 2)
-    │       │   ├── EsqlBodyParser.java          # Extract index patterns from ESQL body (Phase 2)
     │       │   ├── DataTypeMapping.java         # ES DataType → piescript MonoType (Phase 2)
     │       │   └── Polymorphism.java            # Generalization + instantiation helpers (Phase 2)
-    │       └── eval/                      # Phase 1c + Phase 2 + Block B + Block C: Evaluation
-    │           ├── Value.java                   # Runtime value sealed interface (11 variants)
+    │       └── eval/                      # Phase 1c + Phase 2 + Block B + Block C + Block F: Evaluation
+    │           ├── Value.java                   # Runtime value sealed interface (13 variants incl. Symbol, Block F)
     │           ├── Values.java                  # Static factory methods for Value construction (Block C.4)
-    │           ├── ValueSerialization.java       # Serialization for all 11 Value variants (Block C)
-    │           ├── Evaluator.java               # Tree-walking de Bruijn environment machine
+    │           ├── ValueSerialization.java       # Serialization for serializable Value variants (Block C)
+    │           ├── Evaluator.java               # Tree-walking de Bruijn environment machine + CoreQueryExec handler (Block F)
     │           ├── EvalDependencies.java         # Context record: Client, Executor, ClusterService, TransportService, ChannelRegistry, localNodeId
     │           ├── EvalTopology.java             # `topology` builtin implementation (Block B + C: inbox field)
     │           ├── EvalCoordination.java         # `when` evaluation + locality check (Block A + C)
-    │           ├── EvalBuiltins.java             # List builtins: map, filter, reduce, head, tail, length, isEmpty
-    │           ├── EvalPrimOps.java              # Arithmetic, comparison, boolean operations
+    │           ├── EvalBuiltins.java             # List/Math/Shard/ESQL builtins + NbE Symbol compilation (Block F)
+    │           ├── EvalPrimOps.java              # Arithmetic, comparison, boolean operations + Symbol propagation (Block F)
     │           ├── ChannelRegistry.java          # Per-node ConcurrentHashMap<String, ActionListener<Value>> (Block C)
     │           ├── EsqlValueConverter.java      # ESQL response → ListVal converter
     │           └── EvaluationException.java     # Runtime evaluation error

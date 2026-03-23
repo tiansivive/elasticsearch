@@ -227,12 +227,6 @@ public final class Exprs {
         return new CoreTypeApp(SRC, polyExpr, typeArg, resultType);
     }
 
-    // ──── Query ────
-
-    public static CoreQuery query(String esql, String indexPattern, MonoType type) {
-        return new CoreQuery(SRC, esql, indexPattern, type);
-    }
-
     // ──── Coordination (Join Calculus) ────
 
     /** {@code spawn body} — fork computation, return {@code Channel bodyType}. */

@@ -3,10 +3,11 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-22 (Block E: Write primitives. `Shard.writer`/`Shard.write`/
-> `Shard.refresh`/`Shard.globalCheckpoint` shard-level write builtins, `Index.bulk` high-level
-> Bulk API write, `WriterVal` non-serializable type, `RecordVal` → XContent conversion,
-> list literal syntax `[e1, e2, ...]` with `CoreList` IR node. Block E is now complete.)
+> **Last updated**: 2026-03-23 (D-050: `RowType` as first-class `MonoType`. Block F: T-LINQ
+> ESQL query compilation. `ESQL r` type, `query expr ;` syntax replaces old backtick ESQL,
+> `ESQL.from`/`where`/`eval`/`keep`/`drop`/`limit`/`sort`/`sortDesc`/`rename`/`explain`
+> builtins, NbE-style `Symbol(String)` partial evaluation for ESQL string compilation,
+> `CoreQueryExec` IR node. Old `query \`ESQL\`` syntax removed. D-050 + Block F complete.)
 
 ## Summary
 
@@ -16,8 +17,11 @@ complete. Block B (ES topology, `List` type rename, list utilities) is complete.
 sub-blocks C.1–C.5 (cross-node code execution + builder DSL + multi-node integration tests) are
 complete. Block D (local data access via `use`, `Shard.open`, `Shard.consume`, `Shard.read`) is
 complete. Block E (write primitives: `Shard.writer`/`write`/`refresh`/`globalCheckpoint`,
-`Index.bulk`, list literal syntax) is complete.** Piescript can now read, transform, and write
-data: the full ETL loop. Shard-level writes go directly through the Engine on primary shards
+`Index.bulk`, list literal syntax) is complete. D-050 (`RowType` as first-class `MonoType` with
+`Kind.ROW`) is complete. Block F (T-LINQ ESQL query compilation: `ESQL r` type, `query expr ;`
+syntax, `ESQL.*` combinators, NbE-style `Symbol(String)` partial evaluation) is complete.**
+Piescript can now read, transform, write, and **query via typed ESQL compilation**: the full
+ETL loop with type-safe, composable ESQL pipelines. Shard-level writes go directly through the Engine on primary shards
 (bypassing transport). `Index.bulk` delegates to the Bulk API for routing, replication, and
 ingest. List literals `[e1, e2, ...]` enable standalone list construction. `use "index-name" as idx` declares a typed `Index r` value whose row type `r` is
 resolved from field capabilities at elaboration time. `Shard.open` acquires a `Searcher r` for a
@@ -43,7 +47,8 @@ for Phase 1 items carried forward.
 |-----------|---------|
 | REST endpoint | `POST /_piescript/eval` accepts `{"program": "..."}` |
 | Dev endpoint | `POST /_piescript/dev` returns CST (`tree`), elaborated Core IR (`core`), raw Core IR (`core_raw`), constraints (`constraints`), zonker substitutions (`zonker`), resolved type (`type`), and evaluated result (`eval`). Parse errors return `parse_error`; type errors return `tree` + `type_error`; eval errors return `eval_error`. |
-| Query typing + evaluation (Phase 2) | `` query `FROM idx` `` type-checks against real index mappings via `IndexResolver`, producing `List { field: Type, ... }`. The evaluator fires `EsqlQueryAction` asynchronously via `ActionListener`, converts response rows to `RecordVal`s via `EsqlValueConverter`, and returns a `ListVal`. Built-in functions (`map`, `filter`, `reduce`) operate over materialized lists. |
+| ESQL query compilation (Block F) | `query ESQL.from idx \|> ESQL.where (fn r -> r.age > 18) \|> ESQL.limit 10;` compiles piescript combinators to ESQL via NbE-style partial evaluation. `ESQL r` type constructor, `query expr ;` syntax (replaces old backtick ESQL). Closures partially evaluated with `Symbol("")` row — projections produce `Symbol(field)`, primops compile to `Symbol("(left OP right)")`. ESQL string built incrementally during evaluation. Combinators: `ESQL.from`/`where`/`eval`/`keep`/`drop`/`limit`/`sort`/`sortDesc`/`rename`/`explain`. See D-052. |
+| `RowType` as first-class `MonoType` (D-050) | `RowType` implements `MonoType`. `RecordType(MonoType row)` with row-kindedness assertion. Zonker unified to `Map<Integer, MonoType>`. Prelude shard/index schemes use `R0(Kind.ROW)` rigid. Row type variables `r` in `Index r`, `Searcher r`, `DocRef r`, `Writer r`, `ESQL r` are now properly row-kinded. |
 | `spawn` / `when` (Block A) | `spawn <expr>` forks computation to the GENERIC thread pool, returning a `ChannelVal(nodeId, channelId)`. `when (ch1 x) & (ch2 y) -> body` synchronizes on one or more channels using a positional collector (`AtomicArray` + `CountDown`), binding channel results to variables in the body. Supports concurrent multi-index queries. `when` only works on local channels (remote channels are rejected at runtime — D-045). |
 | `spawn!` (Block C) | Bare channel creation — `spawn!` creates a channel without executing a body. Returns `ChannelVal(localNodeId, channelId)`. The user completes the channel via explicit `send`. Subject to value restriction (D-046): `let ch = spawn!` stays monomorphic. |
 | `send` (Block C) | `send <channel> <value>` delivers a value to a channel. Local channels: completes the `SubscribableListener` in the `ChannelRegistry`. Remote channels: serializes the value and sends a transport message to the owner node. Inbox channels always go through the transport layer. Fire-and-forget: returns `Null` immediately (D-047). |
@@ -253,21 +258,22 @@ monitor replication via global checkpoints.
 
 **Next on the roadmap:**
 
-1. **High-priority tech debt** — `RowType` as first-class `MonoType` (see deviations §5). Now
-   concretely motivated by D-051: `Shard.write` needs `{ _id: Keyword | r }` but cannot express
-   row extension because `r` has `Kind.TYPE` not `Kind.ROW`.
-2. **Data access architecture** — `Query a` typeclass with ESQL/ShardPlan/List instances.
-3. **Monadic write description** — CPS/session-typed write pipeline with linearity (Phase 6).
-4. **Painless push-down** — compile piescript lambdas to Painless for atomic per-doc updates.
+1. **ESQL.stats** — aggregation support via `Agg a` typed aggregate descriptors. Requires
+   dedicated design session (see D-052 §7).
+2. **Scheduled execution** — `PiescriptPersistentTasksExecutor` wrapping piescript in ES
+   persistent tasks + scheduler infrastructure. See scheduling discussion.
+3. **Internal `LogicalPlan` compilation** — compile to ESQL's internal plan IR instead of
+   strings. Enables arbitrary lambda compilation, full ESQL function coverage (D-052 §8).
+4. **Monadic write description** — CPS/session-typed write pipeline with linearity (Phase 6).
 
 **Phase 1 tech debt** (opportunistic):
 
 - Replace `resolveDeep` in `CorePrinter` with environment-based Rigid resolution (D-032).
 - Switch `zonkOrKeep` to an `Optional`-returning `zonk` API (D-032).
 - `MonoType` → `Type` with `Forall` variant (D-038).
-- `RowType` → `MonoType` variant with `Kind.ROW` (D-050 deviation, **critical** — blocks
-  `{ _id: Keyword | r }` in write API, see D-051 §3).
+- ~~`RowType` → `MonoType` variant with `Kind.ROW`~~ **Done** (D-050, Block F prerequisite).
 - `Label` kind + `Project` type family for type-safe field projection (D-050 future).
+- `ESQL.keep`/`drop`/`rename` take field names as strings, not type-checked closures (D-052).
 
 See [roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt) for
 the full consolidated list.
@@ -292,7 +298,7 @@ Review:
 - [mvp.md](mvp.md) for concrete examples of what piescript enables today
 - [vision.md](vision.md) for the MVP goal and design philosophy
 - [roadmap.md](roadmap.md) for the updated block breakdown and MVP milestone
-- [decisions.md](decisions.md) for all architectural decisions (D-040 through D-051)
+- [decisions.md](decisions.md) for all architectural decisions (D-040 through D-052)
 
 **Ref**: [Phase 2 completion session](303bcf3e-9eef-4719-a47d-24c1ff27a675),
 [Join Calculus redesign](f54fd3b6-dcf8-4af9-9af0-6a33818de6ef),
@@ -302,4 +308,5 @@ Block B implementation session,
 [Block C.4/C.5, numeric unification, math builtins](c7b160cb-0062-4a7e-a930-c0ec2437d7ee),
 [Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1),
 [Block D testing, debug scripts, docs](40f62001-d515-4590-b3cd-95e5e999b33b),
-[Block E design + implementation](104647a1-8ee2-4796-a7b3-f13317d8d22c)
+[Block E design + implementation](104647a1-8ee2-4796-a7b3-f13317d8d22c),
+[Block F T-LINQ design + D-050 + implementation](17d31f8b-e784-44ac-8271-7e1709e8a859)

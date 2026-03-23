@@ -30,81 +30,77 @@ final class EvalPrimOps {
         var op = primOp.op();
 
         switch (op) {
-            case NOT -> eval.evaluate(
-                args.get(0),
-                env,
-                listener.delegateFailureAndWrap((l, operand) -> l.onResponse(new Value.BooleanVal(!requireBoolean(operand, op))))
-            );
+            case NOT -> eval.evaluate(args.get(0), env, listener.delegateFailureAndWrap((l, operand) -> {
+                if (operand instanceof Value.Symbol s) {
+                    l.onResponse(new Value.Symbol("NOT " + s.esql()));
+                } else {
+                    l.onResponse(new Value.BooleanVal(!requireBoolean(operand, op)));
+                }
+            }));
 
-            case NEG -> eval.evaluate(
-                args.get(0),
-                env,
-                listener.delegateFailureAndWrap((l, operand) -> l.onResponse(new Value.DoubleVal(-requireNumeric(operand, op))))
-            );
+            case NEG -> eval.evaluate(args.get(0), env, listener.delegateFailureAndWrap((l, operand) -> {
+                if (operand instanceof Value.Symbol s) {
+                    l.onResponse(new Value.Symbol("-" + s.esql()));
+                } else {
+                    l.onResponse(new Value.DoubleVal(-requireNumeric(operand, op)));
+                }
+            }));
 
-            case ADD, SUB, MUL, DIV, MOD -> eval.evaluate(
-                args.get(0),
-                env,
-                listener.delegateFailureAndWrap(
-                    (l1, leftVal) -> eval.evaluate(
-                        args.get(1),
-                        env,
-                        l1.delegateFailureAndWrap(
-                            (l2, rightVal) -> l2.onResponse(
-                                new Value.DoubleVal(doubleArithmetic(op, requireNumeric(leftVal, op), requireNumeric(rightVal, op)))
-                            )
-                        )
-                    )
-                )
-            );
-
-            case EQ, NEQ -> eval.evaluate(
-                args.get(0),
-                env,
-                listener.delegateFailureAndWrap(
-                    (l1, leftVal) -> eval.evaluate(args.get(1), env, l1.delegateFailureAndWrap((l2, rightVal) -> {
-                        boolean equal = leftVal.equals(rightVal);
-                        l2.onResponse(new Value.BooleanVal(op == Op.EQ ? equal : !equal));
-                    }))
-                )
-            );
-
-            case LT, GT, LTE, GTE -> eval.evaluate(
-                args.get(0),
-                env,
-                listener.delegateFailureAndWrap(
-                    (l1, leftVal) -> eval.evaluate(
-                        args.get(1),
-                        env,
-                        l1.delegateFailureAndWrap(
-                            (l2, rightVal) -> l2.onResponse(
-                                new Value.BooleanVal(doubleComparison(op, requireNumeric(leftVal, op), requireNumeric(rightVal, op)))
-                            )
-                        )
-                    )
-                )
-            );
-
-            case AND, OR -> eval.evaluate(
-                args.get(0),
-                env,
-                listener.delegateFailureAndWrap(
-                    (l1, leftVal) -> eval.evaluate(
-                        args.get(1),
-                        env,
-                        l1.delegateFailureAndWrap(
-                            (l2, rightVal) -> l2.onResponse(
-                                new Value.BooleanVal(
-                                    op == Op.AND
-                                        ? requireBoolean(leftVal, op) && requireBoolean(rightVal, op)
-                                        : requireBoolean(leftVal, op) || requireBoolean(rightVal, op)
-                                )
-                            )
-                        )
-                    )
-                )
-            );
+            case ADD, SUB, MUL, DIV, MOD, EQ, NEQ, LT, GT, LTE, GTE, AND, OR -> evalBinary(eval, args, op, env, listener);
         }
+    }
+
+    private static void evalBinary(
+        Evaluator eval,
+        java.util.List<org.elasticsearch.xpack.piescript.core.CoreExpr> args,
+        Op op,
+        Value[] env,
+        ActionListener<Value> listener
+    ) {
+        eval.evaluate(
+            args.get(0),
+            env,
+            listener.delegateFailureAndWrap((l1, leftVal) -> eval.evaluate(args.get(1), env, l1.delegateFailureAndWrap((l2, rightVal) -> {
+                if (leftVal instanceof Value.Symbol || rightVal instanceof Value.Symbol) {
+                    var left = EvalBuiltins.compileValueToEsql(leftVal);
+                    var right = EvalBuiltins.compileValueToEsql(rightVal);
+                    l2.onResponse(new Value.Symbol("(" + left + " " + esqlOp(op) + " " + right + ")"));
+                } else {
+                    l2.onResponse(evalConcreteBinary(op, leftVal, rightVal));
+                }
+            })))
+        );
+    }
+
+    private static Value evalConcreteBinary(Op op, Value left, Value right) {
+        return switch (op) {
+            case ADD, SUB, MUL, DIV, MOD -> new Value.DoubleVal(doubleArithmetic(op, requireNumeric(left, op), requireNumeric(right, op)));
+            case EQ -> new Value.BooleanVal(left.equals(right));
+            case NEQ -> new Value.BooleanVal(!left.equals(right));
+            case LT, GT, LTE, GTE -> new Value.BooleanVal(doubleComparison(op, requireNumeric(left, op), requireNumeric(right, op)));
+            case AND -> new Value.BooleanVal(requireBoolean(left, op) && requireBoolean(right, op));
+            case OR -> new Value.BooleanVal(requireBoolean(left, op) || requireBoolean(right, op));
+            default -> throw new AssertionError("unhandled binary op: " + op);
+        };
+    }
+
+    private static String esqlOp(Op op) {
+        return switch (op) {
+            case ADD -> "+";
+            case SUB -> "-";
+            case MUL -> "*";
+            case DIV -> "/";
+            case MOD -> "%";
+            case EQ -> "==";
+            case NEQ -> "!=";
+            case LT -> "<";
+            case GT -> ">";
+            case LTE -> "<=";
+            case GTE -> ">=";
+            case AND -> "AND";
+            case OR -> "OR";
+            default -> throw new AssertionError("not a binary op: " + op);
+        };
     }
 
     static double doubleArithmetic(Op op, double left, double right) {
