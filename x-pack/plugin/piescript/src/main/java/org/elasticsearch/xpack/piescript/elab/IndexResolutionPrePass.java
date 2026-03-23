@@ -14,11 +14,8 @@ import org.elasticsearch.indices.IndicesExpressionGrouper;
 import org.elasticsearch.transport.TransportService;
 import org.elasticsearch.xpack.esql.session.IndexResolver;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
-import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParserBaseVisitor;
 
-import java.util.ArrayList;
 import java.util.LinkedHashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,16 +25,11 @@ import static org.elasticsearch.TransportVersion.current;
 /**
  * Index resolution pre-pass that runs between parsing and elaboration.
  *
- * <ol>
- *   <li>Walks the ANTLR CST to collect all {@code QueryExpr} nodes and
- *       {@code use} declarations, extracting their index patterns.</li>
- *   <li>For each unique index pattern, asynchronously calls
- *       {@link IndexResolver#resolveMainIndicesVersioned} to obtain the
- *       merged field capabilities mapping.</li>
- *   <li>Produces a {@code Map<String, ResolvedMapping>} keyed by index
- *       pattern, ready for the elaborator to use when typing query
- *       expressions and {@code use} bindings.</li>
- * </ol>
+ * <p>Walks the ANTLR CST to collect {@code use} declarations, extracts index
+ * names, and asynchronously resolves field capabilities via
+ * {@link IndexResolver}. Produces a {@code Map<String, ResolvedMapping>}
+ * keyed by index name, ready for the elaborator to use when typing
+ * {@code use} bindings.
  *
  * <p>The pre-pass is asynchronous (field caps is a cluster action), but
  * its output is consumed synchronously by the elaborator. The async
@@ -63,35 +55,6 @@ public final class IndexResolutionPrePass {
     }
 
     /**
-     * Information extracted from a single {@code QueryExpr} CST node.
-     *
-     * @param ctx the ANTLR parse tree node for the query expression
-     * @param parsedBody the parsed ESQL body with extracted index pattern
-     */
-    public record QueryInfo(PiescriptAntlrParser.QueryExprContext ctx, EsqlBodyParser.ParsedEsqlBody parsedBody) {}
-
-    /**
-     * Walk the CST and collect all {@code QueryExpr} nodes, extracting
-     * their ESQL body and index patterns.
-     *
-     * @param cst the root of the parse tree
-     * @return list of query info records; empty if the program has no queries
-     */
-    public static List<QueryInfo> collectQueries(PiescriptAntlrParser.ProgramContext cst) {
-        List<QueryInfo> queries = new ArrayList<>();
-        cst.accept(new PiescriptAntlrParserBaseVisitor<Void>() {
-            @Override
-            public Void visitQueryExpr(PiescriptAntlrParser.QueryExprContext ctx) {
-                String esqlBody = ctx.ESQL_BODY().getText();
-                var parsed = EsqlBodyParser.parse(esqlBody);
-                queries.add(new QueryInfo(ctx, parsed));
-                return null;
-            }
-        });
-        return queries;
-    }
-
-    /**
      * Collect index names from top-level {@code use "index" as idx} declarations.
      *
      * @param cst the root of the parse tree
@@ -109,30 +72,23 @@ public final class IndexResolutionPrePass {
     }
 
     /**
-     * Resolve all unique index patterns from queries and {@code use} declarations.
+     * Resolve all unique index names from {@code use} declarations.
      * Fan-out resolution via {@link RefCountingListener}: one field caps
-     * request per unique pattern, all in parallel.
+     * request per unique name, all in parallel.
      *
-     * @param queries the query info list from {@link #collectQueries}
      * @param useIndexNames index names from {@link #collectUseDeclarations}
-     * @param listener receives the resolved mappings keyed by index pattern/name,
+     * @param listener receives the resolved mappings keyed by index name,
      *                 or failure if any resolution fails
      */
-    public void resolve(List<QueryInfo> queries, Set<String> useIndexNames, ActionListener<Map<String, ResolvedMapping>> listener) {
-        Set<String> uniquePatterns = new LinkedHashSet<>();
-        for (var q : queries) {
-            uniquePatterns.add(q.parsedBody().indexPattern());
-        }
-        uniquePatterns.addAll(useIndexNames);
-
-        if (uniquePatterns.isEmpty()) {
+    public void resolve(Set<String> useIndexNames, ActionListener<Map<String, ResolvedMapping>> listener) {
+        if (useIndexNames.isEmpty()) {
             listener.onResponse(Map.of());
             return;
         }
 
         var results = new ConcurrentHashMap<String, ResolvedMapping>();
         try (var refs = new RefCountingListener(listener.map(ignored -> Map.copyOf(results)))) {
-            for (String pattern : uniquePatterns) {
+            for (String pattern : useIndexNames) {
                 var ref = refs.acquire();
                 resolvePattern(pattern, ActionListener.wrap(mapping -> {
                     results.put(pattern, mapping);

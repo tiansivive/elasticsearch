@@ -20,7 +20,7 @@ import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
-import org.elasticsearch.xpack.piescript.core.CoreQuery;
+import org.elasticsearch.xpack.piescript.core.CoreQueryExec;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreSend;
 import org.elasticsearch.xpack.piescript.core.CoreSpawn;
@@ -50,7 +50,6 @@ import static org.elasticsearch.xpack.piescript.core.Exprs.lam;
 import static org.elasticsearch.xpack.piescript.core.Exprs.let;
 import static org.elasticsearch.xpack.piescript.core.Exprs.lit;
 import static org.elasticsearch.xpack.piescript.core.Exprs.proj;
-import static org.elasticsearch.xpack.piescript.core.Exprs.query;
 import static org.elasticsearch.xpack.piescript.core.Exprs.rec;
 import static org.elasticsearch.xpack.piescript.core.Exprs.send;
 import static org.elasticsearch.xpack.piescript.core.Exprs.spawn;
@@ -218,11 +217,6 @@ public class SerializationRoundTripTests extends ESTestCase {
     public void testCoreTypeApp() throws IOException {
         var polyExpr = var(0, "id", arrow(rigid(1), rigid(1)));
         assertCoreExprRoundTrip(typeApp(polyExpr, INTEGER, arrow(INTEGER, INTEGER)));
-    }
-
-    public void testCoreQuery() throws IOException {
-        var type = list(record(Map.of("status", INTEGER)));
-        assertCoreExprRoundTrip(query("FROM logs-*", "logs-*", type));
     }
 
     public void testCoreSpawnWithBody() throws IOException {
@@ -474,11 +468,6 @@ public class SerializationRoundTripTests extends ESTestCase {
                 assertEquals(e.typeArg(), a.typeArg());
                 assertCoreExprEquals(e.polyExpr(), a.polyExpr());
             }
-            case CoreQuery e -> {
-                var a = (CoreQuery) actual;
-                assertEquals(e.esqlQuery(), a.esqlQuery());
-                assertEquals(e.indexPattern(), a.indexPattern());
-            }
             case CoreSpawn e -> {
                 var a = (CoreSpawn) actual;
                 if (e.body() == null) {
@@ -510,6 +499,10 @@ public class SerializationRoundTripTests extends ESTestCase {
                 for (int i = 0; i < e.elements().size(); i++) {
                     assertCoreExprEquals(e.elements().get(i), a.elements().get(i));
                 }
+            }
+            case CoreQueryExec e -> {
+                var a = (CoreQueryExec) actual;
+                assertCoreExprEquals(e.plan(), a.plan());
             }
         }
     }
@@ -573,6 +566,7 @@ public class SerializationRoundTripTests extends ESTestCase {
             case Value.SearcherVal ignored -> fail("SearcherVal should not be serialized");
             case Value.DocRefVal ignored -> fail("DocRefVal should not be serialized");
             case Value.WriterVal ignored -> fail("WriterVal should not be serialized");
+            case Value.Symbol ignored -> fail("Symbol should not be serialized");
         }
     }
 }

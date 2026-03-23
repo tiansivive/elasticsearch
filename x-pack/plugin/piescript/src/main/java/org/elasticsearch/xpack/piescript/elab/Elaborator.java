@@ -19,6 +19,7 @@ import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
+import org.elasticsearch.xpack.piescript.core.CoreQueryExec;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
@@ -64,6 +65,7 @@ public final class Elaborator {
     static final MonoType SEARCHER = new MonoType.TCon("Searcher");
     static final MonoType DOCREF = new MonoType.TCon("DocRef");
     static final MonoType WRITER = new MonoType.TCon("Writer");
+    static final MonoType ESQL = new MonoType.TCon("ESQL");
     static final MonoType DATETIME = new MonoType.TCon("DateTime");
     static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
     static final MonoType IP = new MonoType.TCon("Ip");
@@ -95,7 +97,8 @@ public final class Elaborator {
         Map.entry("Index", INDEX),
         Map.entry("Searcher", SEARCHER),
         Map.entry("DocRef", DOCREF),
-        Map.entry("Writer", WRITER)
+        Map.entry("Writer", WRITER),
+        Map.entry("ESQL", ESQL)
     );
 
     final ElaborationState state;
@@ -276,7 +279,16 @@ public final class Elaborator {
             case PiescriptAntlrParser.BlockContext b -> Blocks.block(this, b, ctx);
 
             case PiescriptAntlrParser.IfExprContext e -> throw error(source(e), "if/then/else is not yet supported (Phase 1e)");
-            case PiescriptAntlrParser.QueryExprContext q -> Queries.query(this, q, ctx);
+            case PiescriptAntlrParser.QueryExprContext q -> {
+                var src = source(q);
+                var inner = elaborate(q.expr(), ctx);
+                var rowMeta = state.freshRow(ctx.bindingLevel());
+                var esqlType = new MonoType.AppType(ESQL, rowMeta);
+                emitConstraint(inner.type(), esqlType, src);
+                var recordType = new MonoType.RecordType(rowMeta);
+                var resultType = new MonoType.AppType(LIST, recordType);
+                yield new CoreQueryExec(src.source(), inner, resultType);
+            }
             case PiescriptAntlrParser.SpawnExprContext s -> Spawns.spawn(this, s, ctx);
             case PiescriptAntlrParser.SpawnBangExprContext s -> Spawns.spawnBang(this, s, ctx);
             case PiescriptAntlrParser.SendExprContext s -> Sends.send(this, s, ctx);

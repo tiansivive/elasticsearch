@@ -2200,3 +2200,175 @@ These are intentional simplifications, not forgotten items:
   benefits all piescript programs.
 
 **Ref**: [Block E design + implementation](104647a1-8ee2-4796-a7b3-f13317d8d22c)
+
+---
+
+## D-052: Language-Integrated Query — T-LINQ-Style ESQL Compilation (Block F)
+
+**Phase**: Block F | **Status**: accepted
+
+### Context
+
+The Phase 2 `query` backtick-delimited ESQL was a PoC: the ESQL text is opaque to the type system,
+schema evolution through the pipeline is untracked, and there is no composability. Replacing it
+with a typed, composable query surface is the next step for piescript's data access story.
+
+The design draws from Cheney, Lindley & Wadler's *A Practical Theory of Language-Integrated Query*
+(T-LINQ, ICFP 2013): query expressions are **quoted code** that gets **normalized** and **compiled**
+to a backend query language. In piescript, piescript closures serve as implicit quotations (they
+carry their `CoreExpr` body), and the ESQL compiler inspects `ClosureVal(body, env)` to produce
+ESQL strings — using the captured environment for variable resolution, not substitution.
+
+### Decision
+
+#### 1. `ESQL r` type and `query ... ;` syntax
+
+Introduce `ESQL r` as a type constructor (`TCon("ESQL")`) where `r` is a row-kinded type variable
+(`Kind.ROW`). `ESQL r` represents an unevaluated ESQL query plan whose result rows have schema `r`.
+
+The `query expr ;` syntax replaces the old `query \`ESQL text\`` backtick syntax entirely. The
+`query` keyword acts as the quotation boundary (T-LINQ's `<@ @>`), and the `;` closes it. The
+expression between them must have type `ESQL r`; the overall type of the `query` expression is
+`List (Record r)` — the materialized result. The old backtick ESQL syntax is removed.
+
+#### 2. 1:1 ESQL command mapping
+
+Each piescript combinator maps to exactly one ESQL processing command. No ad-hoc pattern matching
+on lambda bodies to decide which command to emit.
+
+| Piescript | ESQL | Argument |
+|---|---|---|
+| `ESQL.from` | `FROM` | `Index r` |
+| `ESQL.where` | `WHERE` | `(Record r -> Boolean)` |
+| `ESQL.eval` | `EVAL` | `(Record r -> Record s)` |
+| `ESQL.keep` | `KEEP` | `List Keyword` |
+| `ESQL.drop` | `DROP` | `List Keyword` |
+| `ESQL.limit` | `LIMIT` | `Double` |
+| `ESQL.sort` | `SORT ASC` | `(Record r -> a)` |
+| `ESQL.sortDesc` | `SORT DESC` | `(Record r -> a)` |
+| `ESQL.rename` | `RENAME` | rename mapping |
+| `ESQL.explain` | (debug) | returns compiled ESQL string |
+
+#### 3. Two-type-var signatures for schema-changing combinators
+
+Schema-preserving combinators (`where`, `limit`, `sort`) use one row type variable:
+```
+ESQL.where : forall (r : Row). (Record r -> Boolean) -> ESQL r -> ESQL r
+```
+
+Schema-changing combinators (`eval`, `keep`, `drop`, `rename`) use two:
+```
+ESQL.eval : forall (r : Row) (s : Row). (Record r -> Record s) -> ESQL r -> ESQL s
+```
+
+The output row `s` is fresh — constrained by downstream usage via open-row unification. The
+relationship between `r` and `s` (subset, extension) is unencoded for now. Future work: Lacks
+constraints or typeclasses to tighten the gap. Lambdas take `Record r` (a record value with
+projectable fields), not bare `r` (a row schema).
+
+#### 4. Environment-based compilation, no substitutions
+
+The ESQL compiler takes `ClosureVal(body, env)` and compiles the `CoreExpr` body to an ESQL
+expression fragment, using `env[index]` for captured variable resolution. `CoreVar(0)` is the
+row parameter (compiles to field references). `CoreVar(n > 0)` looks up `env[n-1]` and inlines
+the value as an ESQL literal. No de Bruijn substitution, no shifting — consistent with piescript's
+evaluator design.
+
+This works because piescript is pure: inlining captured values is semantically equivalent to
+substitution. Closures inside queries are supported — they beta-reduce during evaluation (the
+evaluator applies them normally), and the ESQL compiler only sees the final `ClosureVal` with
+its resolved body and captured environment.
+
+#### 5. `EsqlPlan` is separate from `Value`
+
+`EsqlPlan` is its own sealed interface (not a `Value` variant). `Value.EsqlPlanVal(EsqlPlan plan)`
+is a thin non-serializable wrapper that exists only for the evaluator's `Value[]` environment.
+`EsqlPlanVal` is ephemeral — built during evaluation by `ESQL.*` builtins, compiled to an ESQL
+string at the `query ... ;` boundary, then discarded. It is never serialized. If a closure
+containing a `query ... ;` block is shipped to a remote node, the `CoreQueryExec` node and the
+`ESQL.*` `CoreFree` nodes travel as Core IR — the plan is built at evaluation time on whichever
+node runs the query.
+
+#### 6. Evaluator-driven plan building, not a normalization pass
+
+There is no separate post-elaboration normalization pass. The evaluator handles `ESQL.*` builtins
+like any other builtins — each one receives its arguments and produces an `EsqlPlanVal`. The
+`CoreQueryExec` node (from `query ... ;`) evaluates its inner expression, receives the final
+`EsqlPlanVal`, compiles it to an ESQL string via `EsqlCompiler`, and fires `EsqlQueryAction`.
+This reuses the evaluator's existing environment machine for let-inlining, closure capture, and
+variable resolution.
+
+#### 7. ESQL.stats deferred
+
+`ESQL.stats` (STATS ... BY), aggregate builtins (`ESQL.count`, `ESQL.avg`, etc.), and the `Agg a`
+typed aggregate descriptor design are deferred. STATS is the most complex ESQL command (optional
+BY, multiple BY expressions, per-aggregate WHERE filters, computed grouping keys). The intended
+direction: `Agg a` is a polymorphic opaque type representing an aggregate computation. Aggregates
+are passed as a record whose field names become output column names
+(`{ count: ESQL.count, avg_salary: ESQL.avg "salary" }`). Full design TBD in a dedicated session.
+
+#### 8. Internal `LogicalPlan` compilation is future work
+
+The MVP compiles to ESQL query strings. Compiling directly to ESQL's internal `LogicalPlan` IR
+(bypassing the ESQL parser) is a future optimization that would enable: arbitrary lambda
+compilation to ESQL expressions, full ESQL function coverage without per-function piescript
+builtins, and deeper optimizer integration. Piescript already depends on `x-pack-esql` and
+`x-pack-esql-core`, so the plan API is accessible.
+
+### Rationale
+
+- **T-LINQ over ad-hoc compilation**: The T-LINQ framework provides formal normalization
+  guarantees. Even though piescript does runtime compilation (not elaboration-time normalization
+  as in the T-LINQ paper), the same principles apply: quotation captures expression trees,
+  normalization (via evaluation) reduces them, and the restricted sublanguage ensures the result
+  compiles to a flat ESQL pipeline.
+
+- **1:1 command mapping over `map`/`select` abstraction**: Directly exposing ESQL commands avoids
+  ad-hoc pattern matching to decide between EVAL, KEEP, or EVAL+KEEP. The user thinks in ESQL
+  terms; piescript adds types, composition, and captured variables on top.
+
+- **Environment over substitution**: Piescript's evaluator and elaborator both use environments
+  (de Bruijn indexed `Value[]` arrays), never substitution. The ESQL compiler follows the same
+  pattern. This avoids the complexity and performance cost of de Bruijn shifting.
+
+- **`EsqlPlan` separate from `Value`**: Query plans are not user-observable values. They exist
+  only during evaluation, between `ESQL.from` and the `query ... ;` boundary. Keeping them
+  separate from `Value` enforces this — they cannot be stored in records, sent over channels,
+  or returned from programs.
+
+- **Deferred stats**: Aggregation requires an `Agg a` type, aggregate descriptor values, and
+  compilation of aggregate expressions to ESQL aggregate function calls. This is substantial
+  independent work that should not block the core query surface.
+
+#### 9. Implementation: NbE-style `Symbol(String)` (revised during implementation)
+
+The original plan called for an `EsqlPlan` ADT + `EsqlCompiler` that walks `ClosureVal(body, env)`
+Core IR. This was replaced with an NbE-style approach: `Value.Symbol(String esql)` carries compiled
+ESQL fragments, built incrementally during evaluation. Closures are partially evaluated with
+`Symbol("")` as the symbolic row. `CoreProject` on a `Symbol` produces `Symbol(field)`. `PrimOp`
+with any `Symbol` operand compiles all operands and produces `Symbol("(left OP right)")`. No
+separate plan ADT, no Core IR walking, no separate compiler — the evaluator IS the compiler.
+
+This follows the NbE pattern: evaluate into a semantic domain (`Value` + `Symbol` for stuck terms),
+where read-back into the target syntax (ESQL) happens inline as terms get stuck. It is also a free
+monad description: `Symbol` accumulates a description of the ESQL computation, interpreted at the
+`query ... ;` boundary.
+
+### Consequences
+
+- The old `query \`ESQL text\`` syntax is removed. Programs using it must migrate to `ESQL.*`
+  combinators or, for ESQL features not yet covered (STATS, ENRICH, DISSECT, GROK), use the
+  raw shard-level read primitives (`Shard.open`/`consume`/`read`).
+- Schema evolution through the pipeline is partially tracked: the initial row type is sound (from
+  `use` declarations), and downstream usage constrains fresh row variables. The `r → s` gap for
+  schema-changing combinators is explicit and documented.
+- The `query ... ;` syntax provides a clear compilation boundary. Programs can compose queries
+  via let-bindings and pipes inside the boundary, with full type checking.
+- Future ESQL features (STATS, JOIN, ENRICH) can be added as new combinators without changing the
+  compilation architecture.
+- `ESQL.keep`, `ESQL.drop`, and `ESQL.rename` take field names as runtime strings (`List Keyword`),
+  not as typed closures. Field existence is NOT validated at elaboration time — ESQL validates at
+  execution time. The typed path for column selection is `ESQL.eval` (closure-based, goes through
+  the type checker). Future: row-level constraints or closure-based variants.
+
+**Ref**: [T-LINQ design discussion](this session), [Block F plan](block_f_linq_query_e7171607)
