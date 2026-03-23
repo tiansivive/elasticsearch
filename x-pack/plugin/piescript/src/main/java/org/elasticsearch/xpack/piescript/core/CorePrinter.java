@@ -65,9 +65,8 @@ public final class CorePrinter {
         for (var entry : entries) {
             sb.append('?').append(entry.getKey()).append(" |=> ");
             switch (entry.getValue()) {
-                case MonoType mono -> sb.append(writeType(mono));
                 case RowType row -> sb.append(writeRowFragment(row));
-                default -> sb.append(entry.getValue());
+                case MonoType mono -> sb.append(writeType(mono));
             }
             sb.append('\n');
         }
@@ -239,6 +238,7 @@ public final class CorePrinter {
                 yield paramStr + " -> " + writeType(result);
             }
             case MonoType.RecordType(var row) -> writeRow(row);
+            case RowType row -> writeRowFragment(row);
             case MonoType.AppType(var ctor, var arg) -> writeType(ctor) + " " + writeType(arg);
             case MonoType.Meta(var id, var lvl, var kind) -> "?" + id;
             case MonoType.Rigid(var id, var kind) -> rigidName(id, kind);
@@ -263,23 +263,24 @@ public final class CorePrinter {
             .stream()
             .map(e -> e.getKey() + ": " + writeType(e.getValue()))
             .collect(Collectors.joining(", "));
-        if (row.rowVar().isEmpty()) {
+        if (row.tail().isEmpty()) {
             return "( " + fields + " )";
         }
-        var tail = row.rowVar().get();
-        return "( " + fields + " | ?" + tail.id() + " )";
+        return "( " + fields + " | " + writeType(row.tail().get()) + " )";
     }
 
-    private static String writeRow(RowType row) {
-        var fields = row.fields()
-            .entrySet()
-            .stream()
-            .map(e -> e.getKey() + ": " + writeType(e.getValue()))
-            .collect(Collectors.joining(", "));
-        if (row.rowVar().isEmpty()) {
-            return "{ " + fields + " }";
+    private static String writeRow(MonoType rowType) {
+        if (rowType instanceof RowType row) {
+            var fields = row.fields()
+                .entrySet()
+                .stream()
+                .map(e -> e.getKey() + ": " + writeType(e.getValue()))
+                .collect(Collectors.joining(", "));
+            if (row.tail().isEmpty()) {
+                return "{ " + fields + " }";
+            }
+            return "{ " + fields + " | " + writeType(row.tail().get()) + " }";
         }
-        var tail = row.rowVar().get();
-        return "{ " + fields + " | ?" + tail.id() + " }";
+        return "{ " + writeType(rowType) + " }";
     }
 }

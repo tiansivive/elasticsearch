@@ -16,13 +16,18 @@ package org.elasticsearch.xpack.piescript.types;
  * MonoType
  *   = TCon(name: String)                           -- "Integer", "Keyword", ...
  *   | Arrow(param: MonoType, result: MonoType)
- *   | RecordType(row: RowType)
+ *   | RecordType(row: MonoType)                    -- row must be row-kinded (RowType, Meta/ROW, Rigid/ROW)
  *   | AppType(constructor: MonoType, argument: MonoType)
  *   | Meta(id: int, bindingLevel: int, kind: Kind)  -- unsolved metavar
  *   | Rigid(id: int, kind: Kind)                    -- bound/skolemized type variable (D-031)
  * }</pre>
+ *
+ * <p>{@link RowType} is a MonoType variant representing row structure (field map + optional
+ * tail). It appears as the argument to {@link RecordType} and as a zonker solution for
+ * row-kinded metas. See D-050.
  */
-public sealed interface MonoType {
+public sealed interface MonoType permits MonoType.TCon, MonoType.Arrow, MonoType.RecordType, MonoType.AppType, MonoType.Meta,
+    MonoType.Rigid, RowType {
 
     /** Type constructor: "Integer", "Long", "Double", "Keyword", "Boolean", "Null". */
     record TCon(String name) implements MonoType {}
@@ -30,8 +35,15 @@ public sealed interface MonoType {
     /** Function type: {@code param → result}. */
     record Arrow(MonoType param, MonoType result) implements MonoType {}
 
-    /** Record type with row structure (closed or open). */
-    record RecordType(RowType row) implements MonoType {}
+    /**
+     * Record type wrapping a row. The {@code row} must be row-kinded: a {@link RowType},
+     * a {@link Meta} with {@link Kind#ROW}, or a {@link Rigid} with {@link Kind#ROW}.
+     */
+    record RecordType(MonoType row) implements MonoType {
+        public RecordType {
+            assert isRowKinded(row) : "RecordType row must be row-kinded, got: " + row;
+        }
+    }
 
     /** Type application: constructor applied to argument (e.g. {@code List Record}). */
     record AppType(MonoType constructor, MonoType argument) implements MonoType {}
@@ -51,4 +63,11 @@ public sealed interface MonoType {
      * variables in {@link TypeScheme} bodies.
      */
     record Rigid(int id, Kind kind) implements MonoType {}
+
+    /** Check whether a MonoType is row-kinded (a RowType, or a Meta/Rigid with Kind.ROW). */
+    static boolean isRowKinded(MonoType type) {
+        return type instanceof RowType
+            || (type instanceof Meta m && m.kind() == Kind.ROW)
+            || (type instanceof Rigid r && r.kind() == Kind.ROW);
+    }
 }

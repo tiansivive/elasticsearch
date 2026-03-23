@@ -41,8 +41,8 @@ final class Records {
         var resolved = elab.state.zonkOrKeep(expected);
 
         Map<String, MonoType> expectedFields;
-        if (resolved instanceof MonoType.RecordType(var row)) {
-            expectedFields = elab.state.resolveRow(row).fields();
+        if (resolved instanceof MonoType.RecordType(var row) && row instanceof RowType rowType) {
+            expectedFields = elab.state.resolveRow(rowType).fields();
         } else if (resolved instanceof MonoType.Meta) {
             expectedFields = Map.of();
         } else {
@@ -155,12 +155,12 @@ final class Records {
         elab.emitConstraint(baseExpr.type(), expectedBase, s);
 
         LinkedHashMap<String, MonoType> resultFields;
-        Optional<MonoType.Meta> resultRowVar;
+        Optional<MonoType> resultRowVar;
         var baseType = elab.state.zonkOrKeep(baseExpr.type());
-        if (baseType instanceof MonoType.RecordType(var row)) {
-            var resolved = elab.state.resolveRow(row);
+        if (baseType instanceof MonoType.RecordType(var row) && row instanceof RowType rowType) {
+            var resolved = elab.state.resolveRow(rowType);
             resultFields = new LinkedHashMap<>(resolved.fields());
-            resultRowVar = resolved.rowVar();
+            resultRowVar = resolved.tail();
         } else {
             resultFields = new LinkedHashMap<>();
             resultRowVar = Optional.of(rowTail);

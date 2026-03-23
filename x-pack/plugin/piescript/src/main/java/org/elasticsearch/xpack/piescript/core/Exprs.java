@@ -172,7 +172,7 @@ public final class Exprs {
         children.add(base);
         var fieldTypes = new LinkedHashMap<String, MonoType>();
         if (base.type() instanceof MonoType.RecordType rt) {
-            fieldTypes.putAll(rt.row().fields());
+            fieldTypes.putAll(((RowType) rt.row()).fields());
         }
         for (var f : updates) {
             labels.add(f.label());

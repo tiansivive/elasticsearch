@@ -32,6 +32,7 @@ public final class TypeSerialization {
     private static final byte MONO_APP = 3;
     private static final byte MONO_META = 4;
     private static final byte MONO_RIGID = 5;
+    private static final byte MONO_ROW = 6;
 
     public static void writeMonoType(StreamOutput out, MonoType type) throws IOException {
         switch (type) {
@@ -46,7 +47,11 @@ public final class TypeSerialization {
             }
             case MonoType.RecordType r -> {
                 out.writeByte(MONO_RECORD);
-                writeRowType(out, r.row());
+                writeMonoType(out, r.row());
+            }
+            case RowType row -> {
+                out.writeByte(MONO_ROW);
+                writeRowType(out, row);
             }
             case MonoType.AppType a -> {
                 out.writeByte(MONO_APP);
@@ -72,7 +77,8 @@ public final class TypeSerialization {
         return switch (tag) {
             case MONO_TCON -> new MonoType.TCon(in.readString());
             case MONO_ARROW -> new MonoType.Arrow(readMonoType(in), readMonoType(in));
-            case MONO_RECORD -> new MonoType.RecordType(readRowType(in));
+            case MONO_RECORD -> new MonoType.RecordType(readMonoType(in));
+            case MONO_ROW -> readRowType(in);
             case MONO_APP -> new MonoType.AppType(readMonoType(in), readMonoType(in));
             case MONO_META -> new MonoType.Meta(in.readVInt(), in.readVInt(), readKind(in));
             case MONO_RIGID -> new MonoType.Rigid(in.readVInt(), readKind(in));
@@ -88,11 +94,9 @@ public final class TypeSerialization {
             out.writeString(entry.getKey());
             writeMonoType(out, entry.getValue());
         }
-        out.writeBoolean(row.rowVar().isPresent());
-        if (row.rowVar().isPresent()) {
-            var meta = row.rowVar().get();
-            out.writeVInt(meta.id());
-            out.writeVInt(meta.bindingLevel());
+        out.writeBoolean(row.tail().isPresent());
+        if (row.tail().isPresent()) {
+            writeMonoType(out, row.tail().get());
         }
     }
 
@@ -102,9 +106,9 @@ public final class TypeSerialization {
         for (int i = 0; i < size; i++) {
             fields.put(in.readString(), readMonoType(in));
         }
-        boolean hasRowVar = in.readBoolean();
-        if (hasRowVar) {
-            return RowType.open(fields, new MonoType.Meta(in.readVInt(), in.readVInt(), Kind.ROW));
+        boolean hasTail = in.readBoolean();
+        if (hasTail) {
+            return RowType.open(fields, readMonoType(in));
         }
         return RowType.closed(fields);
     }

@@ -399,9 +399,9 @@ public class ElaboratorTests extends ESTestCase {
         var let = (CoreLet) result;
         var update = (CoreUpdate) let.body();
         var recType = (MonoType.RecordType) resolveType(update);
-        assertThat(recType.row().fields().containsKey("x"), is(true));
-        assertThat(recType.row().fields().containsKey("y"), is(true));
-        assertThat(recType.row().fields().get("y"), is(BOOLEAN));
+        assertThat(((RowType) recType.row()).fields().containsKey("x"), is(true));
+        assertThat(((RowType) recType.row()).fields().containsKey("y"), is(true));
+        assertThat(((RowType) recType.row()).fields().get("y"), is(BOOLEAN));
     }
 
     // ──── Pipe operator ────
@@ -771,7 +771,7 @@ public class ElaboratorTests extends ESTestCase {
         var result = elaborate("let a = spawn 1 in let b = spawn true in when (a x) & (b y) -> { num: x, flag: y }");
         var type = resolveType(result);
         assertThat(type, instanceOf(MonoType.RecordType.class));
-        var row = ((MonoType.RecordType) type).row();
+        var row = (RowType) ((MonoType.RecordType) type).row();
         assertEquals(DOUBLE, row.fields().get("num"));
         assertEquals(BOOLEAN, row.fields().get("flag"));
     }
@@ -884,8 +884,8 @@ public class ElaboratorTests extends ESTestCase {
         assertEquals(new MonoType.TCon("List"), appType.constructor());
         assertThat(appType.argument(), instanceOf(MonoType.RecordType.class));
         var recordType = (MonoType.RecordType) appType.argument();
-        assertEquals(DOUBLE, recordType.row().fields().get("status"));
-        assertEquals(KEYWORD, recordType.row().fields().get("message"));
+        assertEquals(DOUBLE, ((RowType) recordType.row()).fields().get("status"));
+        assertEquals(KEYWORD, ((RowType) recordType.row()).fields().get("message"));
     }
 
     public void testQueryExprInLetBinding() {
@@ -907,9 +907,9 @@ public class ElaboratorTests extends ESTestCase {
         var result = elaborateWithMappings("query `FROM logs-*`", Map.of("logs-*", mapping));
         var appType = (MonoType.AppType) resolveType(result);
         var recordType = (MonoType.RecordType) appType.argument();
-        assertEquals(1, recordType.row().fields().size());
-        assertTrue(recordType.row().fields().containsKey("status"));
-        assertFalse(recordType.row().fields().containsKey("_id"));
+        assertEquals(1, ((RowType) recordType.row()).fields().size());
+        assertTrue(((RowType) recordType.row()).fields().containsKey("status"));
+        assertFalse(((RowType) recordType.row()).fields().containsKey("_id"));
     }
 
     public void testQueryExprInvalidMappedFieldBecomesUnsupported() {
@@ -918,8 +918,8 @@ public class ElaboratorTests extends ESTestCase {
         var result = elaborateWithMappings("query `FROM logs-*`", Map.of("logs-*", mapping));
         var appType = (MonoType.AppType) resolveType(result);
         var recordType = (MonoType.RecordType) appType.argument();
-        assertEquals(new MonoType.TCon("Unsupported"), recordType.row().fields().get("status"));
-        assertEquals(KEYWORD, recordType.row().fields().get("message"));
+        assertEquals(new MonoType.TCon("Unsupported"), ((RowType) recordType.row()).fields().get("status"));
+        assertEquals(KEYWORD, ((RowType) recordType.row()).fields().get("message"));
     }
 
     public void testQueryExprInvalidMappedFieldEmitsDiagnostic() {
@@ -1008,10 +1008,10 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(type, instanceOf(MonoType.AppType.class));
         var appType = (MonoType.AppType) type;
         assertEquals(new MonoType.TCon("Index"), appType.constructor());
-        assertThat(appType.argument(), instanceOf(MonoType.RecordType.class));
-        var recordType = (MonoType.RecordType) appType.argument();
-        assertEquals(KEYWORD, recordType.row().fields().get("user_name"));
-        assertEquals(DOUBLE, recordType.row().fields().get("age"));
+        assertThat(appType.argument(), instanceOf(RowType.class));
+        var rowType = (RowType) appType.argument();
+        assertEquals(KEYWORD, rowType.fields().get("user_name"));
+        assertEquals(DOUBLE, rowType.fields().get("age"));
     }
 
     public void testUseDeclarationNoMappingThrows() {
@@ -1024,9 +1024,9 @@ public class ElaboratorTests extends ESTestCase {
         var result = elaborateWithMappings("use \"test\" as idx; idx", Map.of("test", mapping));
         var type = resolveType(result);
         var appType = (MonoType.AppType) type;
-        var recordType = (MonoType.RecordType) appType.argument();
-        assertTrue(recordType.row().fields().containsKey("status"));
-        assertFalse(recordType.row().fields().containsKey("_id"));
+        var rowType = (RowType) appType.argument();
+        assertTrue(rowType.fields().containsKey("status"));
+        assertFalse(rowType.fields().containsKey("_id"));
     }
 
     public void testShardOpenTypeIsArrow() {
