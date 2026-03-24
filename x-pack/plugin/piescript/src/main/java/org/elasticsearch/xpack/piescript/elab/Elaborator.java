@@ -66,6 +66,8 @@ public final class Elaborator {
     static final MonoType DOCREF = new MonoType.TCon("DocRef");
     static final MonoType WRITER = new MonoType.TCon("Writer");
     static final MonoType ESQL = new MonoType.TCon("ESQL");
+    static final MonoType PICK = new MonoType.TCon("Pick");
+    static final MonoType OMIT = new MonoType.TCon("Omit");
     static final MonoType DATETIME = new MonoType.TCon("DateTime");
     static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
     static final MonoType IP = new MonoType.TCon("Ip");
@@ -98,7 +100,9 @@ public final class Elaborator {
         Map.entry("Searcher", SEARCHER),
         Map.entry("DocRef", DOCREF),
         Map.entry("Writer", WRITER),
-        Map.entry("ESQL", ESQL)
+        Map.entry("ESQL", ESQL),
+        Map.entry("Pick", PICK),
+        Map.entry("Omit", OMIT)
     );
 
     final ElaborationState state;
@@ -122,7 +126,7 @@ public final class Elaborator {
      * wrapping the final expression.
      */
     public CoreExpr elaborateProgram(PiescriptAntlrParser.ProgramContext program) {
-        var ctx = ElaborationContext.withModule(Prelude.MODULE);
+        var ctx = ElaborationContext.withModule(Prelude.MODULE, Prelude.KINDS);
         var topBindings = program.topBinding();
         var finalExpr = program.expr();
 
@@ -247,7 +251,7 @@ public final class Elaborator {
             case PiescriptAntlrParser.NullLiteralContext n -> new CoreLit(source(n).source, new LitVal.NullLit(), NULL_TYPE);
             case PiescriptAntlrParser.ParenExprContext p -> elaborate(p.expr(), ctx);
             case PiescriptAntlrParser.AscriptionContext a -> {
-                var scheme = TypeAnnotations.toTypeScheme(this, a.type());
+                var scheme = TypeAnnotations.toTypeScheme(this, ctx, a.type());
                 yield check(a.expr(), scheme, ctx, source(a));
             }
 

@@ -140,6 +140,27 @@ Prefer sealed interfaces and pattern matching over `Object` casts and `instanceo
 container must hold heterogeneous types (e.g., the zonker maps meta IDs to either `MonoType` or
 `RowType`), document the invariant and consider a sealed wrapper.
 
+## Implementation Plans
+
+Detailed step-by-step implementation plans live in [../.cursor/plans/](../.cursor/plans/). These
+were produced during each block/phase and contain granular task breakdowns, design rationale, and
+completion status. Load the relevant plan when working on or extending a specific block:
+
+| Plan file | Scope |
+|-----------|-------|
+| `scripting_language_design_9286506e` | Overall language design |
+| `phase0_plugin_scaffold` | Phase 0: plugin scaffold |
+| `phase1_expression_language` | Phase 1: expression language |
+| `phase2_row_types` / `phase2_implementation` | Phase 2: row types and implementation |
+| `phase_1d_open_rows_bb2dae6a` | Phase 1d: open rows |
+| `block_a_implementation_2fdbab36` | Block A: spawn + single-value when |
+| `block_c_cross-node_execution_7faf2b07` | Block C: cross-node execution |
+| `block_d_local_data_ca4b90be` | Block D: local data access |
+| `block_e_write_primitives_f1e74ffb` | Block E: write primitives |
+| `block_f_linq_query_e7171607` | Block F: T-LINQ ESQL query compilation (NbE Symbol-based) |
+| `f-omega_type_system_09acfb27` | F-omega type system: kinds-as-types, `force` normalizer, `&`/`Pick`/`Omit`, `ESQL.stats` |
+| `compute_engine_streaming_f5db78f2` | Compute engine streaming |
+
 ## Chat History Reference
 
 Prior design discussions are preserved in agent transcripts:
@@ -171,3 +192,11 @@ Prior design discussions are preserved in agent transcripts:
   (Sangiorgi). Redesign: `spawn`/`when`/channels replace `par`/plan graph. Mapping to ES
   infrastructure (`SubscribableListener`, positional collector, `threadPool.executor(GENERIC)`).
   Multi-value channels, ESQL Exchange analysis. New Block-based phasing (A–E). D-040 decision.
+- **F-omega type system design**: `846bd5a8-3b35-4321-848a-c9b17a22f109` (Cursor) — kinds-as-types
+  (GHC TypeInType-style), `force` NbE normalizer, `&`/`Pick`/`Omit` row operators, `ESQL.stats`/
+  `ESQL.statsBy` type design, aggregate builtins with plain output types, closure-based
+  `ESQL.keep`/`ESQL.drop`. Resulted in D-053, Phases 1–2 implementation.
+- **F-omega implementation (Phases 3–5)**: Claude Code session 2026-03-24 — `Pick`/`Omit`
+  reduction rules in `force`, closure-based `ESQL.keep`/`ESQL.drop` NbE compilation,
+  `ESQL.stats`/`ESQL.statsBy`/aggregate builtins implementation, tests, docs, debug scripts.
+  Completed all 5 phases of the F-omega plan.

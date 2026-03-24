@@ -56,7 +56,7 @@ final class Lambda {
             }
             case PiescriptAntlrParser.TypedParamContext t -> {
                 name = t.ident().getText();
-                paramType = TypeAnnotations.toMonoType(elab, t.type());
+                paramType = TypeAnnotations.toMonoType(elab, ctx, t.type());
             }
             default -> throw Elaborator.error(Elaborator.source(param), "unexpected parameter form");
         }
@@ -101,7 +101,7 @@ final class Lambda {
             }
             case PiescriptAntlrParser.TypedParamContext t -> {
                 name = t.ident().getText();
-                paramType = TypeAnnotations.toMonoType(elab, t.type());
+                paramType = TypeAnnotations.toMonoType(elab, ctx, t.type());
                 elab.emitConstraint(paramType, expectedArrow.param(), Elaborator.source(t));
             }
             default -> throw Elaborator.error(Elaborator.source(param), "unexpected parameter form");

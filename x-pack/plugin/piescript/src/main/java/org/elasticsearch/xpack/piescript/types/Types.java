@@ -26,6 +26,14 @@ public final class Types {
 
     private Types() {}
 
+    // ──── Kind constants (F-omega-lite, D-05X) ────
+
+    /** The kind of value types: {@code Integer}, {@code Boolean}, {@code List a}, etc. */
+    public static final MonoType TYPE = new MonoType.TCon("Type");
+
+    /** The kind of row types used inside {@code Record} and as row variables. */
+    public static final MonoType ROW = new MonoType.TCon("Row");
+
     // ──── Common type constants ────
 
     public static final MonoType INTEGER = new MonoType.TCon("Integer");
@@ -68,23 +76,23 @@ public final class Types {
         return new MonoType.AppType(CHANNEL, element);
     }
 
-    /** Unsolved type metavariable with {@link Kind#TYPE}. */
+    /** Unsolved type metavariable with kind {@code Type}. */
     public static MonoType.Meta meta(int id, int bindingLevel) {
-        return new MonoType.Meta(id, bindingLevel, Kind.TYPE);
+        return new MonoType.Meta(id, bindingLevel, TYPE);
     }
 
-    /** Unsolved metavariable with explicit kind. */
-    public static MonoType.Meta meta(int id, int bindingLevel, Kind kind) {
+    /** Unsolved metavariable with explicit kind (a {@link MonoType}). */
+    public static MonoType.Meta meta(int id, int bindingLevel, MonoType kind) {
         return new MonoType.Meta(id, bindingLevel, kind);
     }
 
-    /** Rigid (skolemized) type variable with {@link Kind#TYPE}. */
+    /** Rigid (skolemized) type variable with kind {@code Type}. */
     public static MonoType.Rigid rigid(int id) {
-        return new MonoType.Rigid(id, Kind.TYPE);
+        return new MonoType.Rigid(id, TYPE);
     }
 
-    /** Rigid (skolemized) type variable with explicit kind. */
-    public static MonoType.Rigid rigid(int id, Kind kind) {
+    /** Rigid (skolemized) type variable with explicit kind (a {@link MonoType}). */
+    public static MonoType.Rigid rigid(int id, MonoType kind) {
         return new MonoType.Rigid(id, kind);
     }
 }

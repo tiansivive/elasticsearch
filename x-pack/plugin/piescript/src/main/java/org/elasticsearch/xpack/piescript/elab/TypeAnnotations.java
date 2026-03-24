@@ -8,10 +8,10 @@
 package org.elasticsearch.xpack.piescript.elab;
 
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
 import org.elasticsearch.xpack.piescript.types.TypeScheme;
+import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -32,13 +32,13 @@ final class TypeAnnotations {
      * identifiers in type position become quantified {@link MonoType.Rigid}
      * variables; uppercase identifiers are looked up in the known-types table.
      */
-    static TypeScheme toTypeScheme(Elaborator elab, PiescriptAntlrParser.TypeContext typeCtx) {
+    static TypeScheme toTypeScheme(Elaborator elab, ElaborationContext ctx, PiescriptAntlrParser.TypeContext typeCtx) {
         var rigidScope = new LinkedHashMap<String, MonoType.Rigid>();
-        var body = translateType(elab, typeCtx, rigidScope);
+        var body = translateType(elab, ctx, typeCtx, rigidScope);
         if (rigidScope.isEmpty()) {
             return TypeScheme.mono(body);
         }
-        var quantified = new LinkedHashMap<Integer, Kind>();
+        var quantified = new LinkedHashMap<Integer, MonoType>();
         for (var rigid : rigidScope.values()) {
             quantified.put(rigid.id(), rigid.kind());
         }
@@ -50,38 +50,80 @@ final class TypeAnnotations {
      * quantification. Appropriate for positions where a monotype is expected
      * (e.g., lambda parameter annotations).
      */
-    static MonoType toMonoType(Elaborator elab, PiescriptAntlrParser.TypeContext typeCtx) {
-        return toTypeScheme(elab, typeCtx).body();
+    static MonoType toMonoType(Elaborator elab, ElaborationContext ctx, PiescriptAntlrParser.TypeContext typeCtx) {
+        return toTypeScheme(elab, ctx, typeCtx).body();
     }
 
-    static MonoType translateType(Elaborator elab, PiescriptAntlrParser.TypeContext typeCtx, Map<String, MonoType.Rigid> rigidScope) {
+    static MonoType translateType(
+        Elaborator elab,
+        ElaborationContext ctx,
+        PiescriptAntlrParser.TypeContext typeCtx,
+        Map<String, MonoType.Rigid> rigidScope
+    ) {
         return switch (typeCtx) {
             case PiescriptAntlrParser.FunctionTypeContext fn -> new MonoType.Arrow(
-                translateApp(elab, fn.typeApp(), rigidScope),
-                translateType(elab, fn.type(), rigidScope)
+                translateApp(elab, ctx, fn.typeApp(), rigidScope),
+                translateType(elab, ctx, fn.type(), rigidScope)
             );
-            case PiescriptAntlrParser.TypeNonArrowContext pass -> translateApp(elab, pass.typeApp(), rigidScope);
+            case PiescriptAntlrParser.TypeNonArrowContext pass -> translateApp(elab, ctx, pass.typeApp(), rigidScope);
             default -> throw Elaborator.error(Elaborator.source(typeCtx), "unexpected type syntax");
         };
     }
 
     private static MonoType translateApp(
         Elaborator elab,
+        ElaborationContext ctx,
         PiescriptAntlrParser.TypeAppContext appCtx,
         Map<String, MonoType.Rigid> rigidScope
     ) {
         return switch (appCtx) {
-            case PiescriptAntlrParser.TypeApplicationContext app -> new MonoType.AppType(
-                translateApp(elab, app.typeApp(), rigidScope),
-                translateAtom(elab, app.typeAtom(), rigidScope)
-            );
-            case PiescriptAntlrParser.TypeAppPassthroughContext pass -> translateAtom(elab, pass.typeAtom(), rigidScope);
+            case PiescriptAntlrParser.TypeApplicationContext app -> {
+                var ctor = translateApp(elab, ctx, app.typeApp(), rigidScope);
+                var arg = translateAtom(elab, ctx, app.typeAtom(), rigidScope);
+                var result = new MonoType.AppType(ctor, arg);
+                emitKindConstraint(elab, ctx, ctor, arg, Elaborator.source(app));
+                yield result;
+            }
+            case PiescriptAntlrParser.TypeAppPassthroughContext pass -> translateAtom(elab, ctx, pass.typeAtom(), rigidScope);
             default -> throw Elaborator.error(Elaborator.source(appCtx), "unexpected type syntax");
+        };
+    }
+
+    /**
+     * Emit a kind constraint for a type application: {@code kind(ctor) ~ kind(arg) → ?k}.
+     * The fresh kind meta {@code ?k} becomes the kind of the application result.
+     */
+    private static void emitKindConstraint(Elaborator elab, ElaborationContext ctx, MonoType ctor, MonoType arg, Elaborator.Src src) {
+        var ctorKind = kindOf(ctx, elab, ctor);
+        var argKind = kindOf(ctx, elab, arg);
+        var resultKind = elab.state.freshType(0);
+        elab.state.emitConstraint(ctorKind, new MonoType.Arrow(argKind, resultKind), src.line(), src.column());
+    }
+
+    /**
+     * Determine the kind of a type expression by looking up the kind context.
+     * Type constructors are looked up by name; metas/rigids carry their kind;
+     * rows have kind {@code Row}; records have kind {@code Type}; arrows have kind {@code Type}.
+     */
+    private static MonoType kindOf(ElaborationContext ctx, Elaborator elab, MonoType type) {
+        return switch (type) {
+            case MonoType.TCon(var name) -> ctx.lookupKind(name).orElse(Types.TYPE);
+            case MonoType.Meta(var id, var lvl, var kind) -> kind;
+            case MonoType.Rigid(var id, var kind) -> kind;
+            case MonoType.Arrow a -> Types.TYPE;
+            case MonoType.RecordType r -> Types.TYPE;
+            case RowType r -> Types.ROW;
+            case MonoType.AppType(var c, var a) -> {
+                var cKind = kindOf(ctx, elab, c);
+                var resolved = elab.state.force(cKind);
+                yield resolved instanceof MonoType.Arrow(var param, var result) ? result : Types.TYPE;
+            }
         };
     }
 
     private static MonoType translateAtom(
         Elaborator elab,
+        ElaborationContext ctx,
         PiescriptAntlrParser.TypeAtomContext atom,
         Map<String, MonoType.Rigid> rigidScope
     ) {
@@ -96,22 +138,22 @@ final class TypeAnnotations {
             }
             case PiescriptAntlrParser.TypeVarContext tv -> {
                 var name = tv.LOWER_IDENT().getText();
-                yield rigidScope.computeIfAbsent(name, k -> elab.state.freshRigid(Kind.TYPE));
+                yield rigidScope.computeIfAbsent(name, k -> elab.state.freshRigid(Types.TYPE));
             }
             case PiescriptAntlrParser.RecordTypeContext rt -> {
                 var fields = new LinkedHashMap<String, MonoType>();
                 for (var field : rt.rowType().rowField()) {
-                    fields.put(field.ident().getText(), translateType(elab, field.type(), rigidScope));
+                    fields.put(field.ident().getText(), translateType(elab, ctx, field.type(), rigidScope));
                 }
                 var rowTailNode = rt.rowType().LOWER_IDENT();
                 if (rowTailNode != null) {
                     var rowVarName = rowTailNode.getText();
-                    var rowRigid = rigidScope.computeIfAbsent(rowVarName, k -> elab.state.freshRigid(Kind.ROW));
-                    yield new MonoType.RecordType(new RowType(fields, Optional.of(new MonoType.Meta(rowRigid.id(), 0, Kind.ROW))));
+                    var rowRigid = rigidScope.computeIfAbsent(rowVarName, k -> elab.state.freshRigid(Types.ROW));
+                    yield new MonoType.RecordType(new RowType(fields, Optional.of(new MonoType.Meta(rowRigid.id(), 0, Types.ROW))));
                 }
                 yield new MonoType.RecordType(RowType.closed(fields));
             }
-            case PiescriptAntlrParser.ParenTypeContext pt -> translateType(elab, pt.type(), rigidScope);
+            case PiescriptAntlrParser.ParenTypeContext pt -> translateType(elab, ctx, pt.type(), rigidScope);
             default -> throw Elaborator.error(Elaborator.source(atom), "unexpected type syntax");
         };
     }

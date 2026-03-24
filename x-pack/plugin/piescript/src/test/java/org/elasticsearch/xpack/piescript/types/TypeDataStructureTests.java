@@ -16,12 +16,12 @@ import static org.hamcrest.Matchers.is;
 
 public class TypeDataStructureTests extends ESTestCase {
 
-    // ──── Kind ────
+    // ──── Kind constants ────
 
-    public void testKindValues() {
-        assertThat(Kind.values().length, is(2));
-        assertThat(Kind.valueOf("TYPE"), is(Kind.TYPE));
-        assertThat(Kind.valueOf("ROW"), is(Kind.ROW));
+    public void testKindConstants() {
+        assertThat(Types.TYPE, is(new MonoType.TCon("Type")));
+        assertThat(Types.ROW, is(new MonoType.TCon("Row")));
+        assertNotEquals(Types.TYPE, Types.ROW);
     }
 
     // ──── MonoType ────
@@ -71,21 +71,21 @@ public class TypeDataStructureTests extends ESTestCase {
     }
 
     public void testMeta() {
-        var meta = new MonoType.Meta(0, 1, Kind.TYPE);
+        var meta = new MonoType.Meta(0, 1, Types.TYPE);
         assertThat(meta.id(), is(0));
         assertThat(meta.bindingLevel(), is(1));
-        assertThat(meta.kind(), is(Kind.TYPE));
+        assertThat(meta.kind(), is(Types.TYPE));
     }
 
     public void testRowMeta() {
-        var meta = new MonoType.Meta(5, 2, Kind.ROW);
-        assertThat(meta.kind(), is(Kind.ROW));
+        var meta = new MonoType.Meta(5, 2, Types.ROW);
+        assertThat(meta.kind(), is(Types.ROW));
     }
 
     public void testMetaEquality() {
-        var a = new MonoType.Meta(0, 1, Kind.TYPE);
-        var b = new MonoType.Meta(0, 1, Kind.TYPE);
-        var c = new MonoType.Meta(1, 1, Kind.TYPE);
+        var a = new MonoType.Meta(0, 1, Types.TYPE);
+        var b = new MonoType.Meta(0, 1, Types.TYPE);
+        var c = new MonoType.Meta(1, 1, Types.TYPE);
         assertThat(a, is(b));
         assertNotEquals(a, c);
     }
@@ -100,7 +100,7 @@ public class TypeDataStructureTests extends ESTestCase {
     }
 
     public void testOpenRow() {
-        var rowVar = new MonoType.Meta(0, 0, Kind.ROW);
+        var rowVar = new MonoType.Meta(0, 0, Types.ROW);
         var row = RowType.open(Map.of("x", new MonoType.TCon("Integer")), rowVar);
         assertThat(row.fields().size(), is(1));
         assertTrue(row.tail().isPresent());
@@ -123,9 +123,9 @@ public class TypeDataStructureTests extends ESTestCase {
     }
 
     public void testPolyScheme() {
-        var meta = new MonoType.Meta(0, 0, Kind.TYPE);
+        var meta = new MonoType.Meta(0, 0, Types.TYPE);
         var arrow = new MonoType.Arrow(meta, meta);
-        var scheme = new TypeScheme(Map.of(0, Kind.TYPE), arrow);
+        var scheme = new TypeScheme(Map.of(0, Types.TYPE), arrow);
         assertThat(scheme.quantified().size(), is(1));
         assertTrue(scheme.quantified().containsKey(0));
         assertThat(scheme.body(), is(arrow));
@@ -220,7 +220,7 @@ public class TypeDataStructureTests extends ESTestCase {
             new MonoType.Arrow(new MonoType.TCon("Integer"), new MonoType.TCon("Boolean")),
             new MonoType.RecordType(RowType.closed(Map.of())),
             new MonoType.AppType(new MonoType.TCon("List"), new MonoType.TCon("Record")),
-            new MonoType.Meta(0, 0, Kind.TYPE) };
+            new MonoType.Meta(0, 0, Types.TYPE) };
         for (MonoType type : types) {
             assertNotNull(type);
         }

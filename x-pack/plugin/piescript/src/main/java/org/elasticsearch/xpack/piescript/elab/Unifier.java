@@ -7,9 +7,9 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
+import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -37,8 +37,8 @@ public final class Unifier {
      * through the zonker before dispatch.
      */
     public static Optional<TypeError> unify(MonoType a, MonoType b, ElaborationState state) {
-        var ra = state.zonkOrKeep(a);
-        var rb = state.zonkOrKeep(b);
+        var ra = state.force(a);
+        var rb = state.force(b);
 
         if (ra.equals(rb)) return Optional.empty();
         if (ra instanceof MonoType.TCon(var n) && n.equals(NULL_TYPE)) return Optional.empty();
@@ -142,10 +142,10 @@ public final class Unifier {
     }
 
     private static RowType asRowType(MonoType type, ElaborationState state) {
-        var resolved = state.zonkOrKeep(type);
+        var resolved = state.force(type);
         if (resolved instanceof RowType row) return state.resolveRow(row);
-        if (resolved instanceof MonoType.Meta m && m.kind() == Kind.ROW) return RowType.open(Map.of(), m);
-        if (resolved instanceof MonoType.Rigid r && r.kind() == Kind.ROW) return RowType.open(Map.of(), r);
+        if (resolved instanceof MonoType.Meta m && m.kind().equals(Types.ROW)) return RowType.open(Map.of(), m);
+        if (resolved instanceof MonoType.Rigid r && r.kind().equals(Types.ROW)) return RowType.open(Map.of(), r);
         throw new AssertionError("expected row-kinded type, got: " + resolved);
     }
 
@@ -169,7 +169,7 @@ public final class Unifier {
      * (after resolving through the zonker)?
      */
     private static boolean occursIn(int metaId, MonoType type, ElaborationState state) {
-        return switch (state.zonkOrKeep(type)) {
+        return switch (state.force(type)) {
             case MonoType.Meta(var id, var lvl, var kind) -> id == metaId;
             case MonoType.TCon t -> false;
             case MonoType.Rigid r -> false;

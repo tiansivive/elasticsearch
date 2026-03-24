@@ -245,11 +245,11 @@ public final class CorePrinter {
         };
     }
 
-    private static String rigidName(int id, org.elasticsearch.xpack.piescript.types.Kind kind) {
-        return switch (kind) {
-            case ROW -> String.valueOf((char) ('r' + (id % 3)));
-            case TYPE -> String.valueOf((char) ('a' + (id % 26)));
-        };
+    private static String rigidName(int id, org.elasticsearch.xpack.piescript.types.MonoType kind) {
+        if (kind.equals(org.elasticsearch.xpack.piescript.types.Types.ROW)) {
+            return String.valueOf((char) ('r' + (id % 3)));
+        }
+        return String.valueOf((char) ('a' + (id % 26)));
     }
 
     /**

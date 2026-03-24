@@ -12,10 +12,10 @@ import org.elasticsearch.xpack.esql.core.tree.Source;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
 import org.elasticsearch.xpack.piescript.types.TypeScheme;
+import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -55,12 +55,12 @@ final class Polymorphism {
      */
     static TypeScheme generalize(Elaborator elab, MonoType type, int bindingLevel) {
         elab.solveConstraints();
-        var metas = new HashMap<Integer, Kind>();
+        var metas = new HashMap<Integer, MonoType>();
         TypeWalker.collectMetas(type, bindingLevel, elab.state, metas);
         if (metas.isEmpty()) {
             return TypeScheme.mono(type);
         }
-        var rigidMap = new LinkedHashMap<Integer, Kind>();
+        var rigidMap = new LinkedHashMap<Integer, MonoType>();
         for (var entry : metas.entrySet()) {
             var rigid = elab.state.freshRigid(entry.getValue());
             elab.state.solve(entry.getKey(), rigid);
@@ -88,7 +88,9 @@ final class Polymorphism {
     ) {
         var freshMetas = new LinkedHashMap<Integer, MonoType>();
         for (var entry : scheme.quantified().entrySet()) {
-            var fresh = entry.getValue() == Kind.ROW ? elab.state.freshRow(ctx.bindingLevel()) : elab.state.freshType(ctx.bindingLevel());
+            var fresh = entry.getValue().equals(Types.ROW)
+                ? elab.state.freshRow(ctx.bindingLevel())
+                : elab.state.freshType(ctx.bindingLevel());
             freshMetas.put(entry.getKey(), fresh);
         }
         var instantiated = instantiateBody(elab, scheme.body(), freshMetas);
@@ -102,7 +104,7 @@ final class Polymorphism {
     private static MonoType instantiateBody(Elaborator elab, MonoType type, Map<Integer, MonoType> rigidSubst) {
         return switch (type) {
             case MonoType.Meta meta -> {
-                var resolved = elab.state.zonkOrKeep(meta);
+                var resolved = elab.state.force(meta);
                 if (resolved instanceof MonoType.Rigid r && rigidSubst.containsKey(r.id())) {
                     yield rigidSubst.get(r.id());
                 }
@@ -127,7 +129,7 @@ final class Polymorphism {
                     newFields.put(entry.getKey(), instantiateBody(elab, entry.getValue(), rigidSubst));
                 }
                 Optional<MonoType> newRowVar = flat.tail().map(rv -> {
-                    var resolved = elab.state.zonkOrKeep(rv);
+                    var resolved = elab.state.force(rv);
                     if (resolved instanceof MonoType.Rigid r && rigidSubst.containsKey(r.id())) {
                         var replacement = rigidSubst.get(r.id());
                         return replacement instanceof MonoType.Meta ? replacement : rv;

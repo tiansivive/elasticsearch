@@ -7,9 +7,9 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
+import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -63,7 +63,7 @@ public final class ElaborationState {
      * taken from the caller's {@link ElaborationContext#bindingLevel()}.
      */
     public MonoType.Meta freshType(int bindingLevel) {
-        return new MonoType.Meta(metaSupply++, bindingLevel, Kind.TYPE);
+        return new MonoType.Meta(metaSupply++, bindingLevel, Types.TYPE);
     }
 
     /**
@@ -71,7 +71,7 @@ public final class ElaborationState {
      * taken from the caller's {@link ElaborationContext#bindingLevel()}.
      */
     public MonoType.Meta freshRow(int bindingLevel) {
-        return new MonoType.Meta(metaSupply++, bindingLevel, Kind.ROW);
+        return new MonoType.Meta(metaSupply++, bindingLevel, Types.ROW);
     }
 
     /** The number of metavariables allocated so far. */
@@ -83,9 +83,7 @@ public final class ElaborationState {
 
     /**
      * Record a solution for the given meta. The caller is responsible for
-     * ensuring the solution type matches the meta's kind: a non-row
-     * {@link MonoType} for {@link Kind#TYPE}, a {@link RowType} for
-     * {@link Kind#ROW}.
+     * ensuring the solution type matches the meta's kind.
      */
     public void solve(int metaId, MonoType solution) {
         zonker.put(metaId, solution);
@@ -115,7 +113,7 @@ public final class ElaborationState {
      * Allocate a fresh rigid type variable. Shares the ID space with metas
      * so that IDs are globally unique across both Rigids and Metas.
      */
-    public MonoType.Rigid freshRigid(Kind kind) {
+    public MonoType.Rigid freshRigid(MonoType kind) {
         return new MonoType.Rigid(metaSupply++, kind);
     }
 
@@ -131,6 +129,114 @@ public final class ElaborationState {
         };
     }
 
+    // ──── Type-level NbE normalizer (F-omega-lite, D-05X) ────
+
+    private static final String ROW_MERGE = "&";
+    private static final String ROW_PICK = "Pick";
+    private static final String ROW_OMIT = "Omit";
+
+    /**
+     * NbE-style type normalizer. Subsumes {@link #zonkOrKeep}: chases meta chains
+     * AND reduces built-in type operators when their arguments are concrete.
+     *
+     * <p>Types after {@code force} are in head-normal form:
+     * <ul>
+     *   <li><b>Normal</b>: {@code TCon}, {@code Arrow}, {@code RecordType}, {@code RowType}</li>
+     *   <li><b>Neutral (stuck)</b>: {@code AppType} where the head is an atom or unsolved meta</li>
+     *   <li><b>Reducible</b>: {@code AppType} where the head is a known builtin ({@code &})
+     *       and all arguments are concrete — reduces to a {@code RowType}</li>
+     * </ul>
+     */
+    public MonoType force(MonoType type) {
+        return switch (type) {
+            case MonoType.Meta meta -> resolve(meta.id()).map(this::force).orElse(type);
+            case MonoType.AppType(var ctor, var arg) -> {
+                var c = force(ctor);
+                var a = force(arg);
+                yield reduceApp(c, a);
+            }
+            default -> type;
+        };
+    }
+
+    /**
+     * Attempt to reduce a type application. If the constructor is a partially
+     * applied builtin with concrete arguments, reduce. Otherwise return a
+     * (possibly simplified) stuck {@code AppType}.
+     */
+    private MonoType reduceApp(MonoType ctor, MonoType arg) {
+        if (ctor instanceof MonoType.AppType(var head, var left) && head instanceof MonoType.TCon(var name)) {
+            return switch (name) {
+                case ROW_MERGE -> mergeRows(left, arg);
+                case ROW_PICK -> pickRows(left, arg);
+                case ROW_OMIT -> omitRows(left, arg);
+                default -> new MonoType.AppType(ctor, arg);
+            };
+        }
+        return new MonoType.AppType(ctor, arg);
+    }
+
+    /**
+     * Row merge ({@code &}): right-biased on overlapping labels.
+     * Returns a merged {@link RowType} when both operands are concrete rows,
+     * or a stuck {@code AppType} when either operand is not yet resolved.
+     */
+    private static MonoType mergeRows(MonoType left, MonoType right) {
+        if (left instanceof RowType lr && right instanceof RowType rr) {
+            var merged = new LinkedHashMap<>(lr.fields());
+            merged.putAll(rr.fields());
+            if (lr.tail().isEmpty() && rr.tail().isEmpty()) {
+                return RowType.closed(merged);
+            }
+            if (lr.tail().isEmpty()) {
+                return new RowType(merged, rr.tail());
+            }
+            if (rr.tail().isEmpty()) {
+                return new RowType(merged, lr.tail());
+            }
+            if (lr.tail().equals(rr.tail())) {
+                return new RowType(merged, lr.tail());
+            }
+        }
+        return new MonoType.AppType(new MonoType.AppType(new MonoType.TCon(ROW_MERGE), left), right);
+    }
+
+    /**
+     * Row pick ({@code Pick}): from the first row, keep only fields whose labels
+     * also appear in the second row. Returns a {@link RowType} when both operands
+     * are concrete rows, or a stuck {@code AppType} when either is unresolved.
+     */
+    private static MonoType pickRows(MonoType left, MonoType right) {
+        if (left instanceof RowType lr && right instanceof RowType rr) {
+            var picked = new LinkedHashMap<String, MonoType>();
+            for (var entry : lr.fields().entrySet()) {
+                if (rr.fields().containsKey(entry.getKey())) {
+                    picked.put(entry.getKey(), entry.getValue());
+                }
+            }
+            return RowType.closed(picked);
+        }
+        return new MonoType.AppType(new MonoType.AppType(new MonoType.TCon(ROW_PICK), left), right);
+    }
+
+    /**
+     * Row omit ({@code Omit}): from the first row, remove fields whose labels
+     * appear in the second row. Returns a {@link RowType} when both operands
+     * are concrete rows, or a stuck {@code AppType} when either is unresolved.
+     */
+    private static MonoType omitRows(MonoType left, MonoType right) {
+        if (left instanceof RowType lr && right instanceof RowType rr) {
+            var remaining = new LinkedHashMap<String, MonoType>();
+            for (var entry : lr.fields().entrySet()) {
+                if (!rr.fields().containsKey(entry.getKey())) {
+                    remaining.put(entry.getKey(), entry.getValue());
+                }
+            }
+            return RowType.closed(remaining);
+        }
+        return new MonoType.AppType(new MonoType.AppType(new MonoType.TCon(ROW_OMIT), left), right);
+    }
+
     /**
      * Flatten a row by following its tail through the zonker. If the tail is a
      * solved meta pointing to a {@link RowType}, merge the tail's fields into
@@ -138,7 +244,7 @@ public final class ElaborationState {
      */
     public RowType resolveRow(RowType row) {
         if (row.tail().isEmpty()) return row;
-        var tail = zonkOrKeep(row.tail().get());
+        var tail = force(row.tail().get());
         if (tail instanceof RowType tailRow) {
             var merged = new LinkedHashMap<>(row.fields());
             merged.putAll(tailRow.fields());

@@ -7,6 +7,7 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
+import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.TypeScheme;
 
 import java.util.ArrayList;
@@ -60,24 +61,31 @@ import java.util.stream.IntStream;
 public final class ElaborationContext {
 
     /** Empty context at binding level 0 with no module bindings. */
-    public static final ElaborationContext EMPTY = new ElaborationContext(List.of(), Map.of(), 0);
+    public static final ElaborationContext EMPTY = new ElaborationContext(List.of(), Map.of(), Map.of(), 0);
 
     private final List<NamedScheme> bindings;
     private final Map<String, TypeScheme> module;
+    private final Map<String, MonoType> kindModule;
     private final int bindingLevel;
 
-    private ElaborationContext(List<NamedScheme> bindings, Map<String, TypeScheme> module, int bindingLevel) {
+    private ElaborationContext(
+        List<NamedScheme> bindings,
+        Map<String, TypeScheme> module,
+        Map<String, MonoType> kindModule,
+        int bindingLevel
+    ) {
         this.bindings = bindings;
         this.module = module;
+        this.kindModule = kindModule;
         this.bindingLevel = bindingLevel;
     }
 
     /**
      * Create a context pre-populated with module-level bindings (built-ins,
-     * imports, etc.) at binding level 0 with no local bindings.
+     * imports, etc.) and a kind context for type constructors.
      */
-    public static ElaborationContext withModule(Map<String, TypeScheme> module) {
-        return new ElaborationContext(List.of(), module, 0);
+    public static ElaborationContext withModule(Map<String, TypeScheme> module, Map<String, MonoType> kindModule) {
+        return new ElaborationContext(List.of(), module, kindModule, 0);
     }
 
     /** A binding in the context: surface name paired with its type scheme. */
@@ -95,7 +103,7 @@ public final class ElaborationContext {
         var extended = new ArrayList<NamedScheme>(1 + bindings.size());
         extended.add(new NamedScheme(name, scheme));
         extended.addAll(bindings);
-        return new ElaborationContext(Collections.unmodifiableList(extended), module, bindingLevel);
+        return new ElaborationContext(Collections.unmodifiableList(extended), module, kindModule, bindingLevel);
     }
 
     /**
@@ -123,12 +131,21 @@ public final class ElaborationContext {
 
     /** Return a new context with binding level incremented (entering a let-RHS). */
     public ElaborationContext enterBindingLevel() {
-        return new ElaborationContext(bindings, module, bindingLevel + 1);
+        return new ElaborationContext(bindings, module, kindModule, bindingLevel + 1);
     }
 
     /** Return a new context with binding level decremented (exiting a let-RHS). */
     public ElaborationContext exitBindingLevel() {
-        return new ElaborationContext(bindings, module, bindingLevel - 1);
+        return new ElaborationContext(bindings, module, kindModule, bindingLevel - 1);
+    }
+
+    /**
+     * Look up the kind of a type constructor by name.
+     *
+     * @return the kind (e.g., {@code Type}, {@code Type → Type}), or empty if unknown
+     */
+    public Optional<MonoType> lookupKind(String name) {
+        return Optional.ofNullable(kindModule.get(name));
     }
 
     /** Current binding level (let-nesting depth). */

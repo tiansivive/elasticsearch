@@ -160,7 +160,7 @@ echo ""
 echo "=== Block F: ESQL.from + ESQL.keep ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
-  -d '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.keep [\"message\"] |> ESQL.limit 5;"}' | jq
+  -d '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.keep (fn r -> { message: r.message }) |> ESQL.limit 5;"}' | jq
 
 echo ""
 echo "=== Block F: ESQL.explain ==="
@@ -179,3 +179,15 @@ echo "=== Block F: ESQL.sort ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
   -d '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.sort (fn r -> r.status) |> ESQL.limit 10;"}' | jq
+
+echo ""
+echo "=== D-053: ESQL.stats — global count (explain) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.stats (fn r -> { count: ESQL.count \"*\" }))"}' | jq
+
+echo ""
+echo "=== D-053: ESQL.statsBy — count grouped by status (explain) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.statsBy (fn r -> { count: ESQL.count \"*\" }) (fn r -> { status: r.status }))"}' | jq

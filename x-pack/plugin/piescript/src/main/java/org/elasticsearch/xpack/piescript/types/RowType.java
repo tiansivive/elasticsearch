@@ -19,14 +19,11 @@ import java.util.Optional;
  * because rows are commutative — a Map captures this naturally. The optional {@code tail}
  * makes the row open (for row polymorphism) or closed.
  *
- * <p>The tail, when present, must be row-kinded: a {@link MonoType.Meta} with {@link Kind#ROW},
- * a {@link MonoType.Rigid} with {@link Kind#ROW}, or another {@code RowType}.
+ * <p>The tail, when present, should be row-kinded: a {@link MonoType.Meta} with kind
+ * {@code TCon("Row")}, a {@link MonoType.Rigid} with kind {@code TCon("Row")}, or
+ * another {@code RowType}. Kind correctness is enforced via unification constraints.
  */
 public record RowType(Map<String, MonoType> fields, Optional<MonoType> tail) implements MonoType {
-
-    public RowType {
-        tail.ifPresent(t -> { assert MonoType.isRowKinded(t) : "RowType tail must be row-kinded, got: " + t; });
-    }
 
     /** Closed row with no row variable — all fields are known. */
     public static RowType closed(Map<String, MonoType> fields) {

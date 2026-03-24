@@ -3,11 +3,12 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-03-23 (D-050: `RowType` as first-class `MonoType`. Block F: T-LINQ
-> ESQL query compilation. `ESQL r` type, `query expr ;` syntax replaces old backtick ESQL,
-> `ESQL.from`/`where`/`eval`/`keep`/`drop`/`limit`/`sort`/`sortDesc`/`rename`/`explain`
-> builtins, NbE-style `Symbol(String)` partial evaluation for ESQL string compilation,
-> `CoreQueryExec` IR node. Old `query \`ESQL\`` syntax removed. D-050 + Block F complete.)
+> **Last updated**: 2026-03-24 (D-053: F-omega-lite type system. Kinds as types — `Kind` enum
+> deleted, kinds are `MonoType` values, `Prelude.KINDS` registry, kind constraints via unifier.
+> `force` NbE normalizer replaces `zonkOrKeep`. Row operators `&`, `Pick`, `Omit`. `ESQL.keep`
+> and `ESQL.drop` now closure-based with `Pick`/`Omit` output types. `ESQL.stats`/`ESQL.statsBy`
+> with aggregate builtins (`ESQL.count`, `ESQL.avg`, `ESQL.sum`, `ESQL.max`, `ESQL.min`,
+> `ESQL.countOf`, `ESQL.bucket`). `statsBy` output type is `ESQL (s & t)`.)
 
 ## Summary
 
@@ -19,7 +20,9 @@ complete. Block D (local data access via `use`, `Shard.open`, `Shard.consume`, `
 complete. Block E (write primitives: `Shard.writer`/`write`/`refresh`/`globalCheckpoint`,
 `Index.bulk`, list literal syntax) is complete. D-050 (`RowType` as first-class `MonoType` with
 `Kind.ROW`) is complete. Block F (T-LINQ ESQL query compilation: `ESQL r` type, `query expr ;`
-syntax, `ESQL.*` combinators, NbE-style `Symbol(String)` partial evaluation) is complete.**
+syntax, `ESQL.*` combinators, NbE-style `Symbol(String)` partial evaluation) is complete.
+D-053 (F-omega-lite: kinds-as-types, `force` normalizer, `&`/`Pick`/`Omit` row operators,
+`ESQL.stats`/`ESQL.statsBy` + aggregate builtins) is complete.**
 Piescript can now read, transform, write, and **query via typed ESQL compilation**: the full
 ETL loop with type-safe, composable ESQL pipelines. Shard-level writes go directly through the Engine on primary shards
 (bypassing transport). `Index.bulk` delegates to the Bulk API for routing, replication, and
@@ -113,10 +116,13 @@ for Phase 1 items carried forward.
 | Capability | Target Block | Notes |
 |-----------|-------------|-------|
 | Pattern matching | 1e (deferred) | No match expressions (deferred — not blocking Blocks A+; see D-029) |
-| `Label` kind / type-level singletons | Tech debt | `DocRef r` and `Searcher r` use `Kind.TYPE` for `r` instead of `Kind.ROW`. Proper fix requires `Label` kind + `Project` type family. See D-050 § Future. |
-| `RowType` as first-class `MonoType` | Tech debt (high priority) | Rows are separate from `MonoType`; `r` in `DocRef r` is unconstrained. Should be `Kind.ROW` with row-kinded metas/rigids. |
+| `Label` kind / type-level singletons | Tech debt | Proper fix requires `Label` kind + `Project` type family. See D-050 § Future. |
 | `sort` / `take` combinators | Block D+ | No sorting or top-N selection within piescript. Must push into ESQL. |
-| `groupBy` combinator | Block D+ | No grouping/aggregation semantics within piescript. Must push into ESQL. |
+| ESQL expression wrapper type | Future (D-053) | Aggregate builtins produce `Symbol` where type says `Double` — a type-level lie. Wrap in ESQL monad for static safety. |
+| Kind constraint improvements | Future (D-053) | Ascription-site kind checks, record field type kinds, arrow param/result kinds — error message improvements. |
+| `ESQL.stats` comprehension syntax | Future | Sugar over combinators (`from r in idx where ... group by ... select ...`). |
+| `ESQL.join` (LOOKUP JOIN) | Future | Complex cross-index typing. |
+| Row constraints (Lacks, typeclasses) | Future | Encode `r → s` relationship for `Pick`/`Omit`/`keep`/`drop` more precisely. |
 | Multi-value channels | Deferred | Block A/C channels are single-value only |
 | String / list concat operators | Phase 1 tech debt | No `<>` (string concat) or `++` (list concat). See roadmap. |
 | Wildcard / alias / data stream patterns in `topology` | Deferred | `topology` accepts exact index name only (D-044) |
@@ -309,4 +315,6 @@ Block B implementation session,
 [Block D implementation](a10ee773-3d32-4a32-ad8c-cb4bb9a1f9d1),
 [Block D testing, debug scripts, docs](40f62001-d515-4590-b3cd-95e5e999b33b),
 [Block E design + implementation](104647a1-8ee2-4796-a7b3-f13317d8d22c),
-[Block F T-LINQ design + D-050 + implementation](17d31f8b-e784-44ac-8271-7e1709e8a859)
+[Block F T-LINQ design + D-050 + implementation](17d31f8b-e784-44ac-8271-7e1709e8a859),
+[F-omega design + Phases 1–2](846bd5a8-3b35-4321-848a-c9b17a22f109),
+F-omega Phases 3–5 (Claude Code session 2026-03-24)

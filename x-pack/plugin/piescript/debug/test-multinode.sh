@@ -185,7 +185,7 @@ post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.wh
 
 echo ""
 echo "=== 16. ESQL.explain (compiled ESQL string) ==="
-post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.where (fn r -> r.age > 30) |> ESQL.keep [\"name\", \"age\"] |> ESQL.limit 5)"}'
+post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.where (fn r -> r.age > 30) |> ESQL.keep (fn r -> { name: r.name, age: r.age }) |> ESQL.limit 5)"}'
 
 echo ""
 echo "=== 17. ESQL.where with captured variable ==="
@@ -194,6 +194,26 @@ post '{"program": "use \"piescript-test\" as idx; let threshold = 25; query ESQL
 echo ""
 echo "=== 18. ESQL.sort ascending ==="
 post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.sort (fn r -> r.age) |> ESQL.limit 10;"}'
+
+echo ""
+echo "=== 19. ESQL.keep with closure syntax ==="
+post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.keep (fn r -> { name: r.name, age: r.age }))"}'
+
+echo ""
+echo "=== 20. ESQL.drop with closure syntax ==="
+post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.drop (fn r -> { score: r.score }))"}'
+
+echo ""
+echo "=== 21. ESQL.stats — global count ==="
+post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.stats (fn r -> { count: ESQL.count \"*\" }))"}'
+
+echo ""
+echo "=== 22. ESQL.statsBy — count + avg grouped by active ==="
+post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.statsBy (fn r -> { count: ESQL.count \"*\", avg_age: ESQL.avg (fn r2 -> r2.age) }) (fn r -> { active: r.active }))"}'
+
+echo ""
+echo "=== 23. ESQL.stats — end-to-end query execution ==="
+post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.stats (fn r -> { count: ESQL.count \"*\" });"}'
 
 echo ""
 echo "========================================"

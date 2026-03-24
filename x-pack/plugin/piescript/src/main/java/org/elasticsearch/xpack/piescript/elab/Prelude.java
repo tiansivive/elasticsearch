@@ -7,10 +7,10 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
 import org.elasticsearch.xpack.piescript.types.TypeScheme;
+import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -72,10 +72,11 @@ public final class Prelude {
 
     private Prelude() {}
 
-    private static final MonoType.Rigid A0 = new MonoType.Rigid(-1, Kind.TYPE);
-    private static final MonoType.Rigid B0 = new MonoType.Rigid(-2, Kind.TYPE);
-    private static final MonoType.Rigid R0 = new MonoType.Rigid(-3, Kind.ROW);
-    private static final MonoType.Rigid S0 = new MonoType.Rigid(-4, Kind.ROW);
+    private static final MonoType.Rigid A0 = new MonoType.Rigid(-1, Types.TYPE);
+    private static final MonoType.Rigid B0 = new MonoType.Rigid(-2, Types.TYPE);
+    private static final MonoType.Rigid R0 = new MonoType.Rigid(-3, Types.ROW);
+    private static final MonoType.Rigid S0 = new MonoType.Rigid(-4, Types.ROW);
+    private static final MonoType.Rigid T0 = new MonoType.Rigid(-5, Types.ROW);
 
     private static final MonoType KW = Elaborator.KEYWORD;
     private static final MonoType DBL = Elaborator.DOUBLE;
@@ -88,6 +89,42 @@ public final class Prelude {
      * Piescript elaboration environment.
      */
     public static final Map<String, TypeScheme> MODULE = buildModule();
+
+    /**
+     * Kind context: maps each built-in type constructor name to its kind.
+     * Base types have kind {@code Type}, parameterized constructors have
+     * arrow kinds (e.g., {@code List : Type → Type}, {@code ESQL : Row → Type}).
+     * {@code Type : Type} and {@code Row : Type} (base kinds are types of kind Type).
+     */
+    public static final Map<String, MonoType> KINDS = Map.ofEntries(
+        entry("Type", Types.TYPE),
+        entry("Row", Types.TYPE),
+        entry("Integer", Types.TYPE),
+        entry("Long", Types.TYPE),
+        entry("Double", Types.TYPE),
+        entry("Keyword", Types.TYPE),
+        entry("Boolean", Types.TYPE),
+        entry("Null", Types.TYPE),
+        entry("DateTime", Types.TYPE),
+        entry("UnsignedLong", Types.TYPE),
+        entry("Ip", Types.TYPE),
+        entry("Version", Types.TYPE),
+        entry("GeoPoint", Types.TYPE),
+        entry("CartesianPoint", Types.TYPE),
+        entry("GeoShape", Types.TYPE),
+        entry("CartesianShape", Types.TYPE),
+        entry("Unsupported", Types.TYPE),
+        entry("List", new MonoType.Arrow(Types.TYPE, Types.TYPE)),
+        entry("Channel", new MonoType.Arrow(Types.TYPE, Types.TYPE)),
+        entry("Index", new MonoType.Arrow(Types.ROW, Types.TYPE)),
+        entry("Searcher", new MonoType.Arrow(Types.ROW, Types.TYPE)),
+        entry("DocRef", new MonoType.Arrow(Types.ROW, Types.TYPE)),
+        entry("Writer", new MonoType.Arrow(Types.ROW, Types.TYPE)),
+        entry("ESQL", new MonoType.Arrow(Types.ROW, Types.TYPE)),
+        entry("&", new MonoType.Arrow(Types.ROW, new MonoType.Arrow(Types.ROW, Types.ROW))),
+        entry("Pick", new MonoType.Arrow(Types.ROW, new MonoType.Arrow(Types.ROW, Types.ROW))),
+        entry("Omit", new MonoType.Arrow(Types.ROW, new MonoType.Arrow(Types.ROW, Types.ROW)))
+    );
 
     /** Arity (number of term-level arguments) for each built-in function. */
     public static final Map<String, Integer> ARITY = Map.ofEntries(
@@ -130,7 +167,16 @@ public final class Prelude {
         entry("ESQL.sort", 2),
         entry("ESQL.sortDesc", 2),
         entry("ESQL.rename", 2),
-        entry("ESQL.explain", 1)
+        entry("ESQL.explain", 1),
+        entry("ESQL.stats", 2),
+        entry("ESQL.statsBy", 3),
+        entry("ESQL.count", 1),
+        entry("ESQL.countOf", 1),
+        entry("ESQL.avg", 1),
+        entry("ESQL.sum", 1),
+        entry("ESQL.max", 1),
+        entry("ESQL.min", 1),
+        entry("ESQL.bucket", 2)
     );
 
     private static Map<String, TypeScheme> buildModule() {
@@ -175,14 +221,23 @@ public final class Prelude {
         module.put("ESQL.sortDesc", esqlSortScheme());
         module.put("ESQL.rename", esqlRenameScheme());
         module.put("ESQL.explain", esqlExplainScheme());
+        module.put("ESQL.stats", esqlStatsScheme());
+        module.put("ESQL.statsBy", esqlStatsByScheme());
+        module.put("ESQL.count", esqlCountScheme());
+        module.put("ESQL.countOf", esqlCountOfScheme());
+        module.put("ESQL.avg", esqlAggDoubleScheme());        // ∀(r:Row). (Record r → Double) → Double
+        module.put("ESQL.sum", esqlAggDoubleScheme());
+        module.put("ESQL.max", esqlAggPolyScheme());           // ∀(r:Row)(a:Type). (Record r → a) → a
+        module.put("ESQL.min", esqlAggPolyScheme());
+        module.put("ESQL.bucket", esqlBucketScheme());
         return Map.copyOf(module);
     }
 
     // map : ∀(a:TYPE, b:TYPE). (a → b) → List a → List b
     private static TypeScheme mapScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        quantified.put(B0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
+        quantified.put(B0.id(), Types.TYPE);
 
         var body = new MonoType.Arrow(new MonoType.Arrow(A0, B0), new MonoType.Arrow(list(A0), list(B0)));
         return new TypeScheme(quantified, body);
@@ -190,8 +245,8 @@ public final class Prelude {
 
     // filter : ∀(a:TYPE). (a → Boolean) → List a → List a
     private static TypeScheme filterScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
 
         var body = new MonoType.Arrow(new MonoType.Arrow(A0, Elaborator.BOOLEAN), new MonoType.Arrow(list(A0), list(A0)));
         return new TypeScheme(quantified, body);
@@ -199,9 +254,9 @@ public final class Prelude {
 
     // reduce : ∀(a:TYPE, b:TYPE). (b → a → b) → b → List a → b
     private static TypeScheme reduceScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
-        quantified.put(B0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
+        quantified.put(B0.id(), Types.TYPE);
 
         var body = new MonoType.Arrow(
             new MonoType.Arrow(B0, new MonoType.Arrow(A0, B0)),
@@ -212,29 +267,29 @@ public final class Prelude {
 
     // head : ∀(a:TYPE). List a → a
     private static TypeScheme listToA() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
         return new TypeScheme(quantified, new MonoType.Arrow(list(A0), A0));
     }
 
     // tail : ∀(a:TYPE). List a → List a
     private static TypeScheme listToList() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
         return new TypeScheme(quantified, new MonoType.Arrow(list(A0), list(A0)));
     }
 
     // length : ∀(a:TYPE). List a → Double
     private static TypeScheme listToDouble() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
         return new TypeScheme(quantified, new MonoType.Arrow(list(A0), DBL));
     }
 
     // isEmpty : ∀(a:TYPE). List a → Boolean
     private static TypeScheme listToBool() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
         return new TypeScheme(quantified, new MonoType.Arrow(list(A0), BOOL));
     }
 
@@ -291,8 +346,8 @@ public final class Prelude {
         var nodeRecordFull = record(nodeRecordFields);
 
         var resultType = record(Map.of("shards", list(shardRecord), "nodes", list(nodeRecordFull)));
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(index(R0), resultType));
     }
 
@@ -301,8 +356,8 @@ public final class Prelude {
         var nb = nodeBase();
         var shardRecordFields = new LinkedHashMap<String, MonoType>(shardCoreFields());
         shardRecordFields.put("node", nb);
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(index(R0), list(record(shardRecordFields))));
     }
 
@@ -311,15 +366,15 @@ public final class Prelude {
         var nb = nodeBase();
         var nodeRecordFields = new LinkedHashMap<>(((RowType) nb.row()).fields());
         nodeRecordFields.put("shards", list(record(shardCoreFields())));
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(index(R0), list(record(nodeRecordFields))));
     }
 
     // at : ∀a. Double → List a → a (0-based index access)
     private static TypeScheme listAtScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(A0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
         return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(list(A0), A0)));
     }
 
@@ -332,8 +387,8 @@ public final class Prelude {
 
         var queryType = record(Map.of("match_all", BOOL));
 
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(
             quantified,
             new MonoType.Arrow(index(R0), new MonoType.Arrow(shardRecordType, new MonoType.Arrow(queryType, channel(searcher(R0)))))
@@ -342,15 +397,15 @@ public final class Prelude {
 
     // Shard.consume : ∀(r:Row). Double → Searcher r → List (DocRef r)
     private static TypeScheme shardConsumeScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(searcher(R0), list(docref(R0)))));
     }
 
     // Shard.read : ∀(r:Row). DocRef r → Record r
     private static TypeScheme shardReadScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(docref(R0), new MonoType.RecordType(R0)));
     }
 
@@ -389,8 +444,8 @@ public final class Prelude {
         shardRecordFields.put("node", nb);
         var shardRecordType = record(shardRecordFields);
 
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(index(R0), new MonoType.Arrow(shardRecordType, channel(writer(R0)))));
     }
 
@@ -400,8 +455,8 @@ public final class Prelude {
     // WriteResult = { seq_no: Double, version: Double, result: Keyword }
     private static TypeScheme shardWriteScheme() {
         var writeResult = record(Map.of("seq_no", DBL, "version", DBL, "result", KW));
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(
             quantified,
             new MonoType.Arrow(writer(R0), new MonoType.Arrow(KW, new MonoType.Arrow(new MonoType.RecordType(R0), writeResult)))
@@ -411,8 +466,8 @@ public final class Prelude {
     // Shard.refresh : ∀(r:Row). Writer r → Channel { refreshed: Boolean }
     private static TypeScheme shardRefreshScheme() {
         var refreshResult = record(Map.of("refreshed", BOOL));
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(writer(R0), channel(refreshResult)));
     }
 
@@ -423,16 +478,16 @@ public final class Prelude {
         shardRecordFields.put("node", nb);
         var shardRecordType = record(shardRecordFields);
 
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(index(R0), new MonoType.Arrow(shardRecordType, DBL)));
     }
 
     // Index.bulk : ∀(r:Row). Keyword → List (Record r) → Channel { total: Double, written: Double, failed: Double }
     private static TypeScheme indexBulkScheme() {
         var bulkResult = record(Map.of("total", DBL, "written", DBL, "failed", DBL));
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(
             quantified,
             new MonoType.Arrow(KW, new MonoType.Arrow(list(new MonoType.RecordType(R0)), channel(bulkResult)))
@@ -447,15 +502,15 @@ public final class Prelude {
 
     // ESQL.from : ∀(r:Row). Index r → ESQL r
     private static TypeScheme esqlFromScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(index(R0), esql(R0)));
     }
 
     // ESQL.where : ∀(r:Row). (Record r → Boolean) → ESQL r → ESQL r
     private static TypeScheme esqlWhereScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(
             quantified,
             new MonoType.Arrow(new MonoType.Arrow(new MonoType.RecordType(R0), BOOL), new MonoType.Arrow(esql(R0), esql(R0)))
@@ -464,9 +519,9 @@ public final class Prelude {
 
     // ESQL.eval : ∀(r:Row)(s:Row). (Record r → Record s) → ESQL r → ESQL s
     private static TypeScheme esqlEvalScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
-        quantified.put(S0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(S0.id(), Types.ROW);
         return new TypeScheme(
             quantified,
             new MonoType.Arrow(
@@ -476,31 +531,48 @@ public final class Prelude {
         );
     }
 
-    // ESQL.keep : ∀(r:Row)(s:Row). List Keyword → ESQL r → ESQL s
+    // ESQL.keep : ∀(r:Row)(s:Row). (Record r → Record s) → ESQL r → ESQL (Pick r s)
     private static TypeScheme esqlKeepScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
-        quantified.put(S0.id(), Kind.ROW);
-        return new TypeScheme(quantified, new MonoType.Arrow(list(KW), new MonoType.Arrow(esql(R0), esql(S0))));
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(S0.id(), Types.ROW);
+        var pickRS = new MonoType.AppType(new MonoType.AppType(Elaborator.PICK, R0), S0);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(
+                new MonoType.Arrow(new MonoType.RecordType(R0), new MonoType.RecordType(S0)),
+                new MonoType.Arrow(esql(R0), esql(pickRS))
+            )
+        );
     }
 
-    // ESQL.drop : ∀(r:Row)(s:Row). List Keyword → ESQL r → ESQL s
+    // ESQL.drop : ∀(r:Row)(s:Row). (Record r → Record s) → ESQL r → ESQL (Omit r s)
     private static TypeScheme esqlDropScheme() {
-        return esqlKeepScheme();
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(S0.id(), Types.ROW);
+        var omitRS = new MonoType.AppType(new MonoType.AppType(Elaborator.OMIT, R0), S0);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(
+                new MonoType.Arrow(new MonoType.RecordType(R0), new MonoType.RecordType(S0)),
+                new MonoType.Arrow(esql(R0), esql(omitRS))
+            )
+        );
     }
 
     // ESQL.limit : ∀(r:Row). Double → ESQL r → ESQL r
     private static TypeScheme esqlLimitScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(esql(R0), esql(R0))));
     }
 
     // ESQL.sort : ∀(r:Row)(a:Type). (Record r → a) → ESQL r → ESQL r
     private static TypeScheme esqlSortScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
-        quantified.put(A0.id(), Kind.TYPE);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(A0.id(), Types.TYPE);
         return new TypeScheme(
             quantified,
             new MonoType.Arrow(new MonoType.Arrow(new MonoType.RecordType(R0), A0), new MonoType.Arrow(esql(R0), esql(R0)))
@@ -510,16 +582,84 @@ public final class Prelude {
     // ESQL.rename : ∀(r:Row)(s:Row). List { from: Keyword, to: Keyword } → ESQL r → ESQL s
     private static TypeScheme esqlRenameScheme() {
         var renameEntry = record(Map.of("from", KW, "to", KW));
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
-        quantified.put(S0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(S0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(list(renameEntry), new MonoType.Arrow(esql(R0), esql(S0))));
     }
 
     // ESQL.explain : ∀(r:Row). ESQL r → Keyword
     private static TypeScheme esqlExplainScheme() {
-        var quantified = new LinkedHashMap<Integer, Kind>();
-        quantified.put(R0.id(), Kind.ROW);
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(esql(R0), KW));
+    }
+
+    // ──── ESQL stats/aggregate builtins (Phase 4 — F-omega plan) ────
+
+    // ESQL.stats : ∀(r:Row)(s:Row). (Record r → Record s) → ESQL r → ESQL s
+    private static TypeScheme esqlStatsScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(S0.id(), Types.ROW);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(
+                new MonoType.Arrow(new MonoType.RecordType(R0), new MonoType.RecordType(S0)),
+                new MonoType.Arrow(esql(R0), esql(S0))
+            )
+        );
+    }
+
+    // ESQL.statsBy : ∀(r:Row)(s:Row)(t:Row). (Record r → Record s) → (Record r → Record t) → ESQL r → ESQL (s & t)
+    private static TypeScheme esqlStatsByScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(S0.id(), Types.ROW);
+        quantified.put(T0.id(), Types.ROW);
+        var mergedST = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("&"), S0), T0);
+        return new TypeScheme(
+            quantified,
+            new MonoType.Arrow(
+                new MonoType.Arrow(new MonoType.RecordType(R0), new MonoType.RecordType(S0)),
+                new MonoType.Arrow(
+                    new MonoType.Arrow(new MonoType.RecordType(R0), new MonoType.RecordType(T0)),
+                    new MonoType.Arrow(esql(R0), esql(mergedST))
+                )
+            )
+        );
+    }
+
+    // ESQL.count : Keyword → Double
+    private static TypeScheme esqlCountScheme() {
+        return TypeScheme.mono(new MonoType.Arrow(KW, DBL));
+    }
+
+    // ESQL.countOf : ∀(r:Row)(a:Type). (Record r → a) → Double
+    private static TypeScheme esqlCountOfScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(A0.id(), Types.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(new MonoType.Arrow(new MonoType.RecordType(R0), A0), DBL));
+    }
+
+    // ESQL.avg / ESQL.sum : ∀(r:Row). (Record r → Double) → Double
+    private static TypeScheme esqlAggDoubleScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(new MonoType.Arrow(new MonoType.RecordType(R0), DBL), DBL));
+    }
+
+    // ESQL.max / ESQL.min : ∀(r:Row)(a:Type). (Record r → a) → a
+    private static TypeScheme esqlAggPolyScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        quantified.put(A0.id(), Types.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(new MonoType.Arrow(new MonoType.RecordType(R0), A0), A0));
+    }
+
+    // ESQL.bucket : Double → Double → Double
+    private static TypeScheme esqlBucketScheme() {
+        return TypeScheme.mono(new MonoType.Arrow(DBL, new MonoType.Arrow(DBL, DBL)));
     }
 }

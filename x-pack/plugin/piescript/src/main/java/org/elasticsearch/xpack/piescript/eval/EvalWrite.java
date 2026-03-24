@@ -117,8 +117,8 @@ final class EvalWrite {
      * {@code WriteResult} record with seq_no, version, and result status.
      *
      * <p>The document ID is a separate argument (not part of the record body)
-     * because the type parameter {@code r} in {@code Writer r} is {@code Kind.TYPE}
-     * (a full record type), not {@code Kind.ROW}. With row-kinded type parameters,
+     * because the type parameter {@code r} in {@code Writer r} has kind {@code Type}
+     * (a full record type), not kind {@code Row}. With row-kinded type parameters,
      * this would be {@code Shard.write : Writer r → { _id: Keyword | r } → WriteResult}.
      * See D-050 deviation §5.
      *

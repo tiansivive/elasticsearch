@@ -73,7 +73,7 @@ final class Let {
         var letCtx = ctx.enterBindingLevel();
 
         TypeScheme expectedScheme = binding.type() != null
-            ? TypeAnnotations.toTypeScheme(elab, binding.type())
+            ? TypeAnnotations.toTypeScheme(elab, ctx, binding.type())
             : TypeScheme.mono(elab.state.freshType(letCtx.bindingLevel()));
 
         CoreExpr rhs = elab.check(binding.expr(), expectedScheme, letCtx, src);
@@ -172,7 +172,7 @@ final class Let {
         var letCtx = ctx.enterBindingLevel();
 
         TypeScheme expectedScheme = let.type() != null
-            ? TypeAnnotations.toTypeScheme(elab, let.type())
+            ? TypeAnnotations.toTypeScheme(elab, ctx, let.type())
             : TypeScheme.mono(elab.state.freshType(letCtx.bindingLevel()));
 
         CoreExpr rhs = elab.check(let.expr(0), expectedScheme, letCtx, src);

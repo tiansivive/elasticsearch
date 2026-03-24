@@ -23,6 +23,7 @@ import org.elasticsearch.xpack.piescript.core.CoreFree;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
+import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.elab.ElaborationState;
 import org.elasticsearch.xpack.piescript.elab.Elaborator;
@@ -911,13 +912,33 @@ public class EvaluatorTests extends ESTestCase {
     }
 
     public void testEsqlKeepAppendsToSymbol() {
+        // Build: ESQL.keep (fn r -> { name: r.name, age: r.age }) (Symbol("FROM logs-*"))
         var from = new Value.Symbol("FROM logs-*");
+
+        // Lambda body: { name: r.name, age: r.age } where r = CoreVar(0)
+        var recordBody = new CoreRecord(
+            SRC,
+            List.of("name", "age"),
+            List.of(
+                new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "name", DBL),
+                new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "age", DBL)
+            ),
+            DBL
+        );
+        var keepLam = new CoreLam(SRC, "r", DBL, recordBody, DBL);
+
+        // Evaluate the lambda to get a ClosureVal (no captures, empty env)
+        var closureFuture = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(keepLam, new Value[] {}, closureFuture);
+        var closure = closureFuture.actionGet();
+        assertThat(closure, instanceOf(Value.ClosureVal.class));
+
+        // Apply ESQL.keep: args = [closure, Symbol("FROM logs-*")]
         var keepFree = new CoreFree(SRC, "ESQL.keep", DBL);
-        var fieldList = new Value.ListVal(List.of(new Value.KeywordVal("name"), new Value.KeywordVal("age")));
-        var keepApplied = new CoreApp(SRC, keepFree, new CoreVar(SRC, 0, "fields", DBL), DBL);
+        var keepApplied = new CoreApp(SRC, keepFree, new CoreVar(SRC, 0, "pred", DBL), DBL);
         var fullExpr = new CoreApp(SRC, keepApplied, new CoreVar(SRC, 1, "plan", DBL), DBL);
         var future = new PlainActionFuture<Value>();
-        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(fullExpr, new Value[] { fieldList, from }, future);
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(fullExpr, new Value[] { closure, from }, future);
         var result = future.actionGet();
         assertThat(result, instanceOf(Value.Symbol.class));
         assertEquals("FROM logs-* | KEEP name, age", ((Value.Symbol) result).esql());
@@ -1033,6 +1054,85 @@ public class EvaluatorTests extends ESTestCase {
         assertEquals("false", EvalBuiltins.compileValueToEsql(new Value.BooleanVal(false)));
         assertEquals("null", EvalBuiltins.compileValueToEsql(new Value.NullVal()));
         assertEquals("field", EvalBuiltins.compileValueToEsql(new Value.Symbol("field")));
+    }
+
+    // ──── ESQL stats/aggregate NbE compilation tests ────
+
+    public void testEsqlCountProducesSymbol() {
+        // ESQL.count "*" → Symbol("COUNT(*)")
+        var countFree = new CoreFree(SRC, "ESQL.count", DBL);
+        var expr = new CoreApp(SRC, countFree, new CoreVar(SRC, 0, "field", DBL), DBL);
+        var result = evaluateWithEnv(expr, new Value.KeywordVal("*"));
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("COUNT(*)", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlAvgProducesSymbol() {
+        // ESQL.avg (\r -> r.salary) → Symbol("AVG(salary)")
+        var body = new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "salary", DBL);
+        var lam = new CoreLam(SRC, "r", DBL, body, DBL);
+        var closure = evaluateWithEnv(lam);
+
+        var avgFree = new CoreFree(SRC, "ESQL.avg", DBL);
+        var expr = new CoreApp(SRC, avgFree, new CoreVar(SRC, 0, "c", DBL), DBL);
+        var result = evaluateWithEnv(expr, closure);
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("AVG(salary)", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlStatsCompiles() {
+        // ESQL.stats (\r -> { count: ESQL.count "*" }) (Symbol("FROM idx"))
+        // → Symbol("FROM idx | STATS count = COUNT(*)")
+        var countFree = new CoreFree(SRC, "ESQL.count", DBL);
+        var countApp = new CoreApp(SRC, countFree, new CoreVar(SRC, 1, "star", DBL), DBL);
+        var recordBody = new CoreRecord(SRC, List.of("count"), List.of(countApp), DBL);
+        var lam = new CoreLam(SRC, "r", DBL, recordBody, DBL);
+
+        // Evaluate lambda with ["*"] in env to capture the "*" argument
+        var closure = evaluateWithEnv(lam, new Value.KeywordVal("*"));
+
+        var statsFree = new CoreFree(SRC, "ESQL.stats", DBL);
+        var statsApplied = new CoreApp(SRC, statsFree, new CoreVar(SRC, 0, "agg", DBL), DBL);
+        var fullExpr = new CoreApp(SRC, statsApplied, new CoreVar(SRC, 1, "plan", DBL), DBL);
+        var result = evaluateWithEnv(fullExpr, closure, new Value.Symbol("FROM idx"));
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("FROM idx | STATS count = COUNT(*)", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlStatsByCompiles() {
+        // ESQL.statsBy (\r -> { count: ESQL.count "*" }) (\r -> { dept: r.department }) (Symbol("FROM emp"))
+        // → Symbol("FROM emp | STATS count = COUNT(*) BY dept = department")
+
+        // Agg closure: \r -> { count: ESQL.count "*" }
+        var countFree = new CoreFree(SRC, "ESQL.count", DBL);
+        var countApp = new CoreApp(SRC, countFree, new CoreVar(SRC, 1, "star", DBL), DBL);
+        var aggRecord = new CoreRecord(SRC, List.of("count"), List.of(countApp), DBL);
+        var aggLam = new CoreLam(SRC, "r", DBL, aggRecord, DBL);
+        var aggClosure = evaluateWithEnv(aggLam, new Value.KeywordVal("*"));
+
+        // Group closure: \r -> { dept: r.department }
+        var deptProj = new CoreProject(SRC, new CoreVar(SRC, 0, "r", DBL), "department", DBL);
+        var groupRecord = new CoreRecord(SRC, List.of("dept"), List.of(deptProj), DBL);
+        var groupLam = new CoreLam(SRC, "r", DBL, groupRecord, DBL);
+        var groupClosure = evaluateWithEnv(groupLam);
+
+        var statsByFree = new CoreFree(SRC, "ESQL.statsBy", DBL);
+        var app1 = new CoreApp(SRC, statsByFree, new CoreVar(SRC, 0, "agg", DBL), DBL);
+        var app2 = new CoreApp(SRC, app1, new CoreVar(SRC, 1, "group", DBL), DBL);
+        var fullExpr = new CoreApp(SRC, app2, new CoreVar(SRC, 2, "plan", DBL), DBL);
+        var result = evaluateWithEnv(fullExpr, aggClosure, groupClosure, new Value.Symbol("FROM emp"));
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("FROM emp | STATS count = COUNT(*) BY dept = department", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlBucketProducesSymbol() {
+        // ESQL.bucket (Symbol("timestamp")) 3600.0 → Symbol("BUCKET(timestamp, 3600)")
+        var bucketFree = new CoreFree(SRC, "ESQL.bucket", DBL);
+        var app1 = new CoreApp(SRC, bucketFree, new CoreVar(SRC, 0, "field", DBL), DBL);
+        var expr = new CoreApp(SRC, app1, new CoreVar(SRC, 1, "span", DBL), DBL);
+        var result = evaluateWithEnv(expr, new Value.Symbol("timestamp"), new Value.DoubleVal(3600));
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("BUCKET(timestamp, 3600)", ((Value.Symbol) result).esql());
     }
 
     public void testCompileValueToEsqlEscapesStrings() {
