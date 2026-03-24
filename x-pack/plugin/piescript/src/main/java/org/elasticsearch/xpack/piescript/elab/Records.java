@@ -38,7 +38,7 @@ final class Records {
      */
     static CoreExpr check(Elaborator elab, PiescriptAntlrParser.RecordLiteralContext r, MonoType expected, ElaborationContext ctx) {
         var s = Elaborator.source(r);
-        var resolved = elab.state.zonkOrKeep(expected);
+        var resolved = elab.state.force(expected);
 
         Map<String, MonoType> expectedFields;
         if (resolved instanceof MonoType.RecordType(var row) && row instanceof RowType rowType) {
@@ -156,7 +156,7 @@ final class Records {
 
         LinkedHashMap<String, MonoType> resultFields;
         Optional<MonoType> resultRowVar;
-        var baseType = elab.state.zonkOrKeep(baseExpr.type());
+        var baseType = elab.state.force(baseExpr.type());
         if (baseType instanceof MonoType.RecordType(var row) && row instanceof RowType rowType) {
             var resolved = elab.state.resolveRow(rowType);
             resultFields = new LinkedHashMap<>(resolved.fields());

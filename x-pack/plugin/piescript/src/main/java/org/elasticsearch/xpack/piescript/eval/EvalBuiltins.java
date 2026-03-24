@@ -143,16 +143,8 @@ final class EvalBuiltins {
             }
             case "ESQL.where" -> esqlClosureCommand(eval, "WHERE", args, listener);
             case "ESQL.eval" -> esqlEvalCommand(eval, args, listener);
-            case "ESQL.keep" -> {
-                var fields = requireList(args.get(0), name).elements().stream().map(v -> ((Value.KeywordVal) v).value()).toList();
-                var pipeline = requireSymbol(args.get(1), name);
-                listener.onResponse(new Value.Symbol(pipeline.esql() + " | KEEP " + String.join(", ", fields)));
-            }
-            case "ESQL.drop" -> {
-                var fields = requireList(args.get(0), name).elements().stream().map(v -> ((Value.KeywordVal) v).value()).toList();
-                var pipeline = requireSymbol(args.get(1), name);
-                listener.onResponse(new Value.Symbol(pipeline.esql() + " | DROP " + String.join(", ", fields)));
-            }
+            case "ESQL.keep" -> esqlFieldSelectionCommand(eval, "KEEP", args, listener);
+            case "ESQL.drop" -> esqlFieldSelectionCommand(eval, "DROP", args, listener);
             case "ESQL.limit" -> {
                 int count = (int) requireDouble(args.get(0), name);
                 var pipeline = requireSymbol(args.get(1), name);
@@ -176,6 +168,28 @@ final class EvalBuiltins {
                 var pipeline = requireSymbol(args.get(0), name);
                 listener.onResponse(new Value.KeywordVal(pipeline.esql()));
             }
+            // ──── ESQL stats/aggregate builtins (Phase 4 — F-omega plan) ────
+            // Aggregate builtins produce Symbol fragments for NbE compilation.
+            // They are only meaningful inside ESQL.stats/ESQL.statsBy closures.
+            case "ESQL.count" -> {
+                var field = switch (args.get(0)) {
+                    case Value.KeywordVal k -> k.value();
+                    default -> throw new AssertionError("type checker bug: expected Keyword for ESQL.count, got " + args.get(0));
+                };
+                listener.onResponse(new Value.Symbol("COUNT(" + field + ")"));
+            }
+            case "ESQL.countOf" -> esqlAggClosureCommand(eval, "COUNT", args, listener);
+            case "ESQL.avg" -> esqlAggClosureCommand(eval, "AVG", args, listener);
+            case "ESQL.sum" -> esqlAggClosureCommand(eval, "SUM", args, listener);
+            case "ESQL.max" -> esqlAggClosureCommand(eval, "MAX", args, listener);
+            case "ESQL.min" -> esqlAggClosureCommand(eval, "MIN", args, listener);
+            case "ESQL.bucket" -> {
+                var a = compileValueToEsql(args.get(0));
+                var b = compileValueToEsql(args.get(1));
+                listener.onResponse(new Value.Symbol("BUCKET(" + a + ", " + b + ")"));
+            }
+            case "ESQL.stats" -> esqlStatsCommand(eval, args, listener);
+            case "ESQL.statsBy" -> esqlStatsByCommand(eval, args, listener);
             default -> listener.onFailure(new EvaluationException("unknown built-in: " + name));
         }
     }
@@ -275,6 +289,33 @@ final class EvalBuiltins {
     }
 
     /**
+     * Partially evaluate a field-selection closure with {@code Symbol("")} as the row argument,
+     * expecting a record result. Extracts field names from the record keys and appends
+     * {@code | COMMAND field1, field2, ...}. Used by {@code ESQL.keep} and {@code ESQL.drop}.
+     */
+    private static void esqlFieldSelectionCommand(
+        Evaluator eval,
+        String command,
+        java.util.List<Value> args,
+        ActionListener<Value> listener
+    ) {
+        var closure = args.get(0);
+        var pipeline = requireSymbol(args.get(1), "ESQL." + command.toLowerCase());
+        eval.applyFunction(closure, new Value.Symbol(""), listener.delegateFailureAndWrap((l, result) -> {
+            if (result instanceof Value.RecordVal rec) {
+                var fields = new java.util.ArrayList<>(rec.fields().keySet());
+                l.onResponse(new Value.Symbol(pipeline.esql() + " | " + command + " " + String.join(", ", fields)));
+            } else {
+                l.onFailure(
+                    new EvaluationException(
+                        "ESQL." + command.toLowerCase() + ": closure must produce a record, got " + result.getClass().getSimpleName()
+                    )
+                );
+            }
+        }));
+    }
+
+    /**
      * Partially evaluate a closure with {@code Symbol("")} as the row argument,
      * then append the resulting ESQL fragment as {@code | COMMAND <fragment>}.
      * Used by {@code ESQL.where}.
@@ -320,6 +361,84 @@ final class EvalBuiltins {
             var fragment = requireSymbol(result, "ESQL.sort closure result");
             l.onResponse(new Value.Symbol(pipeline.esql() + " | SORT " + fragment.esql() + (descending ? " DESC" : " ASC")));
         }));
+    }
+
+    /**
+     * Partially evaluate an aggregate closure with {@code Symbol("")} as the row argument,
+     * producing {@code Symbol("AGG_FN(field)")}. Used by {@code ESQL.countOf}, {@code ESQL.avg},
+     * {@code ESQL.sum}, {@code ESQL.max}, {@code ESQL.min}.
+     */
+    private static void esqlAggClosureCommand(Evaluator eval, String aggFn, java.util.List<Value> args, ActionListener<Value> listener) {
+        var closure = args.get(0);
+        eval.applyFunction(closure, new Value.Symbol(""), listener.delegateFailureAndWrap((l, result) -> {
+            var field = compileValueToEsql(result);
+            l.onResponse(new Value.Symbol(aggFn + "(" + field + ")"));
+        }));
+    }
+
+    /**
+     * Partially evaluate the agg closure with {@code Symbol("")}, walk the result record,
+     * compile each field as {@code name = fragment}, emit {@code | STATS name1 = AGG1, name2 = AGG2}.
+     * Used by {@code ESQL.stats}.
+     */
+    private static void esqlStatsCommand(Evaluator eval, java.util.List<Value> args, ActionListener<Value> listener) {
+        var aggClosure = args.get(0);
+        var pipeline = requireSymbol(args.get(1), "ESQL.stats");
+        eval.applyFunction(aggClosure, new Value.Symbol(""), listener.delegateFailureAndWrap((l, result) -> {
+            if (result instanceof Value.RecordVal rec) {
+                var parts = compileRecordFields(rec);
+                l.onResponse(new Value.Symbol(pipeline.esql() + " | STATS " + String.join(", ", parts)));
+            } else {
+                l.onFailure(
+                    new EvaluationException("ESQL.stats: agg closure must produce a record, got " + result.getClass().getSimpleName())
+                );
+            }
+        }));
+    }
+
+    /**
+     * Partially evaluate both the agg and group closures with {@code Symbol("")}, compile each
+     * record's fields, emit {@code | STATS agg1 = AGG1, ... BY key1 = expr1, ...}.
+     * Used by {@code ESQL.statsBy}.
+     */
+    private static void esqlStatsByCommand(Evaluator eval, java.util.List<Value> args, ActionListener<Value> listener) {
+        var aggClosure = args.get(0);
+        var groupClosure = args.get(1);
+        var pipeline = requireSymbol(args.get(2), "ESQL.statsBy");
+        eval.applyFunction(aggClosure, new Value.Symbol(""), listener.delegateFailureAndWrap((l1, aggResult) -> {
+            if (!(aggResult instanceof Value.RecordVal aggRec)) {
+                l1.onFailure(
+                    new EvaluationException("ESQL.statsBy: agg closure must produce a record, got " + aggResult.getClass().getSimpleName())
+                );
+                return;
+            }
+            eval.applyFunction(groupClosure, new Value.Symbol(""), l1.delegateFailureAndWrap((l2, groupResult) -> {
+                if (!(groupResult instanceof Value.RecordVal groupRec)) {
+                    l2.onFailure(
+                        new EvaluationException(
+                            "ESQL.statsBy: group closure must produce a record, got " + groupResult.getClass().getSimpleName()
+                        )
+                    );
+                    return;
+                }
+                var aggParts = compileRecordFields(aggRec);
+                var groupParts = compileRecordFields(groupRec);
+                l2.onResponse(
+                    new Value.Symbol(pipeline.esql() + " | STATS " + String.join(", ", aggParts) + " BY " + String.join(", ", groupParts))
+                );
+            }));
+        }));
+    }
+
+    /**
+     * Compile a record's fields into {@code name = fragment} parts for STATS/EVAL clauses.
+     */
+    private static java.util.List<String> compileRecordFields(Value.RecordVal rec) {
+        var parts = new java.util.ArrayList<String>();
+        for (var entry : rec.fields().entrySet()) {
+            parts.add(entry.getKey() + " = " + compileValueToEsql(entry.getValue()));
+        }
+        return parts;
     }
 
     /**

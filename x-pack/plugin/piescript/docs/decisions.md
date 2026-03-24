@@ -2372,3 +2372,49 @@ monad description: `Symbol` accumulates a description of the ESQL computation, i
   the type checker). Future: row-level constraints or closure-based variants.
 
 **Ref**: [T-LINQ design discussion](this session), [Block F plan](block_f_linq_query_e7171607)
+
+## D-053: F-omega-lite Type System — Kinds as Types, `force` Normalizer, Row Operators, ESQL Stats
+
+- **Context**: ESQL grouping (`STATS ... BY`) requires the output row type to be the merge of
+  group keys and aggregate results. This needs row-level type computation (`s & t`), which System F
+  + rows cannot express. Additionally, the `Kind` enum is a separate stratum with ad-hoc assertions
+  instead of principled constraints.
+
+- **Decision**: Extend the type system toward F-omega-lite in four incremental steps:
+
+  1. **Kinds as types** (GHC `TypeInType`-style): Delete the `Kind` enum. Kinds become `MonoType`
+     values (`TCon("Type")`, `TCon("Row")`). Arrow kinds use `MonoType.Arrow`. The same unifier
+     solves kind constraints. `Prelude.KINDS` maps each built-in type constructor to its kind.
+     `ElaborationContext` carries a `kindModule` parallel to `module`. `TypeAnnotations` emits
+     kind constraints at type application sites.
+
+  2. **`force` NbE normalizer**: `ElaborationState.force(MonoType)` subsumes `zonkOrKeep` — chases
+     meta chains AND reduces built-in type operators. Types after `force` are in head-normal form:
+     normal (TCon, Arrow, RowType), neutral/stuck (AppType with unsolved head), or reducible
+     (AppType with known builtin head and concrete args).
+
+  3. **Row operators**: `&` (merge, right-biased on overlap), `Pick` (keep fields in intersection),
+     `Omit` (remove fields in intersection). All have kind `Row → Row → Row`. Reduce in `force`
+     when both operands are concrete `RowType`s. `ESQL.keep` and `ESQL.drop` updated from
+     `List Keyword` to closure-based API with `Pick`/`Omit` output types.
+
+  4. **`ESQL.stats`/`ESQL.statsBy`**: Two combinators to avoid optionality of the BY clause.
+     `ESQL.statsBy` output type is `ESQL (s & t)` — the merge of aggregate results and group keys.
+     Aggregate builtins (`ESQL.count`, `ESQL.avg`, `ESQL.sum`, `ESQL.max`, `ESQL.min`) type with
+     plain output types — no `Agg` wrapper. The aggregate/scalar distinction is value-level only
+     (NbE compilation produces `Symbol` fragments). `ESQL.bucket` is a scalar grouping function.
+
+- **Consequences**:
+  - `Kind.java` deleted. All 17+ files updated from `Kind` enum to `MonoType` kinds.
+  - Kind errors are caught by unification rather than runtime assertions.
+  - Type-level computation is extensible — new reducible builtins can be added to `force`.
+  - Aggregate builtins produce `Symbol` values where the type says `Double` — a type-level lie
+    that propagates silently. Future: wrap in an ESQL expression type for static safety.
+
+- **Alternatives considered**:
+  - `Agg a` / `StripAgg` wrapper type: rejected — too much type-system complexity for the benefit.
+  - PureScript-style `Union` constraint: rejected — relational/algebraic style doesn't fit;
+    prefer TS-style reducible/evaluation approach with `&`/`Pick`/`Omit`.
+  - Separate kind-checking pass: rejected — kinds-as-types reuses the existing unifier.
+
+**Ref**: [F-omega plan](f-omega_type_system_09acfb27), [Implementation session](846bd5a8-3b35-4321-848a-c9b17a22f109)

@@ -576,13 +576,35 @@ first-class `MonoType`) also completed.
 | Integration tests (5 end-to-end REST API tests) | :white_check_mark: |
 
 **Known gaps (documented tech debt)**:
-- `ESQL.keep`/`drop`/`rename` take field names as runtime strings (`List Keyword`), not typed
-  closures. ESQL validates at execution time. Typed path is `ESQL.eval`.
-- `ESQL.stats` and aggregate builtins deferred (D-052 §7).
+- `ESQL.rename` takes field names as runtime strings (`List { from: Keyword, to: Keyword }`), not
+  typed closures. ESQL validates at execution time.
+- Aggregate builtins type with plain output types — `Symbol` values where `Double` is promised.
+  Future: ESQL expression wrapper type for static safety (see D-053 future work).
 - Internal `LogicalPlan` compilation deferred (D-052 §8).
 
-**Ref**: [D-052](decisions.md#d-052),
+**Ref**: [D-052](decisions.md#d-052), [D-053](decisions.md#d-053),
 [Block F design + D-050 + implementation](17d31f8b-e784-44ac-8271-7e1709e8a859)
+
+### D-053: F-omega-lite type system (cross-cutting) :white_check_mark:
+
+| Task | Status |
+|------|--------|
+| Phase 1: Kinds as types — `Kind` enum deleted, `MonoType` kinds, `Prelude.KINDS`, kind constraints | :white_check_mark: |
+| Phase 2: `force` NbE normalizer, `&` row merge | :white_check_mark: |
+| Phase 3: `Pick` and `Omit` row operators, closure-based `ESQL.keep`/`ESQL.drop` | :white_check_mark: |
+| Phase 4: `ESQL.stats`/`ESQL.statsBy`, aggregate builtins, `ESQL.bucket` | :white_check_mark: |
+| Phase 5: Tests, documentation, debug scripts | :white_check_mark: |
+
+**Deferred to future work (D-053)**:
+- ESQL expression wrapper type — aggregate builtins produce `Symbol` where type says `Double`
+- Kind constraint improvements — ascription-site, record field, arrow param/result kind checks
+- Row constraints (Lacks, typeclasses) for precise `Pick`/`Omit` encoding
+- `ESQL.stats` comprehension syntax, `ESQL.join` (LOOKUP JOIN)
+- Type-level lambdas, type families (full F-omega)
+
+**Ref**: [D-053](decisions.md#d-053),
+[F-omega design + Phases 1–2](846bd5a8-3b35-4321-848a-c9b17a22f109),
+F-omega Phases 3–5 (Claude Code session 2026-03-24)
 
 ---
 

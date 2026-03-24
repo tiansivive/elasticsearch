@@ -117,7 +117,7 @@ public final class CoreExprSerialization {
             case CoreTypeAbs ta -> {
                 out.writeByte(TAG_TYPE_ABS);
                 out.writeVInt(ta.rigidId());
-                TypeSerialization.writeKind(out, ta.kind());
+                TypeSerialization.writeMonoType(out, ta.kind());
                 writeCoreExpr(out, ta.body());
                 TypeSerialization.writeMonoType(out, ta.type());
             }
@@ -219,7 +219,7 @@ public final class CoreExprSerialization {
             }
             case TAG_TYPE_ABS -> {
                 var rigidId = in.readVInt();
-                var kind = TypeSerialization.readKind(in);
+                var kind = TypeSerialization.readMonoType(in);
                 var body = readCoreExpr(in);
                 var type = TypeSerialization.readMonoType(in);
                 yield new CoreTypeAbs(WIRE_SOURCE, rigidId, kind, body, type);

@@ -8,9 +8,9 @@
 package org.elasticsearch.xpack.piescript.elab;
 
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
+import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.util.Map;
 
@@ -352,14 +352,14 @@ public class UnifierTests extends ESTestCase {
 
     public void testRigidSameId() {
         var state = new ElaborationState();
-        var r = new MonoType.Rigid(0, Kind.TYPE);
+        var r = new MonoType.Rigid(0, Types.TYPE);
         assertTrue(Unifier.unify(r, r, state).isEmpty());
     }
 
     public void testRigidDifferentId() {
         var state = new ElaborationState();
-        var r1 = new MonoType.Rigid(0, Kind.TYPE);
-        var r2 = new MonoType.Rigid(1, Kind.TYPE);
+        var r1 = new MonoType.Rigid(0, Types.TYPE);
+        var r2 = new MonoType.Rigid(1, Types.TYPE);
         var error = Unifier.unify(r1, r2, state);
         assertTrue(error.isPresent());
         assertThat(error.get(), instanceOf(TypeError.Mismatch.class));
@@ -367,7 +367,7 @@ public class UnifierTests extends ESTestCase {
 
     public void testRigidVsTCon() {
         var state = new ElaborationState();
-        var r = new MonoType.Rigid(0, Kind.TYPE);
+        var r = new MonoType.Rigid(0, Types.TYPE);
         var error = Unifier.unify(r, INTEGER, state);
         assertTrue(error.isPresent());
         assertThat(error.get(), instanceOf(TypeError.Mismatch.class));
@@ -376,7 +376,7 @@ public class UnifierTests extends ESTestCase {
     public void testMetaSolvesToRigid() {
         var state = new ElaborationState();
         var alpha = state.freshType(0);
-        var r = new MonoType.Rigid(99, Kind.TYPE);
+        var r = new MonoType.Rigid(99, Types.TYPE);
         assertTrue(Unifier.unify(alpha, r, state).isEmpty());
         assertThat(state.zonkOrKeep(alpha), is(r));
     }

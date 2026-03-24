@@ -407,3 +407,28 @@ to data nodes via the transport layer.
 
 See [references.md](references.md) — Sangiorgi's agent-passing paper for the theory,
 Nomadic Pict for a practical implementation of code mobility in a typed language.
+
+## Type-Level Computation (F-omega-lite, D-053)
+
+The type system extends Hindley-Milner + rows toward F-omega-lite with three additions:
+
+1. **Kinds as types**: No separate kind stratum. Kinds are `MonoType` values (`TCon("Type")`,
+   `TCon("Row")`), arrow kinds use `MonoType.Arrow`. The same unifier solves kind and type
+   constraints. `Prelude.KINDS` maps each built-in type constructor to its kind.
+
+2. **`force` NbE normalizer**: `ElaborationState.force(MonoType)` chases meta chains AND reduces
+   built-in type operators. Types after `force` are in head-normal form:
+   - **Normal**: `TCon`, `Arrow`, `RecordType`, `RowType`
+   - **Neutral (stuck)**: `AppType` where the head is an atom or unsolved meta
+   - **Reducible**: `AppType` where the head is a known builtin and all arguments are concrete
+
+3. **Built-in row operators**: `&` (merge, right-biased), `Pick` (intersection), `Omit`
+   (subtraction). All have kind `Row → Row → Row`. Reduce in `force` when both operands are
+   concrete `RowType`s. Used by `ESQL.statsBy` (output type `ESQL (s & t)`), `ESQL.keep`
+   (`Pick r s`), and `ESQL.drop` (`Omit r s`).
+
+This is the NbE pattern at the type level: evaluate types into a semantic domain (normal forms +
+stuck terms), where reduction of built-in operators happens inline. The analogy to the value-level
+NbE (Symbol-based ESQL compilation) is exact — both use the same evaluate-then-read-back structure.
+
+New reducible builtins can be added to `force` without changing the unifier or elaborator.

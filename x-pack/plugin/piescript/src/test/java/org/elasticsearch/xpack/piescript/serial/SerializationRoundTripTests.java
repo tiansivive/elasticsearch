@@ -31,11 +31,11 @@ import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.core.CoreWhen;
 import org.elasticsearch.xpack.piescript.eval.Value;
 import org.elasticsearch.xpack.piescript.eval.ValueSerialization;
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.Op;
 import org.elasticsearch.xpack.piescript.types.TypeSerialization;
+import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.io.IOException;
 import java.util.List;
@@ -100,7 +100,7 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testMonoTypeRecordOpen() throws IOException {
-        var row = org.elasticsearch.xpack.piescript.types.RowType.open(Map.of("x", INTEGER), new MonoType.Meta(42, 1, Kind.ROW));
+        var row = org.elasticsearch.xpack.piescript.types.RowType.open(Map.of("x", INTEGER), new MonoType.Meta(42, 1, Types.ROW));
         assertMonoTypeRoundTrip(new MonoType.RecordType(row));
     }
 
@@ -109,7 +109,7 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testMonoTypeMeta() throws IOException {
-        assertMonoTypeRoundTrip(new MonoType.Meta(7, 2, Kind.TYPE));
+        assertMonoTypeRoundTrip(new MonoType.Meta(7, 2, Types.TYPE));
     }
 
     public void testMonoTypeRigid() throws IOException {
@@ -211,7 +211,7 @@ public class SerializationRoundTripTests extends ESTestCase {
 
     public void testCoreTypeAbs() throws IOException {
         var body = var(0, "x", rigid(1));
-        assertCoreExprRoundTrip(typeAbs(1, Kind.TYPE, body));
+        assertCoreExprRoundTrip(typeAbs(1, Types.TYPE, body));
     }
 
     public void testCoreTypeApp() throws IOException {
