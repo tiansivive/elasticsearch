@@ -53,7 +53,7 @@ final class Blocks {
                 var letCtx = ctx.enterBindingLevel();
 
                 TypeScheme expectedScheme = let.type() != null
-                    ? TypeAnnotations.toTypeScheme(elab, let.type())
+                    ? TypeAnnotations.toTypeScheme(elab, ctx, let.type())
                     : TypeScheme.mono(elab.state.freshType(letCtx.bindingLevel()));
 
                 CoreExpr rhs = elab.check(let.expr(), expectedScheme, letCtx, s);

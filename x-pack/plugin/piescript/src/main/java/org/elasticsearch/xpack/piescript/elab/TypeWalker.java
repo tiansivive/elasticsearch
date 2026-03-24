@@ -7,7 +7,6 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
 
@@ -29,7 +28,7 @@ public final class TypeWalker {
     public static MonoType resolveDeep(MonoType type, ElaborationState state) {
         return switch (type) {
             case MonoType.Meta meta -> {
-                var resolved = state.zonkOrKeep(meta);
+                var resolved = state.force(meta);
                 yield resolved instanceof MonoType.Meta ? resolved : resolveDeep(resolved, state);
             }
             case MonoType.TCon t -> t;
@@ -60,8 +59,8 @@ public final class TypeWalker {
      * Collect unsolved metas at or above the given binding level. Follows
      * the zonker so that solved metas are traversed into their solutions.
      */
-    static void collectMetas(MonoType type, int bindingLevel, ElaborationState state, Map<Integer, Kind> acc) {
-        switch (state.zonkOrKeep(type)) {
+    static void collectMetas(MonoType type, int bindingLevel, ElaborationState state, Map<Integer, MonoType> acc) {
+        switch (state.force(type)) {
             case MonoType.Meta(var id, var lvl, var kind) -> {
                 if (lvl >= bindingLevel && state.isSolved(id) == false) {
                     acc.put(id, kind);
@@ -84,7 +83,7 @@ public final class TypeWalker {
         }
     }
 
-    private static void collectMetasInRow(MonoType row, int bindingLevel, ElaborationState state, Map<Integer, Kind> acc) {
+    private static void collectMetasInRow(MonoType row, int bindingLevel, ElaborationState state, Map<Integer, MonoType> acc) {
         if (row instanceof RowType rowType) {
             var flat = state.resolveRow(rowType);
             for (var fieldType : flat.fields().values()) {

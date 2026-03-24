@@ -11,12 +11,13 @@ import java.util.Map;
 
 /**
  * Polymorphic type scheme: {@code ∀{α₁..αₙ}.body}. The {@code quantified} map holds
- * Rigid IDs to their kinds. At each use site, the elaborator instantiates the scheme by
- * allocating fresh metas (of the appropriate kind) for the quantified variables.
+ * Rigid IDs to their kinds (represented as {@link MonoType} values, e.g.
+ * {@code TCon("Type")}, {@code TCon("Row")}). At each use site, the elaborator
+ * instantiates the scheme by allocating fresh metas of the appropriate kind.
  *
  * <p>Monomorphic types are represented as schemes with an empty quantified map.
  */
-public record TypeScheme(Map<Integer, Kind> quantified, MonoType body) {
+public record TypeScheme(Map<Integer, MonoType> quantified, MonoType body) {
 
     /** Wrap a monomorphic type as a trivial scheme with no quantified variables. */
     public static TypeScheme mono(MonoType type) {

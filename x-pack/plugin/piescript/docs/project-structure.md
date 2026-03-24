@@ -43,11 +43,10 @@ x-pack/plugin/piescript/
     │       │   ├── PiescriptAntlrParser.java    # (generated from PiescriptAntlrParser.g4)
     │       │   └── ...Visitor/Listener classes  # (generated ANTLR infrastructure)
     │       ├── types/                     # Phase 1b + Block C: type system data structures
-    │       │   ├── Kind.java                    # Meta kind enum (TYPE, ROW)
-    │       │   ├── MonoType.java                # Monomorphic types (sealed interface)
+    │       │   ├── MonoType.java                # Monomorphic types (sealed interface) — Kind.java deleted (D-053), kinds are now MonoType values
     │       │   ├── RowType.java                 # Row type (fields + optional row variable)
     │       │   ├── TypeScheme.java              # Polymorphic type scheme (∀-quantified)
-    │       │   ├── TypeSerialization.java        # Serialization for MonoType, RowType, Kind, LitVal, Op (Block C)
+    │       │   ├── TypeSerialization.java        # Serialization for MonoType, RowType, LitVal, Op (Block C)
     │       │   ├── Types.java                   # Static factory methods + constants for MonoType construction (Block C.4)
     │       │   ├── LitVal.java                  # Literal values for Core IR
     │       │   └── Op.java                      # Primitive operator enum
@@ -155,7 +154,7 @@ x-pack/plugin/piescript/
 
 | File | Purpose |
 |------|---------|
-| `types/Kind.java` | Enum distinguishing type-level (`TYPE`) from row-level (`ROW`) metavariables. |
+| `types/Kind.java` | **Deleted (D-053)**. Kinds are now `MonoType` values: `Types.TYPE` = `TCon("Type")`, `Types.ROW` = `TCon("Row")`. Arrow kinds use `MonoType.Arrow`. |
 | `types/MonoType.java` | Sealed interface for monomorphic types: `TCon` (type constructor), `Arrow` (function), `RecordType`, `AppType` (type application), `Meta` (unsolved metavariable). **Phase 1d adds `Rigid(int id, Kind kind)` for bound/skolemized type variables (D-031).** |
 | `types/RowType.java` | Record representing row structure: labeled fields (`Map<String, MonoType>`) plus optional row variable tail for row polymorphism. |
 | `types/TypeScheme.java` | Polymorphic type scheme `∀{α₁..αₙ}.body`. Quantified set contains meta IDs. Monomorphic types use empty quantified set. **Phase 1d changes `quantified` from `Set<Integer>` to `Map<Integer, Kind>` for kind-aware instantiation; Rigids replace Metas in the quantified set.** |

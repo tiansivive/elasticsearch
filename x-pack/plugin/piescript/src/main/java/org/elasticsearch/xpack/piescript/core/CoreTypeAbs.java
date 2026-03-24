@@ -10,7 +10,6 @@ package org.elasticsearch.xpack.piescript.core;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.xpack.esql.core.tree.NodeInfo;
 import org.elasticsearch.xpack.esql.core.tree.Source;
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 
 import java.util.List;
@@ -28,11 +27,11 @@ import java.util.Objects;
 public final class CoreTypeAbs extends CoreExpr {
 
     private final int rigidId;
-    private final Kind kind;
+    private final MonoType kind;
     @Nullable
     private final MonoType type;
 
-    public CoreTypeAbs(Source source, int rigidId, Kind kind, CoreExpr body, @Nullable MonoType type) {
+    public CoreTypeAbs(Source source, int rigidId, MonoType kind, CoreExpr body, @Nullable MonoType type) {
         super(source, List.of(body));
         this.rigidId = rigidId;
         this.kind = kind;
@@ -43,7 +42,7 @@ public final class CoreTypeAbs extends CoreExpr {
         return rigidId;
     }
 
-    public Kind kind() {
+    public MonoType kind() {
         return kind;
     }
 

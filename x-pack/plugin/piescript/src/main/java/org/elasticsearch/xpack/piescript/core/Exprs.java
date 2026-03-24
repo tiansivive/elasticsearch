@@ -9,7 +9,6 @@ package org.elasticsearch.xpack.piescript.core;
 
 import org.apache.lucene.util.BytesRef;
 import org.elasticsearch.xpack.esql.core.tree.Source;
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.Op;
@@ -219,7 +218,7 @@ public final class Exprs {
 
     // ──── System F ────
 
-    public static CoreTypeAbs typeAbs(int rigidId, Kind kind, CoreExpr body) {
+    public static CoreTypeAbs typeAbs(int rigidId, MonoType kind, CoreExpr body) {
         return new CoreTypeAbs(SRC, rigidId, kind, body, body.type());
     }
 

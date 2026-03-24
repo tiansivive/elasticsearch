@@ -8,10 +8,10 @@
 package org.elasticsearch.xpack.piescript.elab;
 
 import org.elasticsearch.test.ESTestCase;
-import org.elasticsearch.xpack.piescript.types.Kind;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
 import org.elasticsearch.xpack.piescript.types.TypeScheme;
+import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.util.Map;
 
@@ -35,8 +35,8 @@ public class ElaborationStateTests extends ESTestCase {
 
         assertThat(m0.id(), is(0));
         assertThat(m1.id(), is(1));
-        assertThat(m0.kind(), is(Kind.TYPE));
-        assertThat(m1.kind(), is(Kind.TYPE));
+        assertThat(m0.kind(), is(Types.TYPE));
+        assertThat(m1.kind(), is(Types.TYPE));
     }
 
     public void testFreshRowAllocatesRowMeta() {
@@ -44,7 +44,7 @@ public class ElaborationStateTests extends ESTestCase {
         var m = state.freshRow(0);
 
         assertThat(m.id(), is(0));
-        assertThat(m.kind(), is(Kind.ROW));
+        assertThat(m.kind(), is(Types.ROW));
     }
 
     public void testTypeAndRowShareSupply() {
@@ -160,6 +160,152 @@ public class ElaborationStateTests extends ESTestCase {
         assertTrue(state.zonker().containsKey(alpha.id()));
     }
 
+    // ──── force: row merge (&) ────
+
+    public void testMergeConcreteRows() {
+        var state = new ElaborationState();
+        var left = RowType.closed(Map.of("a", new MonoType.TCon("Integer")));
+        var right = RowType.closed(Map.of("b", new MonoType.TCon("Keyword")));
+        var mergeType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("&"), left), right);
+
+        var result = state.force(mergeType);
+        assertTrue(result instanceof RowType);
+        var row = (RowType) result;
+        assertThat(row.fields().size(), is(2));
+        assertTrue(row.fields().containsKey("a"));
+        assertTrue(row.fields().containsKey("b"));
+    }
+
+    public void testMergeRightBiasedOverlap() {
+        var state = new ElaborationState();
+        var left = RowType.closed(Map.of("x", new MonoType.TCon("Integer")));
+        var right = RowType.closed(Map.of("x", new MonoType.TCon("Keyword")));
+        var mergeType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("&"), left), right);
+
+        var result = state.force(mergeType);
+        assertTrue(result instanceof RowType);
+        var row = (RowType) result;
+        assertThat(row.fields().size(), is(1));
+        assertThat(row.fields().get("x"), is(new MonoType.TCon("Keyword")));
+    }
+
+    public void testMergeStuckOnMeta() {
+        var state = new ElaborationState();
+        var meta = state.freshRow(0);
+        var right = RowType.closed(Map.of("a", new MonoType.TCon("Integer")));
+        var mergeType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("&"), meta), right);
+
+        var result = state.force(mergeType);
+        assertTrue(result instanceof MonoType.AppType);
+    }
+
+    public void testNestedMerge() {
+        var state = new ElaborationState();
+        var a = RowType.closed(Map.of("x", new MonoType.TCon("Integer")));
+        var b = RowType.closed(Map.of("y", new MonoType.TCon("Keyword")));
+        var c = RowType.closed(Map.of("z", new MonoType.TCon("Boolean")));
+        // (a & b) & c
+        var ab = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("&"), a), b);
+        var abc = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("&"), ab), c);
+
+        var result = state.force(abc);
+        assertTrue(result instanceof RowType);
+        var row = (RowType) result;
+        assertThat(row.fields().size(), is(3));
+        assertTrue(row.fields().containsKey("x"));
+        assertTrue(row.fields().containsKey("y"));
+        assertTrue(row.fields().containsKey("z"));
+    }
+
+    public void testForceResolvesThroughMeta() {
+        var state = new ElaborationState();
+        var meta = state.freshRow(0);
+        var concreteRow = RowType.closed(Map.of("a", new MonoType.TCon("Integer")));
+        state.solve(meta.id(), concreteRow);
+
+        var result = state.force(meta);
+        assertTrue(result instanceof RowType);
+        assertThat(((RowType) result).fields().size(), is(1));
+    }
+
+    // ──── force: Pick and Omit ────
+
+    public void testPickConcreteRows() {
+        var state = new ElaborationState();
+        var left = RowType.closed(
+            Map.of("a", new MonoType.TCon("Integer"), "b", new MonoType.TCon("Keyword"), "c", new MonoType.TCon("Boolean"))
+        );
+        var right = RowType.closed(Map.of("a", new MonoType.TCon("Integer"), "c", new MonoType.TCon("Boolean")));
+        var pickType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("Pick"), left), right);
+
+        var result = state.force(pickType);
+        assertTrue(result instanceof RowType);
+        var row = (RowType) result;
+        assertThat(row.fields().size(), is(2));
+        assertTrue(row.fields().containsKey("a"));
+        assertTrue(row.fields().containsKey("c"));
+        assertFalse(row.fields().containsKey("b"));
+    }
+
+    public void testOmitConcreteRows() {
+        var state = new ElaborationState();
+        var left = RowType.closed(
+            Map.of("a", new MonoType.TCon("Integer"), "b", new MonoType.TCon("Keyword"), "c", new MonoType.TCon("Boolean"))
+        );
+        var right = RowType.closed(Map.of("b", new MonoType.TCon("Keyword")));
+        var omitType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("Omit"), left), right);
+
+        var result = state.force(omitType);
+        assertTrue(result instanceof RowType);
+        var row = (RowType) result;
+        assertThat(row.fields().size(), is(2));
+        assertTrue(row.fields().containsKey("a"));
+        assertTrue(row.fields().containsKey("c"));
+        assertFalse(row.fields().containsKey("b"));
+    }
+
+    public void testPickStuckOnMeta() {
+        var state = new ElaborationState();
+        var meta = state.freshRow(0);
+        var right = RowType.closed(Map.of("a", new MonoType.TCon("Integer")));
+        var pickType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("Pick"), meta), right);
+
+        var result = state.force(pickType);
+        assertTrue(result instanceof MonoType.AppType);
+    }
+
+    public void testOmitStuckOnMeta() {
+        var state = new ElaborationState();
+        var left = RowType.closed(Map.of("a", new MonoType.TCon("Integer")));
+        var meta = state.freshRow(0);
+        var omitType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("Omit"), left), meta);
+
+        var result = state.force(omitType);
+        assertTrue(result instanceof MonoType.AppType);
+    }
+
+    public void testPickEmptySelector() {
+        var state = new ElaborationState();
+        var left = RowType.closed(Map.of("a", new MonoType.TCon("Integer"), "b", new MonoType.TCon("Keyword")));
+        var right = RowType.closed(Map.of());
+        var pickType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("Pick"), left), right);
+
+        var result = state.force(pickType);
+        assertTrue(result instanceof RowType);
+        assertThat(((RowType) result).fields().size(), is(0));
+    }
+
+    public void testOmitEmptySelector() {
+        var state = new ElaborationState();
+        var left = RowType.closed(Map.of("a", new MonoType.TCon("Integer"), "b", new MonoType.TCon("Keyword")));
+        var right = RowType.closed(Map.of());
+        var omitType = new MonoType.AppType(new MonoType.AppType(new MonoType.TCon("Omit"), left), right);
+
+        var result = state.force(omitType);
+        assertTrue(result instanceof RowType);
+        assertThat(((RowType) result).fields().size(), is(2));
+    }
+
     // ──── Integrated: context + state working together ────
 
     /**
@@ -187,9 +333,9 @@ public class ElaborationStateTests extends ESTestCase {
 
         var idType = new MonoType.Arrow(alpha, alpha);
 
-        var rigid = state.freshRigid(Kind.TYPE);
+        var rigid = state.freshRigid(Types.TYPE);
         state.solve(alpha.id(), rigid);
-        var scheme = new TypeScheme(Map.of(rigid.id(), Kind.TYPE), idType);
+        var scheme = new TypeScheme(Map.of(rigid.id(), Types.TYPE), idType);
 
         var bodyCtx = ctx.bind("id", scheme);
         var idResult = bodyCtx.lookup("id");

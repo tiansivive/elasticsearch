@@ -15,7 +15,7 @@ import java.util.LinkedHashMap;
 
 /**
  * Wire serialization for piescript type-system structures: {@link MonoType},
- * {@link RowType}, {@link Kind}, {@link LitVal}, and {@link Op}.
+ * {@link RowType}, {@link LitVal}, and {@link Op}.
  *
  * <p>All methods use a leading byte tag to distinguish sealed-hierarchy variants.
  * Tag assignments are stable across versions (append-only).
@@ -62,12 +62,12 @@ public final class TypeSerialization {
                 out.writeByte(MONO_META);
                 out.writeVInt(m.id());
                 out.writeVInt(m.bindingLevel());
-                writeKind(out, m.kind());
+                writeMonoType(out, m.kind());
             }
             case MonoType.Rigid r -> {
                 out.writeByte(MONO_RIGID);
                 out.writeVInt(r.id());
-                writeKind(out, r.kind());
+                writeMonoType(out, r.kind());
             }
         }
     }
@@ -80,8 +80,8 @@ public final class TypeSerialization {
             case MONO_RECORD -> new MonoType.RecordType(readMonoType(in));
             case MONO_ROW -> readRowType(in);
             case MONO_APP -> new MonoType.AppType(readMonoType(in), readMonoType(in));
-            case MONO_META -> new MonoType.Meta(in.readVInt(), in.readVInt(), readKind(in));
-            case MONO_RIGID -> new MonoType.Rigid(in.readVInt(), readKind(in));
+            case MONO_META -> new MonoType.Meta(in.readVInt(), in.readVInt(), readMonoType(in));
+            case MONO_RIGID -> new MonoType.Rigid(in.readVInt(), readMonoType(in));
             default -> throw new IOException("unknown MonoType tag: " + tag);
         };
     }
@@ -111,17 +111,6 @@ public final class TypeSerialization {
             return RowType.open(fields, readMonoType(in));
         }
         return RowType.closed(fields);
-    }
-
-    // ──── Kind ────
-
-    public static void writeKind(StreamOutput out, Kind kind) throws IOException {
-        out.writeByte((byte) kind.ordinal());
-    }
-
-    public static Kind readKind(StreamInput in) throws IOException {
-        byte ordinal = in.readByte();
-        return Kind.values()[ordinal];
     }
 
     // ──── LitVal ────
