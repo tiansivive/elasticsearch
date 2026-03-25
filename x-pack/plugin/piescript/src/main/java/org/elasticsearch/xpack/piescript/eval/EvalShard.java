@@ -16,10 +16,19 @@ import org.apache.lucene.search.Query;
 import org.apache.lucene.search.ScoreMode;
 import org.apache.lucene.search.Scorer;
 import org.apache.lucene.search.Weight;
+import org.apache.lucene.util.BytesRef;
 import org.apache.lucene.util.NumericUtils;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.SubscribableListener;
 import org.elasticsearch.cluster.metadata.ProjectId;
+import org.elasticsearch.common.breaker.NoopCircuitBreaker;
+import org.elasticsearch.common.util.BigArrays;
+import org.elasticsearch.compute.data.Block;
+import org.elasticsearch.compute.data.BlockFactory;
+import org.elasticsearch.compute.data.BytesRefBlock;
+import org.elasticsearch.compute.data.DoubleBlock;
+import org.elasticsearch.compute.data.LongBlock;
+import org.elasticsearch.compute.data.Page;
 import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.IndexService;
 import org.elasticsearch.index.mapper.MappedFieldType;
@@ -27,6 +36,7 @@ import org.elasticsearch.index.mapper.MappedFieldType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -175,6 +185,121 @@ final class EvalShard {
             listener.onResponse(new Value.ListVal(docs));
         } catch (Exception e) {
             listener.onFailure(new EvaluationException("Shard.consume failed", e));
+        }
+    }
+
+    // ──── Shard.stream ────
+
+    /**
+     * Implement {@code Shard.stream}: convert a batch of DocRefVals into a columnar
+     * {@code Page} using compute engine Block builders. Each mapped field with doc
+     * values becomes a Block (column) in the resulting Page.
+     *
+     * @param searcherVal the searcher providing mapper service for field metadata
+     * @param docRefs     list of DocRefVals (from Shard.consume)
+     * @param listener    receives a PageVal(Page, columnNames)
+     */
+    static void stream(Value.SearcherVal searcherVal, List<Value> docRefs, ActionListener<Value> listener) {
+        try {
+            var state = searcherVal.state();
+            var mapperService = state.indexService.mapperService();
+            int docCount = docRefs.size();
+
+            if (docCount == 0) {
+                listener.onResponse(new Value.PageVal(new Page(0), List.of()));
+                return;
+            }
+
+            // Discover fields (same logic as Shard.read)
+            var allFields = mapperService.mappingLookup().getMatchingFieldNames("*");
+            var fieldNames = new ArrayList<String>();
+            var fieldTypes = new ArrayList<String>();
+            for (String name : allFields) {
+                if (name.startsWith("_")) continue;
+                MappedFieldType fieldType = mapperService.fieldType(name);
+                if (fieldType == null || fieldType.hasDocValues() == false) continue;
+                fieldNames.add(name);
+                fieldTypes.add(fieldType.typeName());
+            }
+
+            // Build blocks using compute engine BlockFactory
+            var blockFactory = new BlockFactory(new NoopCircuitBreaker("piescript"), BigArrays.NON_RECYCLING_INSTANCE);
+            var blocks = new Block[fieldNames.size()];
+
+            for (int col = 0; col < fieldNames.size(); col++) {
+                blocks[col] = buildBlock(blockFactory, fieldNames.get(col), fieldTypes.get(col), docRefs, docCount);
+            }
+
+            var page = new Page(docCount, blocks);
+            listener.onResponse(new Value.PageVal(page, List.copyOf(fieldNames)));
+        } catch (Exception e) {
+            listener.onFailure(new EvaluationException("Shard.stream failed", e));
+        }
+    }
+
+    /**
+     * Build a single Block for the given field by reading doc values from each doc ref.
+     */
+    private static Block buildBlock(BlockFactory factory, String fieldName, String typeName, List<Value> docRefs, int docCount)
+        throws IOException {
+        return switch (typeName) {
+            case "keyword", "text", "constant_keyword", "wildcard" -> buildKeywordBlock(factory, fieldName, docRefs, docCount);
+            case "long", "integer", "short", "byte" -> buildLongBlock(factory, fieldName, docRefs, docCount);
+            case "double" -> buildDoubleBlock(factory, fieldName, docRefs, docCount, false);
+            case "float", "half_float" -> buildDoubleBlock(factory, fieldName, docRefs, docCount, true);
+            case "scaled_float" -> buildLongBlock(factory, fieldName, docRefs, docCount);
+            case "boolean" -> buildLongBlock(factory, fieldName, docRefs, docCount); // booleans stored as 0/1 longs
+            default -> throw new EvaluationException(
+                "Shard.stream: unsupported doc value type [" + typeName + "] for field [" + fieldName + "]"
+            );
+        };
+    }
+
+    private static Block buildKeywordBlock(BlockFactory factory, String fieldName, List<Value> docRefs, int docCount) throws IOException {
+        try (BytesRefBlock.Builder builder = factory.newBytesRefBlockBuilder(docCount)) {
+            for (Value v : docRefs) {
+                var docRef = (Value.DocRefVal) v;
+                SortedSetDocValues dv = docRef.leafContext().reader().getSortedSetDocValues(fieldName);
+                if (dv != null && dv.advanceExact(docRef.docId()) && dv.docValueCount() > 0) {
+                    builder.appendBytesRef(dv.lookupOrd(dv.nextOrd()));
+                } else {
+                    builder.appendNull();
+                }
+            }
+            return builder.build();
+        }
+    }
+
+    private static Block buildLongBlock(BlockFactory factory, String fieldName, List<Value> docRefs, int docCount) throws IOException {
+        try (LongBlock.Builder builder = factory.newLongBlockBuilder(docCount)) {
+            for (Value v : docRefs) {
+                var docRef = (Value.DocRefVal) v;
+                SortedNumericDocValues dv = docRef.leafContext().reader().getSortedNumericDocValues(fieldName);
+                if (dv != null && dv.advanceExact(docRef.docId())) {
+                    builder.appendLong(dv.nextValue());
+                } else {
+                    builder.appendNull();
+                }
+            }
+            return builder.build();
+        }
+    }
+
+    private static Block buildDoubleBlock(BlockFactory factory, String fieldName, List<Value> docRefs, int docCount, boolean isFloat)
+        throws IOException {
+        try (DoubleBlock.Builder builder = factory.newDoubleBlockBuilder(docCount)) {
+            for (Value v : docRefs) {
+                var docRef = (Value.DocRefVal) v;
+                SortedNumericDocValues dv = docRef.leafContext().reader().getSortedNumericDocValues(fieldName);
+                if (dv != null && dv.advanceExact(docRef.docId())) {
+                    long raw = dv.nextValue();
+                    double val = isFloat ? NumericUtils.sortableIntToFloat((int) raw) : NumericUtils.sortableLongToDouble(raw);
+                    builder.appendDouble(val);
+                } else {
+                    builder.appendNull();
+                }
+            }
+            return builder.build();
         }
     }
 
