@@ -567,6 +567,9 @@ public class SerializationRoundTripTests extends ESTestCase {
             case Value.DocRefVal ignored -> fail("DocRefVal should not be serialized");
             case Value.WriterVal ignored -> fail("WriterVal should not be serialized");
             case Value.Symbol ignored -> fail("Symbol should not be serialized");
+            case Value.PageVal ignored -> fail("PageVal should not be serialized");
+            case Value.ExchangeSinkVal ignored -> fail("ExchangeSinkVal should not be serialized");
+            case Value.ExchangeSourceVal ignored -> fail("ExchangeSourceVal should not be serialized");
         }
     }
 }
