@@ -100,6 +100,9 @@ public final class ValueSerialization {
             case Value.DocRefVal ignored -> throw new IOException("DocRefVal is not serializable (node-local only)");
             case Value.WriterVal ignored -> throw new IOException("WriterVal is not serializable (node-local only)");
             case Value.Symbol ignored -> throw new IOException("Symbol is not serializable (ephemeral ESQL compilation)");
+            case Value.PageVal ignored -> throw new IOException("PageVal is not serializable (node-local only)");
+            case Value.ExchangeSinkVal ignored -> throw new IOException("ExchangeSinkVal is not serializable (node-local only)");
+            case Value.ExchangeSourceVal ignored -> throw new IOException("ExchangeSourceVal is not serializable (node-local only)");
         }
     }
 

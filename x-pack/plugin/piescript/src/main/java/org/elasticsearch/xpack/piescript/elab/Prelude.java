@@ -123,7 +123,10 @@ public final class Prelude {
         entry("ESQL", new MonoType.Arrow(Types.ROW, Types.TYPE)),
         entry("&", new MonoType.Arrow(Types.ROW, new MonoType.Arrow(Types.ROW, Types.ROW))),
         entry("Pick", new MonoType.Arrow(Types.ROW, new MonoType.Arrow(Types.ROW, Types.ROW))),
-        entry("Omit", new MonoType.Arrow(Types.ROW, new MonoType.Arrow(Types.ROW, Types.ROW)))
+        entry("Omit", new MonoType.Arrow(Types.ROW, new MonoType.Arrow(Types.ROW, Types.ROW))),
+        entry("Page", new MonoType.Arrow(Types.ROW, Types.TYPE)),
+        entry("Sink", new MonoType.Arrow(Types.ROW, Types.TYPE)),
+        entry("Source", new MonoType.Arrow(Types.ROW, Types.TYPE))
     );
 
     /** Arity (number of term-level arguments) for each built-in function. */
@@ -435,6 +438,18 @@ public final class Prelude {
 
     static MonoType.AppType writer(MonoType schema) {
         return new MonoType.AppType(Elaborator.WRITER, schema);
+    }
+
+    static MonoType.AppType page(MonoType schema) {
+        return new MonoType.AppType(Elaborator.PAGE, schema);
+    }
+
+    static MonoType.AppType sink(MonoType schema) {
+        return new MonoType.AppType(Elaborator.SINK, schema);
+    }
+
+    static MonoType.AppType source(MonoType schema) {
+        return new MonoType.AppType(Elaborator.SOURCE, schema);
     }
 
     // Shard.writer : ∀(r:Row). Index r → ShardRecord → Channel (Writer r)
