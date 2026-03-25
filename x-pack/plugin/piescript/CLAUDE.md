@@ -37,7 +37,7 @@ Detailed step-by-step plans live in [.cursor/plans/](.cursor/plans/):
 | `block_e_write_primitives_f1e74ffb` | Block E: write primitives |
 | `block_f_linq_query_e7171607` | Block F: T-LINQ ESQL query compilation (NbE Symbol-based) |
 | `f-omega_type_system_09acfb27` | F-omega type system: kinds-as-types, `force` normalizer, `&`/`Pick`/`Omit`, `ESQL.stats` |
-| `compute_engine_streaming_f5db78f2` | Compute engine streaming |
+| `compute_engine_streaming_f5db78f2` | Block G: compute engine streaming (Pages, Exchange, materialization) |
 
 ## Build & Test
 

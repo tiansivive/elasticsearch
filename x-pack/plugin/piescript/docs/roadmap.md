@@ -608,6 +608,86 @@ F-omega Phases 3–5 (Claude Code session 2026-03-24)
 
 ---
 
+## Block G — Streaming Data Access via Compute Engine :memo:
+
+> Plan: [compute_engine_streaming_f5db78f2](../.cursor/plans/compute_engine_streaming_f5db78f2.plan.md).
+> Supersedes the "Deferred: Exchange Streaming" section below.
+
+Replace piescript's row-at-a-time read path (`Shard.read`) with columnar Page access via ESQL's
+compute engine. Expose Exchange primitives for backpressure-controlled Page transport between nodes.
+Add explicit materialization builtins for the Page-to-Value boundary.
+
+| Task | Status |
+|------|--------|
+| Gradle dependency + `PageVal`, `ExchangeSinkVal`, `ExchangeSourceVal` value types | :memo: |
+| `Page r`, `Sink r`, `Source r` type constructors in Prelude/elaboration | :memo: |
+| `Shard.stream` — DocRefs to Page via BlockLoader | :memo: |
+| `Page.toList` / `Page.count` — materialization builtins | :memo: |
+| `Exchange.create` / `addPage` / `poll` / `finish` / `done` — same-node exchange | :memo: |
+| `Exchange.openSink` / `connectSource` — cross-node streaming | :memo: |
+| Unit + integration tests, debug scripts | :memo: |
+| Documentation (decisions, roadmap, current-state, project-structure) | :memo: |
+
+Future: bytecode compilation of pure piescript lambdas over typed arrays — eliminates
+Page-to-Value boxing. See the plan for details.
+
+---
+
+## Block H — Multi-Value Field Semantics :memo:
+
+> Design discussion: Claude Code session 2026-03-25.
+
+ES fields are inherently multi-value capable. Piescript currently discards all but the first value
+(`EsqlValueConverter.convertCell` takes `list.getFirst()`). Block H makes MV a first-class
+concern in piescript's value model.
+
+### Design direction
+
+**MV as the default, not the exception.** All piescript base types (`Double`, `Keyword`, etc.) are
+MV-capable at runtime, matching ES's reality. Piescript literals and let-bindings always produce
+single values, so pure piescript code (`1 + 2 = 3`) is unchanged. MV multiplicity enters only
+when data comes from ES.
+
+**Scalar pervasion** (APL-proven): scalar ops lift transparently to MV values.
+- `scalar + scalar` = `scalar`
+- `scalar + MV` = element-wise lift
+- `MV + MV` = cartesian product (ESQL semantics, differs from APL's element-wise zip)
+
+**Explicit narrowing types:**
+- `List a` — piescript collections (ordered, indexed, user-constructed; distinct from MV)
+- `Single a` (or equivalent) — guaranteed exactly one value (APL's boxing/enclosing `⊂` concept)
+
+**Rank-reducing ops:** `MV.first`, `MV.toList`, `MV.sum`, `MV.min`, `MV.max`, `MV.count`,
+`MV.dedupe` — move from MV-capable to explicit single/list representations.
+
+**User-controlled read boundary:**
+- Stay columnar (`Page r`) — MV structure preserved in Blocks, process via Exchange (Block G)
+- Materialize with MV preserved — piescript values with MV fields
+- Materialize with MV flattened — lossy conversion, type reflects schema change
+- The `query ... ;` boundary also needs a materialization strategy
+
+### Open questions
+
+- Naming: `MV a` vs implicit, `Single a` vs `Box a`
+- Whether `ESQL.from` row types include MV or MV only appears at materialization
+- Should we expose explicit zip (`MV.zipWith`) alongside cartesian default?
+- How MV interacts with `&`, `Pick`, `Omit` row operators
+- Whether field caps can distinguish MV-capable vs single-value-only fields
+- Interaction with the ESQL expression wrapper type (D-053 future work)
+
+| Task | Status |
+|------|--------|
+| Design document / decision record | :memo: |
+| `EsqlValueConverter` — stop discarding MV values (baseline fix) | :memo: |
+| MV-capable runtime value representation | :memo: |
+| Scalar pervasion in `CorePrimOp` evaluation | :memo: |
+| `Single a` type + boxing/unboxing | :memo: |
+| `MV.*` rank-reducing builtins | :memo: |
+| `Page.toRecords` vs `Page.toList` materialization modes (Block G integration) | :memo: |
+| Tests, documentation, debug scripts | :memo: |
+
+---
+
 ## Deferred: Multi-Value Channels :thought_balloon:
 
 > Old Block B, reworked. See D-042.
@@ -658,21 +738,10 @@ Requires: typeclasses in the language (significant), `RawData` type, compiler in
 
 ---
 
-## Deferred: Exchange Streaming (Scale) :thought_balloon:
+## Deferred: Exchange Streaming (Scale) — see Block G :fast_forward:
 
-> Reframed from old Block E. See D-042.
-
-For large data volumes, piescript orchestrates Exchange setup **explicitly via channels** — the
-Exchange is ES infrastructure that piescript talks to, not infrastructure piescript is built on:
-
-1. Send closure to data node (via `send`)
-2. Data node scans, materializes into Exchange sink, sends back metadata (exchange ID)
-3. Coordinator connects Exchange source, signals to begin streaming
-4. Pages stream with back-pressure via Exchange
-5. Coordinator converts Pages to Values at the boundary (or processes directly)
-
-This is an explicit coordination protocol written in piescript (or in a library), not hidden
-runtime magic. Piescript doesn't abstract over scale decisions — the user chooses.
+> Reframed from old Block E. See D-042. Now planned as **Block G** above with a detailed
+> implementation plan.
 
 ---
 
