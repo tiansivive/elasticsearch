@@ -7,6 +7,9 @@
 
 package org.elasticsearch.xpack.piescript.eval;
 
+import org.elasticsearch.compute.data.Page;
+import org.elasticsearch.compute.operator.exchange.ExchangeSink;
+import org.elasticsearch.compute.operator.exchange.ExchangeSource;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 
 import java.util.List;
@@ -126,4 +129,28 @@ public sealed interface Value {
      * final {@code Symbol} carries the complete ESQL pipeline string.
      */
     record Symbol(String esql) implements Value {}
+
+    /**
+     * A columnar page from the compute engine. Non-serializable, node-local.
+     * Created by {@code Shard.stream}, consumed by {@code Page.toList},
+     * {@code Page.count}, and {@code Exchange.addPage}.
+     *
+     * @param page the compute engine Page (columnar blocks)
+     * @param columnNames ordered field names corresponding to each block in the page
+     */
+    record PageVal(Page page, List<String> columnNames) implements Value {}
+
+    /**
+     * An exchange sink handle. Non-serializable, node-local.
+     * Created by {@code Exchange.create}, consumed by {@code Exchange.addPage}
+     * and {@code Exchange.finish}.
+     */
+    record ExchangeSinkVal(ExchangeSink sink) implements Value {}
+
+    /**
+     * An exchange source handle. Non-serializable, node-local.
+     * Created by {@code Exchange.create}, consumed by {@code Exchange.poll}
+     * and {@code Exchange.done}.
+     */
+    record ExchangeSourceVal(ExchangeSource source) implements Value {}
 }
