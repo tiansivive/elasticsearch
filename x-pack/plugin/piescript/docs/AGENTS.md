@@ -18,7 +18,7 @@ as closures — safe because the language is pure and referentially transparent.
 | Doc | What it covers |
 |-----|---------------|
 | [vision.md](vision.md) | Long-term goals, Join Calculus coordination model, design philosophy, non-goals |
-| [roadmap.md](roadmap.md) | Block-based development plan with status markers (Blocks A–E replace old Phases 3–5) |
+| [roadmap.md](roadmap.md) | Block-based development plan with status markers (Blocks A–F complete, D-053 F-omega complete, Blocks G–H planned) |
 | [current-state.md](current-state.md) | What works **right now**, known limitations, immediate next steps |
 | [architecture.md](architecture.md) | System design, Core IR, async evaluator, channel-based coordination |
 | [data-access.md](data-access.md) | `Query a` typeclass, levels of control (ESQL/ShardPlan/LuceneM), use cases, comparable systems |
@@ -159,7 +159,7 @@ completion status. Load the relevant plan when working on or extending a specifi
 | `block_e_write_primitives_f1e74ffb` | Block E: write primitives |
 | `block_f_linq_query_e7171607` | Block F: T-LINQ ESQL query compilation (NbE Symbol-based) |
 | `f-omega_type_system_09acfb27` | F-omega type system: kinds-as-types, `force` normalizer, `&`/`Pick`/`Omit`, `ESQL.stats` |
-| `compute_engine_streaming_f5db78f2` | Compute engine streaming |
+| `compute_engine_streaming_f5db78f2` | Block G: compute engine streaming (Pages, Exchange, materialization) |
 
 ## Chat History Reference
 
@@ -200,3 +200,7 @@ Prior design discussions are preserved in agent transcripts:
   reduction rules in `force`, closure-based `ESQL.keep`/`ESQL.drop` NbE compilation,
   `ESQL.stats`/`ESQL.statsBy`/aggregate builtins implementation, tests, docs, debug scripts.
   Completed all 5 phases of the F-omega plan.
+- **Block H design (multi-value fields)**: Claude Code session 2026-03-25 — MV-as-default value
+  model (APL scalar pervasion), cartesian product for MV×MV (ESQL semantics), `Single a` boxing,
+  `MV.*` rank-reducing builtins, user-controlled read/materialization boundary (ties into Block G).
+  Design only — not yet implemented.

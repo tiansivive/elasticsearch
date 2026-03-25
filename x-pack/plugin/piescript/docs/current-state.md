@@ -130,7 +130,8 @@ for Phase 1 items carried forward.
 | Non-STARTED shard states in `topology` | Deferred | Only STARTED shards included (D-044) |
 | Scheduled async execution | Block E+ | No persistent task or scheduler |
 | Push-down optimizer | Deferred | Typeclass-driven push-down to Lucene (future optimization) |
-| Exchange integration | Deferred | No streaming data flow via ESQL's compute engine |
+| Streaming data access (Block G) | Planned | Columnar Pages via BlockLoader, Exchange backpressure, explicit materialization boundary. Plan exists. |
+| Multi-value field semantics (Block H) | Planned | MV-capable runtime values, scalar pervasion, `Single a` boxing, `MV.*` builtins. Currently MV fields are truncated to first value. |
 | Feature flag / license gating | TBD | No gating mechanism |
 
 ## Known Deviations from Plan (Technical Debt)
