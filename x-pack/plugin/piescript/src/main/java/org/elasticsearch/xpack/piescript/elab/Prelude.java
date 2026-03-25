@@ -56,6 +56,7 @@ import static java.util.Map.entry;
  *   Shard.open       : ∀r. Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)
  *   Shard.consume    : ∀r. Double → Searcher r → List (DocRef r)
  *   Shard.read       : ∀r. DocRef r → r
+ *   Shard.stream     : ∀r. Searcher r → List (DocRef r) → Page r
  *   Shard.writer     : ∀r. Index r → ShardRecord → Channel (Writer r)
  *   Shard.write      : ∀r. Writer r → Keyword → r → { seq_no: Double, version: Double, result: Keyword }
  *   Shard.refresh    : ∀r. Writer r → Channel { refreshed: Boolean }
@@ -156,6 +157,7 @@ public final class Prelude {
         entry("Shard.open", 3),
         entry("Shard.consume", 2),
         entry("Shard.read", 1),
+        entry("Shard.stream", 2),
         entry("Shard.writer", 2),
         entry("Shard.write", 3),
         entry("Shard.refresh", 1),
@@ -209,6 +211,7 @@ public final class Prelude {
         module.put("Shard.open", shardOpenScheme());
         module.put("Shard.consume", shardConsumeScheme());
         module.put("Shard.read", shardReadScheme());
+        module.put("Shard.stream", shardStreamScheme());
         module.put("Shard.writer", shardWriterScheme());
         module.put("Shard.write", shardWriteScheme());
         module.put("Shard.refresh", shardRefreshScheme());
@@ -410,6 +413,13 @@ public final class Prelude {
         var quantified = new LinkedHashMap<Integer, MonoType>();
         quantified.put(R0.id(), Types.ROW);
         return new TypeScheme(quantified, new MonoType.Arrow(docref(R0), new MonoType.RecordType(R0)));
+    }
+
+    // Shard.stream : ∀(r:Row). Searcher r → List (DocRef r) → Page r
+    private static TypeScheme shardStreamScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(searcher(R0), new MonoType.Arrow(list(docref(R0)), page(R0))));
     }
 
     static MonoType.RecordType record(Map<String, MonoType> fields) {

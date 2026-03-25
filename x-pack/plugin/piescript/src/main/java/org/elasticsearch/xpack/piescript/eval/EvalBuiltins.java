@@ -112,6 +112,11 @@ final class EvalBuiltins {
                 listener
             );
             case "Shard.read" -> EvalShard.read(requireDocRefVal(args.get(0), name), listener);
+            case "Shard.stream" -> EvalShard.stream(
+                requireSearcherVal(args.get(0), name),
+                requireList(args.get(1), name).elements(),
+                listener
+            );
             case "Shard.writer" -> EvalWrite.writer(eval, requireIndexVal(args.get(0), name), requireRecord(args.get(1), name), listener);
             case "Shard.write" -> {
                 var docId = switch (args.get(1)) {
