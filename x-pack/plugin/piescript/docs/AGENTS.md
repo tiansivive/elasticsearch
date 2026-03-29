@@ -204,3 +204,10 @@ Prior design discussions are preserved in agent transcripts:
   model (APL scalar pervasion), cartesian product for MV×MV (ESQL semantics), `Single a` boxing,
   `MV.*` rank-reducing builtins, user-controlled read/materialization boundary (ties into Block G).
   Design only — not yet implemented.
+- **Block G implementation (streaming data access)**: Claude Code session 2026-03-26 —
+  `Shard.stream` via compute Block builders, `Page.toList`/`Page.count` materialization,
+  `PageVal`/`ExchangeSinkVal`/`ExchangeSourceVal` value types, `Page`/`Sink`/`Source`/`Exchange`
+  type constructors. Exchange API design: `Exchange r` as serializable descriptor,
+  `Exchange.open`/`sink`/`connect`/`addPage`/`poll`/`finish`, callback-based `poll`, unified
+  local/remote via `ExchangeService`. D-054 decision record. Column name gap identified
+  (runtime `List Keyword` not statically verifiable against row type `r`).

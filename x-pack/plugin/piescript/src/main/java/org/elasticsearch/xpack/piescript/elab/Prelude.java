@@ -57,6 +57,14 @@ import static java.util.Map.entry;
  *   Shard.consume    : ∀r. Double → Searcher r → List (DocRef r)
  *   Shard.read       : ∀r. DocRef r → r
  *   Shard.stream     : ∀r. Searcher r → List (DocRef r) → Page r
+ *   Page.toList      : ∀r. Page r → List (Record r)
+ *   Page.count       : ∀r. Page r → Double
+ *   Exchange.open    : ∀r. List Keyword → Double → Exchange r
+ *   Exchange.sink    : ∀r. Exchange r → Sink r
+ *   Exchange.connect : ∀r. Exchange r → Source r
+ *   Exchange.addPage : ∀r. Sink r → Page r → Null
+ *   Exchange.poll    : ∀r. Source r → (Page r → Null) → Channel Null
+ *   Exchange.finish  : ∀r. Sink r → Null
  *   Shard.writer     : ∀r. Index r → ShardRecord → Channel (Writer r)
  *   Shard.write      : ∀r. Writer r → Keyword → r → { seq_no: Double, version: Double, result: Keyword }
  *   Shard.refresh    : ∀r. Writer r → Channel { refreshed: Boolean }
@@ -127,7 +135,8 @@ public final class Prelude {
         entry("Omit", new MonoType.Arrow(Types.ROW, new MonoType.Arrow(Types.ROW, Types.ROW))),
         entry("Page", new MonoType.Arrow(Types.ROW, Types.TYPE)),
         entry("Sink", new MonoType.Arrow(Types.ROW, Types.TYPE)),
-        entry("Source", new MonoType.Arrow(Types.ROW, Types.TYPE))
+        entry("Source", new MonoType.Arrow(Types.ROW, Types.TYPE)),
+        entry("Exchange", new MonoType.Arrow(Types.ROW, Types.TYPE))
     );
 
     /** Arity (number of term-level arguments) for each built-in function. */
@@ -158,6 +167,14 @@ public final class Prelude {
         entry("Shard.consume", 2),
         entry("Shard.read", 1),
         entry("Shard.stream", 2),
+        entry("Page.toList", 1),
+        entry("Page.count", 1),
+        entry("Exchange.open", 2),
+        entry("Exchange.sink", 1),
+        entry("Exchange.connect", 1),
+        entry("Exchange.addPage", 2),
+        entry("Exchange.poll", 2),
+        entry("Exchange.finish", 1),
         entry("Shard.writer", 2),
         entry("Shard.write", 3),
         entry("Shard.refresh", 1),
@@ -212,6 +229,14 @@ public final class Prelude {
         module.put("Shard.consume", shardConsumeScheme());
         module.put("Shard.read", shardReadScheme());
         module.put("Shard.stream", shardStreamScheme());
+        module.put("Page.toList", pageToListScheme());
+        module.put("Page.count", pageCountScheme());
+        module.put("Exchange.open", exchangeOpenScheme());
+        module.put("Exchange.sink", exchangeSinkScheme());
+        module.put("Exchange.connect", exchangeConnectScheme());
+        module.put("Exchange.addPage", exchangeAddPageScheme());
+        module.put("Exchange.poll", exchangePollScheme());
+        module.put("Exchange.finish", exchangeFinishScheme());
         module.put("Shard.writer", shardWriterScheme());
         module.put("Shard.write", shardWriteScheme());
         module.put("Shard.refresh", shardRefreshScheme());
@@ -422,6 +447,65 @@ public final class Prelude {
         return new TypeScheme(quantified, new MonoType.Arrow(searcher(R0), new MonoType.Arrow(list(docref(R0)), page(R0))));
     }
 
+    // Page.toList : ∀(r:Row). Page r → List (Record r)
+    private static TypeScheme pageToListScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(page(R0), list(new MonoType.RecordType(R0))));
+    }
+
+    // Page.count : ∀(r:Row). Page r → Double
+    private static TypeScheme pageCountScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(page(R0), Types.DOUBLE));
+    }
+
+    // ──── Exchange builtins (Block G — D-054) ────
+
+    // Exchange.open : ∀(r:Row). List Keyword → Double → Exchange r
+    private static TypeScheme exchangeOpenScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(list(KW), new MonoType.Arrow(DBL, exchange(R0))));
+    }
+
+    // Exchange.sink : ∀(r:Row). Exchange r → Sink r
+    private static TypeScheme exchangeSinkScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(exchange(R0), sink(R0)));
+    }
+
+    // Exchange.connect : ∀(r:Row). Exchange r → Source r
+    private static TypeScheme exchangeConnectScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(exchange(R0), source(R0)));
+    }
+
+    // Exchange.addPage : ∀(r:Row). Sink r → Page r → Null
+    private static TypeScheme exchangeAddPageScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(sink(R0), new MonoType.Arrow(page(R0), NULL)));
+    }
+
+    // Exchange.poll : ∀(r:Row). Source r → (Page r → Null) → Channel Null
+    private static TypeScheme exchangePollScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        var callback = new MonoType.Arrow(page(R0), NULL);
+        return new TypeScheme(quantified, new MonoType.Arrow(source(R0), new MonoType.Arrow(callback, channel(NULL))));
+    }
+
+    // Exchange.finish : ∀(r:Row). Sink r → Null
+    private static TypeScheme exchangeFinishScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(R0.id(), Types.ROW);
+        return new TypeScheme(quantified, new MonoType.Arrow(sink(R0), NULL));
+    }
+
     static MonoType.RecordType record(Map<String, MonoType> fields) {
         return new MonoType.RecordType(RowType.closed(fields));
     }
@@ -460,6 +544,10 @@ public final class Prelude {
 
     static MonoType.AppType source(MonoType schema) {
         return new MonoType.AppType(Elaborator.SOURCE, schema);
+    }
+
+    static MonoType.AppType exchange(MonoType schema) {
+        return new MonoType.AppType(Elaborator.EXCHANGE, schema);
     }
 
     // Shard.writer : ∀(r:Row). Index r → ShardRecord → Channel (Writer r)

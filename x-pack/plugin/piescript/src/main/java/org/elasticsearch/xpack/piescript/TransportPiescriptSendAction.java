@@ -13,6 +13,7 @@ import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.compute.operator.exchange.ExchangeService;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.logging.LogManager;
@@ -59,6 +60,7 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
     private final ClusterService clusterService;
     private final TransportService transportService;
     private final IndicesService indicesService;
+    private final ExchangeService exchangeService;
 
     @Inject
     public TransportPiescriptSendAction(
@@ -68,7 +70,8 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
         Client client,
         ClusterService clusterService,
         ChannelRegistry channelRegistry,
-        IndicesService indicesService
+        IndicesService indicesService,
+        ExchangeService exchangeService
     ) {
         super(
             PiescriptSendAction.NAME,
@@ -83,9 +86,10 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
         this.clusterService = clusterService;
         this.transportService = transportService;
         this.indicesService = indicesService;
+        this.exchangeService = exchangeService;
     }
 
-    private EvalDependencies buildEvalDeps() {
+    private EvalDependencies buildEvalDeps(Task task) {
         return new EvalDependencies(
             client,
             executor,
@@ -93,27 +97,29 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
             transportService,
             channelRegistry,
             transportService.getLocalNode().getId(),
-            indicesService
+            indicesService,
+            exchangeService,
+            task
         );
     }
 
     @Override
     protected void doExecute(Task task, PiescriptSendRequest request, ActionListener<ActionResponse.Empty> listener) {
         if (PiescriptSendRequest.INBOX_CHANNEL_ID.equals(request.channelId())) {
-            handleInbox(request.payload(), listener);
+            handleInbox(task, request.payload(), listener);
         } else {
             channelRegistry.complete(request.channelId(), request.payload());
             listener.onResponse(ActionResponse.Empty.INSTANCE);
         }
     }
 
-    private void handleInbox(Value payload, ActionListener<ActionResponse.Empty> listener) {
+    private void handleInbox(Task task, Value payload, ActionListener<ActionResponse.Empty> listener) {
         if (payload instanceof Value.ClosureVal == false) {
             listener.onFailure(new EvaluationException("inbox expected ClosureVal, got " + payload.getClass().getSimpleName()));
             return;
         }
         listener.onResponse(ActionResponse.Empty.INSTANCE);
-        var evalDeps = buildEvalDeps();
+        var evalDeps = buildEvalDeps(task);
         var nodeInfo = buildLocalNodeInfo();
         var evaluator = new Evaluator(evalDeps);
         executor.execute(() -> evaluator.applyFunction(payload, nodeInfo, ActionListener.wrap(ignored -> {}, e -> {

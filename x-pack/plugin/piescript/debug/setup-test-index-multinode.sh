@@ -5,6 +5,11 @@
 
 BASE="localhost:9200"
 
+echo "=== Cancelling in-flight piescript tasks ==="
+# Cancel any hung piescript requests from previous runs to free up thread pool
+curl -s -X POST "$BASE/_tasks/_cancel?actions=indices:data/read/piescript*&wait_for_completion=false" 2>/dev/null | jq '.node_failures // empty' 2>/dev/null
+sleep 1
+
 echo "=== Deleting old index ==="
 curl -s -X DELETE "$BASE/piescript-test" | jq
 
