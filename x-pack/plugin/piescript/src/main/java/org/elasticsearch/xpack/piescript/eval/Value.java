@@ -141,16 +141,33 @@ public sealed interface Value {
     record PageVal(Page page, List<String> columnNames) implements Value {}
 
     /**
-     * An exchange sink handle. Non-serializable, node-local.
-     * Created by {@code Exchange.create}, consumed by {@code Exchange.addPage}
-     * and {@code Exchange.finish}.
+     * A serializable exchange descriptor. Carries the exchange ID, column names,
+     * and buffer size — pure data that can travel in closures across nodes.
+     * The actual sink/source infrastructure is instantiated locally by
+     * {@code Exchange.sink} and {@code Exchange.connect}. See D-054.
+     *
+     * @param exchangeId unique identifier for the exchange
+     * @param columnNames ordered field names mapping block indices to record fields
+     * @param bufferSize maximum number of pages buffered in the exchange
      */
-    record ExchangeSinkVal(ExchangeSink sink) implements Value {}
+    record ExchangeVal(String exchangeId, List<String> columnNames, int bufferSize) implements Value {}
+
+    /**
+     * An exchange sink handle. Non-serializable, node-local.
+     * Created by {@code Exchange.sink}, consumed by {@code Exchange.addPage}
+     * and {@code Exchange.finish}.
+     *
+     * @param sink the compute engine exchange sink
+     * @param columnNames ordered field names (from the parent Exchange descriptor)
+     */
+    record ExchangeSinkVal(ExchangeSink sink, List<String> columnNames) implements Value {}
 
     /**
      * An exchange source handle. Non-serializable, node-local.
-     * Created by {@code Exchange.create}, consumed by {@code Exchange.poll}
-     * and {@code Exchange.done}.
+     * Created by {@code Exchange.connect}, consumed by {@code Exchange.poll}.
+     *
+     * @param source the compute engine exchange source
+     * @param columnNames ordered field names (from the parent Exchange descriptor)
      */
-    record ExchangeSourceVal(ExchangeSource source) implements Value {}
+    record ExchangeSourceVal(ExchangeSource source, List<String> columnNames) implements Value {}
 }

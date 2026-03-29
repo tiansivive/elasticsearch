@@ -25,6 +25,7 @@ import org.elasticsearch.common.breaker.NoopCircuitBreaker;
 import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.compute.data.Block;
 import org.elasticsearch.compute.data.BlockFactory;
+import org.elasticsearch.compute.data.BooleanBlock;
 import org.elasticsearch.compute.data.BytesRefBlock;
 import org.elasticsearch.compute.data.DoubleBlock;
 import org.elasticsearch.compute.data.LongBlock;
@@ -248,7 +249,7 @@ final class EvalShard {
             case "double" -> buildDoubleBlock(factory, fieldName, docRefs, docCount, false);
             case "float", "half_float" -> buildDoubleBlock(factory, fieldName, docRefs, docCount, true);
             case "scaled_float" -> buildLongBlock(factory, fieldName, docRefs, docCount);
-            case "boolean" -> buildLongBlock(factory, fieldName, docRefs, docCount); // booleans stored as 0/1 longs
+            case "boolean" -> buildBooleanBlock(factory, fieldName, docRefs, docCount);
             default -> throw new EvaluationException(
                 "Shard.stream: unsupported doc value type [" + typeName + "] for field [" + fieldName + "]"
             );
@@ -295,6 +296,21 @@ final class EvalShard {
                     long raw = dv.nextValue();
                     double val = isFloat ? NumericUtils.sortableIntToFloat((int) raw) : NumericUtils.sortableLongToDouble(raw);
                     builder.appendDouble(val);
+                } else {
+                    builder.appendNull();
+                }
+            }
+            return builder.build();
+        }
+    }
+
+    private static Block buildBooleanBlock(BlockFactory factory, String fieldName, List<Value> docRefs, int docCount) throws IOException {
+        try (BooleanBlock.Builder builder = factory.newBooleanBlockBuilder(docCount)) {
+            for (Value v : docRefs) {
+                var docRef = (Value.DocRefVal) v;
+                SortedNumericDocValues dv = docRef.leafContext().reader().getSortedNumericDocValues(fieldName);
+                if (dv != null && dv.advanceExact(docRef.docId())) {
+                    builder.appendBoolean(dv.nextValue() != 0);
                 } else {
                     builder.appendNull();
                 }

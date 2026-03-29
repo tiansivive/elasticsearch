@@ -71,6 +71,7 @@ public final class Elaborator {
     static final MonoType PAGE = new MonoType.TCon("Page");
     static final MonoType SINK = new MonoType.TCon("Sink");
     static final MonoType SOURCE = new MonoType.TCon("Source");
+    static final MonoType EXCHANGE = new MonoType.TCon("Exchange");
     static final MonoType DATETIME = new MonoType.TCon("DateTime");
     static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
     static final MonoType IP = new MonoType.TCon("Ip");
@@ -108,7 +109,8 @@ public final class Elaborator {
         Map.entry("Omit", OMIT),
         Map.entry("Page", PAGE),
         Map.entry("Sink", SINK),
-        Map.entry("Source", SOURCE)
+        Map.entry("Source", SOURCE),
+        Map.entry("Exchange", EXCHANGE)
     );
 
     final ElaborationState state;
