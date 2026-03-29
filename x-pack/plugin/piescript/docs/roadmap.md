@@ -545,6 +545,7 @@ Bulk API. List literal syntax added as a prerequisite.
 - Ingest: shard-level writes skip ingest pipelines
 - `_id` as separate argument: workaround for `RowType` not being first-class `MonoType` (D-050 §5)
 - `List.map` over `Shard.write` is semantically `traverse`: future `List.traverse` combinator
+- `Shard.write` always uses INDEX (upsert) semantics — CREATE vs INDEX selection requires error handling (sum types / result types)
 
 Scheduled execution (persistent tasks, REST API for managing piescript jobs, checkpointing) is
 deferred until the scheduler story is needed.
@@ -619,14 +620,22 @@ Add explicit materialization builtins for the Page-to-Value boundary.
 
 | Task | Status |
 |------|--------|
-| Gradle dependency + `PageVal`, `ExchangeSinkVal`, `ExchangeSourceVal` value types | :memo: |
-| `Page r`, `Sink r`, `Source r` type constructors in Prelude/elaboration | :memo: |
-| `Shard.stream` — DocRefs to Page via BlockLoader | :memo: |
-| `Page.toList` / `Page.count` — materialization builtins | :memo: |
-| `Exchange.create` / `addPage` / `poll` / `finish` / `done` — same-node exchange | :memo: |
-| `Exchange.openSink` / `connectSource` — cross-node streaming | :memo: |
+| Gradle dependency + `PageVal`, `ExchangeSinkVal`, `ExchangeSourceVal` value types | :white_check_mark: |
+| `Page r`, `Sink r`, `Source r`, `Exchange r` type constructors in Prelude/elaboration | :white_check_mark: |
+| `Shard.stream` — DocRefs to Page via compute Block builders | :white_check_mark: |
+| `Page.toList` / `Page.count` — materialization builtins | :white_check_mark: |
+| `ExchangeVal` — serializable exchange descriptor (ID + column names + buffer size) | :memo: |
+| `Exchange.open` / `Exchange.sink` / `Exchange.connect` — exchange setup (D-054) | :memo: |
+| `Exchange.addPage` / `Exchange.poll` / `Exchange.finish` — exchange operations (D-054) | :memo: |
 | Unit + integration tests, debug scripts | :memo: |
-| Documentation (decisions, roadmap, current-state, project-structure) | :memo: |
+| Documentation (D-054 decision record, architecture, roadmap) | :white_check_mark: |
+
+**Known issues** (D-054):
+- Column names passed to `Exchange.open` are a runtime `List Keyword` — the type checker cannot
+  verify they match the fields of `r`. Runtime check on `addPage` as safety net. Future: derive
+  column names from the row type at elaboration time.
+- `Shard.stream` uses `NoopCircuitBreaker` — production use should integrate with ES circuit
+  breakers.
 
 Future: bytecode compilation of pure piescript lambdas over typed arrays — eliminates
 Page-to-Value boxing. See the plan for details.

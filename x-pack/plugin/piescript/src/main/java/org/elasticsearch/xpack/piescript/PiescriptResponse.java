@@ -205,6 +205,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.DocRefVal ignored -> builder.field(fieldName, "<docref>");
             case Value.WriterVal ignored -> builder.field(fieldName, "<writer>");
             case Value.Symbol s -> builder.field(fieldName, "<symbol:" + s.esql() + ">");
+            case Value.ExchangeVal v -> builder.field(fieldName, "<exchange:" + v.exchangeId() + ">");
             case Value.PageVal ignored -> builder.field(fieldName, "<page>");
             case Value.ExchangeSinkVal ignored -> builder.field(fieldName, "<exchange-sink>");
             case Value.ExchangeSourceVal ignored -> builder.field(fieldName, "<exchange-source>");
@@ -241,6 +242,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.DocRefVal ignored -> builder.value("<docref>");
             case Value.WriterVal ignored -> builder.value("<writer>");
             case Value.Symbol s -> builder.value("<symbol:" + s.esql() + ">");
+            case Value.ExchangeVal v -> builder.value("<exchange:" + v.exchangeId() + ">");
             case Value.PageVal ignored -> builder.value("<page>");
             case Value.ExchangeSinkVal ignored -> builder.value("<exchange-sink>");
             case Value.ExchangeSourceVal ignored -> builder.value("<exchange-source>");

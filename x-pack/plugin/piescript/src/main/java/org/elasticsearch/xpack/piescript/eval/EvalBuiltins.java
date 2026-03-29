@@ -117,6 +117,29 @@ final class EvalBuiltins {
                 requireList(args.get(1), name).elements(),
                 listener
             );
+            // ──── Page.* builtins (Block G) ────
+            case "Page.toList" -> EvalPage.toList(requirePageVal(args.get(0), name), listener);
+            case "Page.count" -> EvalPage.count(requirePageVal(args.get(0), name), listener);
+            // ──── Exchange.* builtins (Block G — D-054) ────
+            case "Exchange.open" -> EvalExchange.open(
+                requireList(args.get(0), name).elements(),
+                requireDouble(args.get(1), name),
+                listener
+            );
+            case "Exchange.sink" -> EvalExchange.sink(eval.deps.exchangeService(), requireExchangeVal(args.get(0), name), listener);
+            case "Exchange.connect" -> EvalExchange.connect(eval, requireExchangeVal(args.get(0), name), listener);
+            case "Exchange.addPage" -> EvalExchange.addPage(
+                requireExchangeSinkVal(args.get(0), name),
+                requirePageVal(args.get(1), name),
+                listener
+            );
+            case "Exchange.poll" -> EvalExchange.poll(
+                eval,
+                requireExchangeSourceVal(args.get(0), name),
+                args.get(1),
+                listener
+            );
+            case "Exchange.finish" -> EvalExchange.finish(requireExchangeSinkVal(args.get(0), name), listener);
             case "Shard.writer" -> EvalWrite.writer(eval, requireIndexVal(args.get(0), name), requireRecord(args.get(1), name), listener);
             case "Shard.write" -> {
                 var docId = switch (args.get(1)) {
@@ -260,6 +283,34 @@ final class EvalBuiltins {
         return switch (value) {
             case Value.SearcherVal v -> v;
             default -> throw new AssertionError("type checker bug: expected Searcher for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.PageVal requirePageVal(Value value, String builtinName) {
+        return switch (value) {
+            case Value.PageVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected Page for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.ExchangeVal requireExchangeVal(Value value, String builtinName) {
+        return switch (value) {
+            case Value.ExchangeVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected Exchange for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.ExchangeSinkVal requireExchangeSinkVal(Value value, String builtinName) {
+        return switch (value) {
+            case Value.ExchangeSinkVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected Sink for " + builtinName + ", got " + value);
+        };
+    }
+
+    static Value.ExchangeSourceVal requireExchangeSourceVal(Value value, String builtinName) {
+        return switch (value) {
+            case Value.ExchangeSourceVal v -> v;
+            default -> throw new AssertionError("type checker bug: expected Source for " + builtinName + ", got " + value);
         };
     }
 

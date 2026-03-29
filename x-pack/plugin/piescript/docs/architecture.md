@@ -432,3 +432,66 @@ stuck terms), where reduction of built-in operators happens inline. The analogy 
 NbE (Symbol-based ESQL compilation) is exact — both use the same evaluate-then-read-back structure.
 
 New reducible builtins can be added to `force` without changing the unifier or elaborator.
+
+## Streaming Data Access (Block G, D-054)
+
+Block G introduces columnar data access and streaming transport, integrating ESQL's compute engine
+into piescript as composable builtins.
+
+### Columnar read path
+
+`Shard.stream : Searcher r → List (DocRef r) → Page r` converts a batch of document references
+into a columnar `Page` — one Block per field, read from doc values via compute engine Block
+builders. This replaces the row-at-a-time `Shard.read` for batch workloads. `Page.toList`
+materializes a `Page` back into piescript `RecordVal`s; `Page.count` returns the row count. The
+user controls where materialization happens (data node vs coordinator).
+
+### Exchange model
+
+Exchanges provide backpressure-controlled streaming of `Page` objects between concurrent tasks
+(same-node or cross-node). The design separates the exchange *descriptor* from the exchange
+*infrastructure*:
+
+- **`Exchange r`** is a serializable descriptor (exchange ID + column names + buffer size). It can
+  travel in closures across nodes. The row type parameter `r` enforces schema consistency across
+  all operations at elaboration time.
+- **`Sink r`** and **`Source r`** are non-serializable, node-local handles instantiated from the
+  descriptor via `Exchange.sink` and `Exchange.connect`. Backed by ESQL's `ExchangeService` —
+  `ExchangeSinkHandler` on the producer side, `ExchangeSourceHandler` with `RemoteSink` on the
+  consumer side. Same-node exchanges use `TransportService.getLocalNodeConnection()`;
+  cross-node exchanges use the same code path with a remote transport connection.
+
+The API is topology-agnostic: the caller creates an `Exchange r`, sends it to the relevant nodes
+(via piescript's existing message-passing), and each node instantiates its local sink or source.
+The `ExchangeService` handles local vs remote routing transparently.
+
+### Callback-based consumption
+
+`Exchange.poll : Source r → (Page r → Null) → Channel Null` invokes the callback for each page
+as it arrives and completes the channel when the source is exhausted. This fits piescript's
+CPS/ActionListener async model and avoids the need for union types (`Page | Null`) or one channel
+per page.
+
+### Data flow
+
+```
+Producer node                           Consumer node
+─────────────                           ─────────────
+Exchange.open cols bufSize → Exchange r ──(send)──→ Exchange r
+Exchange.sink exchange     → Sink r                 Exchange.connect exchange → Source r
+Shard.stream searcher docs → Page r
+Exchange.addPage sink page                          Exchange.poll source callback
+Exchange.finish sink                                  → callback invoked per page
+                                                      → Channel completes when done
+```
+
+### Column name tracking
+
+Compute engine `Page` objects carry only `Block[]` — no field names. ESQL solves this with a
+separate `Layout` metadata track through its operator pipeline. Piescript stores column names in
+the `Exchange r` descriptor (set at `Exchange.open` time) and in `PageVal` (set at `Shard.stream`
+time). Both `Sink` and `Source` derive column names from their parent `Exchange r`.
+
+**Known gap**: the `List Keyword` column names passed to `Exchange.open` are a runtime value — the
+type checker cannot verify they match the fields of `r`. A runtime check on `Exchange.addPage`
+provides a safety net. Future: derive column names from the row type at elaboration time.

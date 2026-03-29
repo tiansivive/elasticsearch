@@ -9,8 +9,10 @@ package org.elasticsearch.xpack.piescript.eval;
 
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.compute.operator.exchange.ExchangeService;
 import org.elasticsearch.core.Nullable;
 import org.elasticsearch.indices.IndicesService;
+import org.elasticsearch.tasks.Task;
 import org.elasticsearch.transport.TransportService;
 
 import java.util.concurrent.Executor;
@@ -28,6 +30,8 @@ import java.util.concurrent.Executor;
  * @param channelRegistry  per-node channel registry mapping channel IDs to listeners (D-045)
  * @param localNodeId      the discovery node ID of this node
  * @param indicesService   access to index shards for Shard.open (D-050)
+ * @param exchangeService  compute engine exchange service for streaming (D-054)
+ * @param task             the transport task for this request (for exchange child request tracking)
  */
 public record EvalDependencies(
     @Nullable Client client,
@@ -36,5 +40,7 @@ public record EvalDependencies(
     @Nullable TransportService transportService,
     ChannelRegistry channelRegistry,
     String localNodeId,
-    @Nullable IndicesService indicesService
+    @Nullable IndicesService indicesService,
+    @Nullable ExchangeService exchangeService,
+    @Nullable Task task
 ) {}

@@ -12,6 +12,7 @@ import org.elasticsearch.action.support.ActionFilters;
 import org.elasticsearch.action.support.HandledTransportAction;
 import org.elasticsearch.client.internal.Client;
 import org.elasticsearch.cluster.service.ClusterService;
+import org.elasticsearch.compute.operator.exchange.ExchangeService;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.injection.guice.Inject;
 import org.elasticsearch.tasks.Task;
@@ -44,6 +45,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
     private final TransportService transportService;
     private final ChannelRegistry channelRegistry;
     private final IndicesService indicesService;
+    private final ExchangeService exchangeService;
 
     @Inject
     public TransportPiescriptAction(
@@ -53,7 +55,8 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         ThreadPool threadPool,
         ClusterService clusterService,
         ChannelRegistry channelRegistry,
-        IndicesService indicesService
+        IndicesService indicesService,
+        ExchangeService exchangeService
     ) {
         super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, threadPool.executor(ThreadPool.Names.GENERIC));
         this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService);
@@ -63,9 +66,10 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         this.transportService = transportService;
         this.channelRegistry = channelRegistry;
         this.indicesService = indicesService;
+        this.exchangeService = exchangeService;
     }
 
-    private EvalDependencies buildEvalDeps() {
+    private EvalDependencies buildEvalDeps(Task task) {
         return new EvalDependencies(
             client,
             executor,
@@ -73,7 +77,9 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             transportService,
             channelRegistry,
             transportService.getLocalNode().getId(),
-            indicesService
+            indicesService,
+            exchangeService,
+            task
         );
     }
 
@@ -81,24 +87,24 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
     protected void doExecute(Task task, PiescriptRequest request, ActionListener<PiescriptResponse> listener) {
         String program = request.program().strip();
         if (request.dev()) {
-            executeDev(program, listener);
+            executeDev(task, program, listener);
         } else {
-            executeEval(program, listener);
+            executeEval(task, program, listener);
         }
     }
 
     // ── Normal eval pipeline ──
 
-    private void executeEval(String program, ActionListener<PiescriptResponse> listener) {
+    private void executeEval(Task task, String program, ActionListener<PiescriptResponse> listener) {
         try {
             var cst = parser.parse(program);
             var useIndexNames = IndexResolutionPrePass.collectUseDeclarations(cst);
 
             if (useIndexNames.isEmpty()) {
-                elaborateAndEvaluate(cst, null, listener);
+                elaborateAndEvaluate(task, cst, null, listener);
             } else {
                 indexResolutionPrePass.resolve(useIndexNames, listener.delegateFailureAndWrap((l, resolvedMappings) -> {
-                    executor.execute(() -> elaborateAndEvaluate(cst, resolvedMappings, l));
+                    executor.execute(() -> elaborateAndEvaluate(task, cst, resolvedMappings, l));
                 }));
             }
         } catch (Exception e) {
@@ -107,6 +113,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
     }
 
     private void elaborateAndEvaluate(
+        Task task,
         PiescriptAntlrParser.ProgramContext cst,
         Map<String, ResolvedMapping> resolvedMappings,
         ActionListener<PiescriptResponse> listener
@@ -119,7 +126,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             var elaborator = new Elaborator(state);
             var coreExpr = elaborator.elaborateProgram(cst);
             var type = CorePrinter.printType(coreExpr.type(), state);
-            var evaluator = new Evaluator(buildEvalDeps());
+            var evaluator = new Evaluator(buildEvalDeps(task));
             evaluator.evaluate(
                 coreExpr,
                 listener.delegateFailureAndWrap((l, value) -> l.onResponse(PiescriptResponse.fromValue(value, type)))
@@ -131,7 +138,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
 
     // ── Dev pipeline: same stages, never fails — errors are reported in the response ──
 
-    private void executeDev(String program, ActionListener<PiescriptResponse> listener) {
+    private void executeDev(Task task, String program, ActionListener<PiescriptResponse> listener) {
         String treeString;
         PiescriptAntlrParser.ProgramContext cst;
         try {
@@ -145,10 +152,10 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         try {
             var useIndexNames = IndexResolutionPrePass.collectUseDeclarations(cst);
             if (useIndexNames.isEmpty()) {
-                elaborateAndEvaluateDev(cst, treeString, null, listener);
+                elaborateAndEvaluateDev(task, cst, treeString, null, listener);
             } else {
                 indexResolutionPrePass.resolve(useIndexNames, ActionListener.wrap(resolvedMappings -> {
-                    executor.execute(() -> elaborateAndEvaluateDev(cst, treeString, resolvedMappings, listener));
+                    executor.execute(() -> elaborateAndEvaluateDev(task, cst, treeString, resolvedMappings, listener));
                 }, e -> { listener.onResponse(devTypeError(treeString, "index resolution failed: " + e.getMessage())); }));
             }
         } catch (Exception e) {
@@ -157,6 +164,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
     }
 
     private void elaborateAndEvaluateDev(
+        Task task,
         PiescriptAntlrParser.ProgramContext cst,
         String treeString,
         Map<String, ResolvedMapping> resolvedMappings,
@@ -177,7 +185,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             String zonker = CorePrinter.printZonker(state);
             List<String> diagnostics = state.diagnostics();
 
-            var evaluator = new Evaluator(buildEvalDeps());
+            var evaluator = new Evaluator(buildEvalDeps(task));
             evaluator.evaluate(
                 coreExpr,
                 ActionListener.wrap(

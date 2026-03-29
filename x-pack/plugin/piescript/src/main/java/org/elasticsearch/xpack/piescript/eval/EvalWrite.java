@@ -138,7 +138,7 @@ final class EvalWrite {
                 sourceToParse,
                 UNASSIGNED_SEQ_NO,
                 UNASSIGNED_PRIMARY_TERM,
-                System.currentTimeMillis(),
+                -1, // user-provided ID: engine uses INDEX semantics (upsert), not CREATE
                 false
             );
 

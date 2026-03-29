@@ -563,6 +563,12 @@ public class SerializationRoundTripTests extends ESTestCase {
                 assertEquals(e.uuid(), a.uuid());
                 assertEquals(e.fieldTypes(), a.fieldTypes());
             }
+            case Value.ExchangeVal e -> {
+                var a = (Value.ExchangeVal) actual;
+                assertEquals(e.exchangeId(), a.exchangeId());
+                assertEquals(e.columnNames(), a.columnNames());
+                assertEquals(e.bufferSize(), a.bufferSize());
+            }
             case Value.SearcherVal ignored -> fail("SearcherVal should not be serialized");
             case Value.DocRefVal ignored -> fail("DocRefVal should not be serialized");
             case Value.WriterVal ignored -> fail("WriterVal should not be serialized");

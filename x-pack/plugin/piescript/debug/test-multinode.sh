@@ -215,6 +215,84 @@ echo ""
 echo "=== 23. ESQL.stats — end-to-end query execution ==="
 post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.stats (fn r -> { count: ESQL.count \"*\" });"}'
 
+# ──────────────────────────────────────────
+# Block G: Streaming data access
+# ──────────────────────────────────────────
+
+echo ""
+echo "=== 24. Shard.stream + Page.count — batch docs into a Page ==="
+PROG24='use "piescript-test" as idx;
+let shards = Index.shards idx
+in let shard = List.head shards
+in let node = shard.node
+in let result_ch = spawn!
+in let u = send node.inbox (fn info ->
+  let data_ch = Shard.open idx shard { match_all: true }
+  in when (data_ch searcher) ->
+    let docs = Shard.consume 10 searcher
+    in let page = Shard.stream searcher docs
+    in send result_ch (Page.count page))
+in when (result_ch count) -> count'
+post "{\"program\": $(echo "$PROG24" | jq -Rs .)}"
+
+echo ""
+echo "=== 25. Shard.stream + Page.toList — materialize Page to records ==="
+PROG25='use "piescript-test" as idx;
+let shards = Index.shards idx
+in let shard = List.head shards
+in let node = shard.node
+in let result_ch = spawn!
+in let u = send node.inbox (fn info ->
+  let data_ch = Shard.open idx shard { match_all: true }
+  in when (data_ch searcher) ->
+    let docs = Shard.consume 10 searcher
+    in let page = Shard.stream searcher docs
+    in send result_ch (Page.toList page))
+in when (result_ch rows) -> rows'
+post "{\"program\": $(echo "$PROG25" | jq -Rs .)}"
+
+echo ""
+echo "=== 26. Shard.stream + Page.toList — compare with Shard.read ==="
+PROG26='use "piescript-test" as idx;
+let shards = Index.shards idx
+in let shard = List.head shards
+in let node = shard.node
+in let result_ch = spawn!
+in let u = send node.inbox (fn info ->
+  let data_ch = Shard.open idx shard { match_all: true }
+  in when (data_ch searcher) ->
+    let docs = Shard.consume 10 searcher
+    in let page = Shard.stream searcher docs
+    in let page_rows = Page.toList page
+    in let read_rows = List.map (fn d -> Shard.read d) docs
+    in send result_ch { page_count: List.length page_rows, read_count: List.length read_rows })
+in when (result_ch counts) -> counts'
+post "{\"program\": $(echo "$PROG26" | jq -Rs .)}"
+
+echo ""
+echo "=== 27. Exchange.open + Exchange.sink + Exchange.connect + addPage + poll ==="
+PROG27='use "piescript-test" as idx;
+let shards = Index.shards idx
+in let shard = List.head shards
+in let node = shard.node
+in let result_ch = spawn!
+in let u = send node.inbox (fn info ->
+  let data_ch = Shard.open idx shard { match_all: true }
+  in when (data_ch searcher) ->
+    let docs = Shard.consume 10 searcher
+    in let page = Shard.stream searcher docs
+    in let ex = Exchange.open ["name", "age", "score", "active"] 8
+    in let snk = Exchange.sink ex
+    in let src = Exchange.connect ex
+    in let u1 = Exchange.addPage snk page
+    in let u2 = Exchange.finish snk
+    in let collect_ch = spawn!
+    in let poll_ch = Exchange.poll src (fn p -> send collect_ch (Page.count p))
+    in when (poll_ch done) & (collect_ch count) ->
+      send result_ch count)
+in when (result_ch count) -> count'
+post "{\"program\": $(echo "$PROG27" | jq -Rs .)}"
+
 echo ""
 echo "========================================"
 echo "  Done"

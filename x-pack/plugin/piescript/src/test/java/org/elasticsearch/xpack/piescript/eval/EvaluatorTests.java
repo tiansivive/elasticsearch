@@ -1147,6 +1147,8 @@ public class EvaluatorTests extends ESTestCase {
             transportService,
             new ChannelRegistry(),
             transportService.getLocalNode().getId(),
+            null,
+            null,
             null
         );
     }

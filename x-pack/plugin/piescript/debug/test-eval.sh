@@ -191,3 +191,18 @@ echo "=== D-053: ESQL.statsBy — count grouped by status (explain) ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
   -d '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.statsBy (fn r -> { count: ESQL.count \"*\" }) (fn r -> { status: r.status }))"}' | jq
+
+echo ""
+echo "=== Block G: Exchange.open type check (dev) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "Exchange.open [\"name\", \"age\"] 8"}' | jq '.type'
+
+echo ""
+echo "=== Block G: Page.toList / Page.count type check (dev) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "Page.toList"}' | jq '.type'
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "Page.count"}' | jq '.type'
