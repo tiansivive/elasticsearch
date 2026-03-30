@@ -695,6 +695,8 @@ full MV semantics. See D-053 F-omega section and Block G streaming.
 | Design document / decision record | :memo: |
 | `ESQL.top` / `ESQL.values` — MV aggregates returning `List a` | :white_check_mark: |
 | Type-driven materialization in `EsqlValueConverter` | :white_check_mark: |
+| `ESQL.topBy` — correlated TOP with outputField (`TOP(sort, N, order, output)`) | :memo: |
+| `ESQL.topBy` record variant — `ESQL.topBy r.score 3 "desc" { id: r.id, time: r.time }` compiles to multiple correlated `TOP` calls. Requires `MapList` row operator (`Row → Row` lifting each field to `List`) for precise typing | :thought_balloon: |
 | `EsqlValueConverter` — stop discarding MV values for ALL fields (baseline fix) | :memo: |
 | MV-capable runtime value representation | :memo: |
 | Scalar pervasion in `CorePrimOp` evaluation | :memo: |
