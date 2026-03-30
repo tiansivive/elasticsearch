@@ -362,6 +362,43 @@ public class SerializationRoundTripTests extends ESTestCase {
         assertThat(ex.getMessage(), containsString("not serializable"));
     }
 
+    public void testValuePageNotSerializable() {
+        var ex = expectThrows(IOException.class, () -> {
+            var out = new BytesStreamOutput();
+            ValueSerialization.writeValue(out, new Value.PageVal(null, java.util.List.of()));
+        });
+        assertThat(ex.getMessage(), containsString("not serializable"));
+    }
+
+    public void testValueExchangeSinkNotSerializable() {
+        var ex = expectThrows(IOException.class, () -> {
+            var out = new BytesStreamOutput();
+            ValueSerialization.writeValue(out, new Value.ExchangeSinkVal(null, java.util.List.of()));
+        });
+        assertThat(ex.getMessage(), containsString("not serializable"));
+    }
+
+    public void testValueExchangeSourceNotSerializable() {
+        var ex = expectThrows(IOException.class, () -> {
+            var out = new BytesStreamOutput();
+            ValueSerialization.writeValue(out, new Value.ExchangeSourceVal(null, java.util.List.of()));
+        });
+        assertThat(ex.getMessage(), containsString("not serializable"));
+    }
+
+    public void testValueExchangeSerializable() throws IOException {
+        var exchange = new Value.ExchangeVal("test-id-123", java.util.List.of("name", "age"), 32);
+        var out = new BytesStreamOutput();
+        ValueSerialization.writeValue(out, exchange);
+        var in = out.bytes().streamInput();
+        var deserialized = ValueSerialization.readValue(in);
+        assertTrue(deserialized instanceof Value.ExchangeVal);
+        var ex = (Value.ExchangeVal) deserialized;
+        assertEquals("test-id-123", ex.exchangeId());
+        assertEquals(java.util.List.of("name", "age"), ex.columnNames());
+        assertEquals(32, ex.bufferSize());
+    }
+
     // ──── Helpers ────
 
     private void assertMonoTypeRoundTrip(MonoType type) throws IOException {

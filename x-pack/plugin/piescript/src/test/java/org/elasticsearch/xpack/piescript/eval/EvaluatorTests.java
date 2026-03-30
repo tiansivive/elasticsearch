@@ -1139,6 +1139,74 @@ public class EvaluatorTests extends ESTestCase {
         assertEquals("\"say \\\"hi\\\"\"", EvalBuiltins.compileValueToEsql(new Value.KeywordVal("say \"hi\"")));
     }
 
+    // ──── ESQL.top / ESQL.values NbE compilation tests ────
+
+    public void testEsqlTopProducesSymbol() {
+        // ESQL.top (Symbol("age")) 3.0 "desc" → Symbol("TOP(age, 3, \"desc\")")
+        var topFree = new CoreFree(SRC, "ESQL.top", DBL);
+        var app1 = new CoreApp(SRC, topFree, new CoreVar(SRC, 0, "field", DBL), DBL);
+        var app2 = new CoreApp(SRC, app1, new CoreVar(SRC, 1, "count", DBL), DBL);
+        var expr = new CoreApp(SRC, app2, new CoreVar(SRC, 2, "order", DBL), DBL);
+        var result = evaluateWithEnv(expr, new Value.Symbol("age"), new Value.DoubleVal(3), new Value.KeywordVal("desc"));
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("TOP(age, 3, \"desc\")", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlTopAscProducesSymbol() {
+        var topFree = new CoreFree(SRC, "ESQL.top", DBL);
+        var app1 = new CoreApp(SRC, topFree, new CoreVar(SRC, 0, "field", DBL), DBL);
+        var app2 = new CoreApp(SRC, app1, new CoreVar(SRC, 1, "count", DBL), DBL);
+        var expr = new CoreApp(SRC, app2, new CoreVar(SRC, 2, "order", DBL), DBL);
+        var result = evaluateWithEnv(expr, new Value.Symbol("score"), new Value.DoubleVal(5), new Value.KeywordVal("asc"));
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("TOP(score, 5, \"asc\")", ((Value.Symbol) result).esql());
+    }
+
+    public void testEsqlTopInvalidOrderFails() {
+        var topFree = new CoreFree(SRC, "ESQL.top", DBL);
+        var app1 = new CoreApp(SRC, topFree, new CoreVar(SRC, 0, "field", DBL), DBL);
+        var app2 = new CoreApp(SRC, app1, new CoreVar(SRC, 1, "count", DBL), DBL);
+        var expr = new CoreApp(SRC, app2, new CoreVar(SRC, 2, "order", DBL), DBL);
+        var future = new PlainActionFuture<Value>();
+        new Evaluator(testDeps(EsExecutors.DIRECT_EXECUTOR_SERVICE)).evaluate(
+            expr,
+            new Value[] { new Value.Symbol("age"), new Value.DoubleVal(3), new Value.KeywordVal("bad") },
+            future
+        );
+        var ex = expectThrows(EvaluationException.class, future::actionGet);
+        assertThat(ex.getMessage(), containsString("order must be \"asc\" or \"desc\""));
+    }
+
+    public void testEsqlValuesProducesSymbol() {
+        // ESQL.values (Symbol("name")) → Symbol("VALUES(name)")
+        var valuesFree = new CoreFree(SRC, "ESQL.values", DBL);
+        var expr = new CoreApp(SRC, valuesFree, new CoreVar(SRC, 0, "field", DBL), DBL);
+        var result = evaluateWithEnv(expr, new Value.Symbol("name"));
+        assertThat(result, instanceOf(Value.Symbol.class));
+        assertEquals("VALUES(name)", ((Value.Symbol) result).esql());
+    }
+
+    // ──── EsqlValueConverter type-driven materialization tests ────
+
+    public void testConvertCellScalar() {
+        assertEquals(new Value.DoubleVal(42), EsqlValueConverter.convertCell(42));
+        assertEquals(new Value.DoubleVal(3.14), EsqlValueConverter.convertCell(3.14));
+        assertEquals(new Value.KeywordVal("hello"), EsqlValueConverter.convertCell("hello"));
+        assertEquals(new Value.BooleanVal(true), EsqlValueConverter.convertCell(true));
+        assertTrue(EsqlValueConverter.convertCell(null) instanceof Value.NullVal);
+    }
+
+    public void testConvertCellMvTakesFirst() {
+        // Without listColumns, MV fields take first element
+        var result = EsqlValueConverter.convertCell(java.util.List.of(10, 20, 30));
+        assertEquals(new Value.DoubleVal(10), result);
+    }
+
+    public void testConvertCellMvEmptyIsNull() {
+        var result = EsqlValueConverter.convertCell(java.util.List.of());
+        assertTrue(result instanceof Value.NullVal);
+    }
+
     private static EvalDependencies testDeps(java.util.concurrent.Executor executor) {
         return new EvalDependencies(
             null,
