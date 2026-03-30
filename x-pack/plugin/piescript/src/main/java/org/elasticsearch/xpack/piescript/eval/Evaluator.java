@@ -38,6 +38,7 @@ import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.core.CoreWhen;
 import org.elasticsearch.xpack.piescript.elab.Prelude;
 import org.elasticsearch.xpack.piescript.types.LitVal;
+import org.elasticsearch.xpack.piescript.types.MonoType;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -180,12 +181,15 @@ public final class Evaluator {
                         l.onFailure(new EvaluationException("query evaluation requires a client"));
                         return;
                     }
+                    var listColumns = extractListColumns(qe.type());
                     var request = EsqlQueryRequest.syncEsqlQueryRequest(sym.esql());
                     deps.client()
                         .execute(
                             EsqlQueryAction.INSTANCE,
                             request,
-                            l.delegateFailureAndWrap((l2, response) -> l2.onResponse(EsqlValueConverter.convertResponse(response)))
+                            l.delegateFailureAndWrap(
+                                (l2, response) -> l2.onResponse(EsqlValueConverter.convertResponse(response, listColumns))
+                            )
                         );
                 } else {
                     l.onFailure(new EvaluationException("query expression did not produce an ESQL Symbol"));
@@ -322,6 +326,51 @@ public final class Evaluator {
             case Value.BuiltinVal builtin -> EvalBuiltins.applyBuiltin(this, builtin, arg, listener);
             default -> listener.onFailure(new IllegalStateException("type checker bug: expected callable, got " + fn));
         }
+    }
+
+    // ──── Type-driven helpers ────
+
+    /**
+     * Extract the set of column names whose elaborated type is {@code List a}.
+     * Used by {@code CoreQueryExec} to tell the converter which columns should
+     * materialize as {@code ListVal} instead of scalar.
+     *
+     * <p>The query type is {@code List (Record r)} where {@code r} is a concrete
+     * {@code RowType}. We force the type lazily, unwrap to the row, and collect
+     * field names where the field type is {@code AppType(TCon("List"), _)}.
+     */
+    private java.util.Set<String> extractListColumns(MonoType queryType) {
+        if (deps.force() == null) return java.util.Set.of();
+
+        var force = deps.force();
+        var resolved = force.apply(queryType);
+
+        // query type must be List (Record r) — if not, the type checker has a bug
+        if (!(resolved instanceof MonoType.AppType(var listCtor, var inner))
+            || !(listCtor instanceof MonoType.TCon tc && "List".equals(tc.name()))) {
+            throw new AssertionError("type checker bug: query type is not List (...), got " + resolved);
+        }
+
+        var recordType = force.apply(inner);
+        if (!(recordType instanceof MonoType.RecordType(var row))) {
+            throw new AssertionError("type checker bug: query type is not List (Record r), got List (" + recordType + ")");
+        }
+
+        var rowType = force.apply(row);
+        if (!(rowType instanceof org.elasticsearch.xpack.piescript.types.RowType rt)) {
+            throw new AssertionError("type checker bug: query row type is not a concrete RowType, got " + rowType);
+        }
+
+        var listCols = new java.util.HashSet<String>();
+        for (var entry : rt.fields().entrySet()) {
+            var fieldType = force.apply(entry.getValue());
+            if (fieldType instanceof MonoType.AppType(var fc, var elemType)
+                && fc instanceof MonoType.TCon ftc
+                && "List".equals(ftc.name())) {
+                listCols.add(entry.getKey());
+            }
+        }
+        return listCols;
     }
 
     // ──── Environment ────
