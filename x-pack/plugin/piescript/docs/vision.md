@@ -604,3 +604,187 @@ The risk of explicitly targeting ML is scope creep and mismatched expectations. 
 GPU support, tensor operations, and training capabilities that ES cannot provide. The safer
 position: piescript is general-purpose, and ML pipelines benefit significantly because they're
 data-heavy workflows that today require unnecessary extraction from ES.
+
+---
+
+## External Interaction Model
+
+Piescript today is a closed box: POST a program, get a result. This section describes the
+long-term model for how piescript programs interact with the outside world — other services,
+users, and systems beyond Elasticsearch.
+
+### Layer 1: Actor Model (script lifecycle)
+
+A piescript program is a **persistent actor** with an identity. You submit it, it runs
+asynchronously, and you interact with it through channels exposed as HTTP endpoints.
+
+```
+PUT  _piescript/run           → { id: "uuid", token: "..." }   -- submit, returns immediately
+GET  _piescript/{id}/result   → value or 202                    -- poll for return value
+POST _piescript/{id}/inbox    → send a value into the script    -- external input
+DELETE _piescript/{id}        → cancel                          -- kill and clean up
+```
+
+The script can **expose named channels** on specific nodes. The token is the capability —
+possession grants access to all the script's channels. Internally, everything is channels, same
+as piescript's existing Join Calculus model. The REST layer is just an HTTP skin over `send`/`when`.
+
+For streaming output, an exposed channel can be consumed via SSE (Server-Sent Events):
+```
+GET _piescript/{id}/channels/{name}/stream   → SSE event stream
+```
+
+The script `send`s values to the channel; the SSE connection drains them incrementally.
+
+**Use cases:**
+- Long-running risk score computation — submit, check back later
+- Interactive data exploration — send queries to a running script, get results back
+- Orchestration — one script manages a pipeline, external systems feed it data via inbox
+- Incremental output — Kibana subscribes to a channel, receives scored batches as they're computed
+
+### Layer 2: Plugin SPI (typed builtins from Java)
+
+Any ES plugin can register piescript builtins with type schemes, arities, and Java
+implementations. The plugin author writes Java, piescript users get type-safe builtins.
+
+```java
+// In a kafka-piescript-bridge ES plugin
+public class KafkaPiescriptExtension implements PiescriptExtension {
+    typeSchemes() → { "Kafka.produce": ∀a. Keyword → a → Channel Null, ... }
+    arities()     → { "Kafka.produce": 2, ... }
+    execute("Kafka.produce", args, listener) → // Java Kafka client code
+}
+```
+
+The piescript user writes:
+```
+let scored = List.map (fn r -> { ... }) raw;
+Kafka.produce "risk-scores" scored
+```
+
+The Java plugin handles the Kafka client, connection pooling, serialization. Piescript provides
+the orchestration and type safety.
+
+**Use cases:**
+- **Kafka/RabbitMQ** — `Kafka.produce`/`Kafka.consume` backed by Java Kafka client
+- **HTTP webhooks** — `Http.post url body` backed by ES's HTTP client
+- **Custom storage** — S3, HDFS, database connectors as ES plugins
+- **ML inference** — wrap a model as `ML.predict model input`
+- **Domain-specific ops** — a security team wraps proprietary scoring logic as typed builtins
+
+Each integration is a **typed, sandboxed extension point**. No changes to piescript core per
+integration.
+
+### Layer 3: FFI (JVM access via Painless allowlist)
+
+For ad-hoc JVM access without writing a full plugin, piescript exposes a Foreign Function
+Interface gated by Painless's security allowlist — the same curated set of classes/methods
+that Painless already audits and maintains.
+
+```
+let sqrt = Java.call "java.lang.Math" "sqrt" 25.0
+let encoded = Java.call "java.util.Base64.getEncoder" "encodeToString" data
+```
+
+Piescript reuses the allowlist definitions via Painless's SPI (`WhitelistLoader`, the `.txt`
+files), builds its own lookup, and checks every `Java.call` against it. Plugins can extend the
+allowlist via ServiceLoader (same as Painless's `PainlessExtension`).
+
+**Use cases:**
+- **Quick prototyping** — try a Java API without writing a plugin
+- **Math/crypto/encoding** — `java.lang.Math`, `Base64`, `MessageDigest` (already allowlisted)
+- **String manipulation** — full `java.lang.String` API, regex via `java.util.regex.Pattern`
+- **Bridging to bytecode compilation** — when piescript compiles to JVM bytecode, FFI calls
+  become direct Java method invocations with zero overhead
+
+**Security model:**
+- Painless allowlist (compile-time) — which Java classes/methods are callable
+- ES entitlement system (runtime) — JVM-level instrumentation for dangerous operations
+- Two independent layers, both already maintained by ES
+
+### Example: Incremental Risk Scoring with Multi-Channel Output
+
+This example combines all three layers. A persistent piescript actor paginates through alerts,
+computes risk scores incrementally, and pushes each batch to three destinations simultaneously:
+ES (for persistence), Kafka (for downstream systems), and an outbound channel (for Kibana
+real-time display).
+
+```
+-- Submitted via PUT _piescript/run
+-- Kibana connects via GET _piescript/{id}/channels/scores/stream (SSE)
+
+use ".alerts-security" as idx;
+
+let pseries_weighted_sum = fn s values ->
+  List.reduce (fn acc v ->
+    { sum: acc.sum + v / Math.pow acc.i s, i: acc.i + 1 }
+  ) { sum: 0.0, i: 1.0 } values
+  |> (fn state -> state.sum)
+
+in let scores_out = expose! "scores"   -- Kibana subscribes here via SSE
+in let done_out = expose! "done"       -- signals completion
+
+in let process = fn self after_key ->
+  let raw = query ESQL.from idx
+    |> ESQL.where (fn r -> r.user.name > after_key)
+    |> ESQL.statsBy
+         (fn r -> {
+           top_scores: ESQL.top r.kibana.alert.risk_score 10000 "desc",
+           alert_count: ESQL.count "*"
+         })
+         (fn r -> { user_name: r.user.name })
+    |> ESQL.limit 1000;
+
+  in if List.isEmpty raw then send done_out { status: "complete" }
+  else
+    let scored = List.map (fn user -> {
+      user_name: user.user_name,
+      score: pseries_weighted_sum 1.5 user.top_scores,
+      alert_count: user.alert_count
+    }) raw
+
+    -- Write to ES (existing builtin)
+    in let u1 = Index.bulk "risk-scores" scored
+    -- Publish to Kafka (Layer 2: plugin SPI)
+    in let u2 = Kafka.produce "risk-score-updates" scored
+    -- Push to Kibana (Layer 1: actor channel → SSE)
+    in let u3 = send scores_out scored
+    -- Next page
+    in let last = List.head (List.tail raw)
+    in self self last.user_name
+
+in process process ""
+```
+
+**What happens:**
+1. User submits the script → gets back an ID and token
+2. Kibana opens an SSE connection to `GET _piescript/{id}/channels/scores/stream`
+3. The script paginates through alerts, computing risk scores in batches of 1000 users
+4. Each batch is simultaneously: written to the `risk-scores` index, published to Kafka, and
+   pushed to Kibana's SSE stream
+5. Kibana displays scores incrementally as they arrive — no waiting for the full run
+6. When done, the `done` channel fires, Kibana shows completion
+7. The script's result channel completes with the final summary
+
+One program replaces: a Transform (pagination + writes), a Watcher (scheduling), a Kafka
+connector (event publishing), and client-side orchestration (progress tracking).
+
+### Implementation Layers
+
+| Layer | Dependencies | Status |
+|-------|-------------|--------|
+| Actor model (`PUT`/`GET`/`DELETE`, result channel) | Channels (done), REST endpoints (new) | Design |
+| Named channels + `expose!` | Multi-value channels (Block H prerequisite) | Design |
+| SSE streaming | Named channels + HTTP chunked response | Design |
+| Plugin SPI for typed builtins | ServiceLoader, `PiescriptExtension` interface | Design |
+| FFI via Painless allowlist | Painless SPI (exists), piescript lookup (new) | Design |
+| Bytecode compilation (FFI zero-cost) | Pure fragment detection, JVM codegen | Long-term |
+
+### Security
+
+| Layer | Mechanism | Source |
+|-------|-----------|--------|
+| Actor channels | Token-based capability (returned at submit time) | New |
+| Plugin SPI | ES plugin security model, plugin author controls exposure | Existing |
+| FFI | Painless allowlist (compile-time) + entitlement system (runtime) | Existing |
+| Script submission | ES action-level auth (`indices:data/read/piescript`) | Existing |
