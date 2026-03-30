@@ -14,8 +14,10 @@ import org.elasticsearch.core.Nullable;
 import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.tasks.Task;
 import org.elasticsearch.transport.TransportService;
+import org.elasticsearch.xpack.piescript.types.MonoType;
 
 import java.util.concurrent.Executor;
+import java.util.function.Function;
 
 /**
  * Bundles external dependencies needed by the evaluator and its handler classes
@@ -32,6 +34,7 @@ import java.util.concurrent.Executor;
  * @param indicesService   access to index shards for Shard.open (D-050)
  * @param exchangeService  compute engine exchange service for streaming (D-054)
  * @param task             the transport task for this request (for exchange child request tracking)
+ * @param force            lazy type resolver — chases Meta chains to concrete types (from ElaborationState::force)
  */
 public record EvalDependencies(
     @Nullable Client client,
@@ -42,5 +45,6 @@ public record EvalDependencies(
     String localNodeId,
     @Nullable IndicesService indicesService,
     @Nullable ExchangeService exchangeService,
-    @Nullable Task task
+    @Nullable Task task,
+    @Nullable Function<MonoType, MonoType> force
 ) {}

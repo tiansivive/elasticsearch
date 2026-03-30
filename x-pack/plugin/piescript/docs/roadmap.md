@@ -595,6 +595,7 @@ first-class `MonoType`) also completed.
 | Phase 3: `Pick` and `Omit` row operators, closure-based `ESQL.keep`/`ESQL.drop` | :white_check_mark: |
 | Phase 4: `ESQL.stats`/`ESQL.statsBy`, aggregate builtins, `ESQL.bucket` | :white_check_mark: |
 | Phase 5: Tests, documentation, debug scripts | :white_check_mark: |
+| `ESQL.top` / `ESQL.values` — MV-returning aggregates with type-driven materialization | :white_check_mark: |
 
 **Deferred to future work (D-053)**:
 - ESQL expression wrapper type — aggregate builtins produce `Symbol` where type says `Double`
@@ -684,10 +685,17 @@ when data comes from ES.
 - Whether field caps can distinguish MV-capable vs single-value-only fields
 - Interaction with the ESQL expression wrapper type (D-053 future work)
 
+**Partial progress:** `ESQL.top` and `ESQL.values` builtins return `List a` via type-driven
+materialization. `EsqlValueConverter` uses the elaborated row type (via `force`) to decide which
+columns materialize as `ListVal` vs scalar. This unblocks the risk score query without requiring
+full MV semantics. See D-053 F-omega section and Block G streaming.
+
 | Task | Status |
 |------|--------|
 | Design document / decision record | :memo: |
-| `EsqlValueConverter` — stop discarding MV values (baseline fix) | :memo: |
+| `ESQL.top` / `ESQL.values` — MV aggregates returning `List a` | :white_check_mark: |
+| Type-driven materialization in `EsqlValueConverter` | :white_check_mark: |
+| `EsqlValueConverter` — stop discarding MV values for ALL fields (baseline fix) | :memo: |
 | MV-capable runtime value representation | :memo: |
 | Scalar pervasion in `CorePrimOp` evaluation | :memo: |
 | `Single a` type + boxing/unboxing | :memo: |

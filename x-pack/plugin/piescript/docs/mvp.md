@@ -172,27 +172,31 @@ Push what ESQL is efficient at (filtering, grouping, TOP-N via Lucene) into ESQL
 is bad at (user-defined aggregates, structured output) into piescript:
 
 ```
+use ".alerts-security" as idx;
 let pseries_weighted_sum = fn s values ->
-  let state = reduce { sum: 0.0, i: 1 } (fn acc v ->
-    { sum: acc.sum + v / pow acc.i s, i: acc.i + 1 }
-  ) values
+  let state = List.reduce (fn acc v ->
+    { sum: acc.sum + v / Math.pow acc.i s, i: acc.i + 1 }
+  ) { sum: 0.0, i: 1 } values
   in state.sum
 
-in let raw = query `FROM .alerts-security METADATA _index
-  | WHERE kibana.alert.risk_score IS NOT NULL
-  | STATS alert_count = count(kibana.alert.risk_score),
-          top_scores = TOP(kibana.alert.risk_score, 10000, "desc"),
-          top_ids = TOP(kibana.alert.uuid, 10, "desc")
-    BY user.name
-  | SORT alert_count DESC
-  | LIMIT 3000`
+in let raw = query ESQL.from idx
+  |> ESQL.where (fn r -> r.kibana.alert.risk_score != 0)
+  |> ESQL.statsBy
+       (fn r -> {
+         alert_count: ESQL.count "*",
+         top_scores: ESQL.top r.kibana.alert.risk_score 10000 "desc",
+         top_ids: ESQL.top r.kibana.alert.uuid 10 "desc"
+       })
+       (fn r -> { user_name: r.user.name })
+  |> ESQL.sort (fn r -> r.alert_count)
+  |> ESQL.limit 3000;
 
-in raw |> map (fn user -> {
-  user_name: user.user.name,
+in List.map (fn user -> {
+  user_name: user.user_name,
   alert_count: user.alert_count,
   score: pseries_weighted_sum 1.5 user.top_scores,
-  risk_inputs: map (fn id -> { alert_id: id }) user.top_ids
-})
+  risk_inputs: List.map (fn id -> { alert_id: id }) user.top_ids
+}) raw
 ```
 
 ### What This Demonstrates
@@ -204,21 +208,40 @@ in raw |> map (fn user -> {
   No `CONCAT`, no `TO_BASE64`, no escaped quotes.
 - **Composable** — the scoring function, the query, and the output formatting are separate,
   testable, reusable pieces. `pseries_weighted_sum` can be used across different queries.
-- **Type-safe** — the type checker verifies that `user.top_scores` is a stream of numbers, that
-  `user.user.name` exists, etc.
+- **Type-safe** — the type checker verifies that `user.top_scores` is `List Double`, that
+  `user.user_name` exists, etc. `ESQL.top r.field N "order"` returns `List a` where `a` is
+  inferred from the field's type.
+- **T-LINQ compilation** — `ESQL.from`, `ESQL.where`, `ESQL.statsBy`, `ESQL.top`, `ESQL.sort`,
+  `ESQL.limit` compile to ESQL via NbE (Symbol-based partial evaluation). The generated ESQL
+  runs natively on the cluster.
 
-### What's Missing to Make This Work
+### What Works Now vs What's Missing
 
-| Gap | What it blocks | Effort | Phase |
-|-----|---------------|--------|-------|
-| Double/float arithmetic | Weighted sum computation | Small — extend `EvalPrimOps` | Phase 1 tech debt (D-020) |
-| `pow` function | Exponentiation for p-series | Small — new primop or prelude built-in | Phase 1 tech debt |
-| Multi-value field handling | ESQL `TOP` returns multi-value arrays | Medium — extend `EsqlValueConverter` | Block A+ |
-| `groupBy` combinator | Per-user aggregation in piescript | Medium — new prelude built-in | Block C |
-| `sort` / `take` combinators | Top-N selection, sorted output | Small-medium — new prelude built-ins | Block C |
+| Capability | Status |
+|-----------|--------|
+| Double/float arithmetic | :white_check_mark: Done (D-020) |
+| `Math.pow` function | :white_check_mark: Done (Prelude builtin) |
+| `ESQL.top` / `ESQL.values` (MV aggregates) | :white_check_mark: Done (type-driven materialization) |
+| T-LINQ ESQL compilation (`query ... ;`) | :white_check_mark: Done (Block F) |
+| `List.map` / `List.reduce` | :white_check_mark: Done |
+| `ESQL.where` with `IS NOT NULL` | :memo: Requires null-check syntax or `!= 0` workaround |
+| `METADATA _index` support in ESQL.from | :memo: Not yet — metadata fields not in row type |
+| `ESQL.sortDesc` for descending sort | :white_check_mark: Done |
 
-The double arithmetic and `pow` gaps are the most immediately actionable — they're straightforward
-extensions that unblock the core value demonstration (user-defined aggregate functions).
+### Performance Consideration
+
+The pure ESQL version uses `MV_PSERIES_WEIGHTED_SUM` — a native Java function operating directly
+on Lucene's columnar data (tight loop over primitive arrays, no boxing). Piescript's
+`List.reduce` walks boxed `DoubleVal`s through the tree-walking evaluator. For 10,000 scores,
+this is 10,000 interpreter steps vs one vectorized call.
+
+The value proposition is not raw performance — it's **extensibility**: `pseries_weighted_sum` is
+a user-defined let-binding, not a PR to the ESQL codebase. Every new domain-specific aggregate
+is a function, not a feature request.
+
+Long-term, pure piescript lambdas are candidates for bytecode compilation over typed arrays (the
+kind system separates pure from effectful code). A fold over `List Double` could lower to a tight
+`double[]` loop with zero boxing — matching native ESQL performance. See Block G plan for details.
 
 ---
 

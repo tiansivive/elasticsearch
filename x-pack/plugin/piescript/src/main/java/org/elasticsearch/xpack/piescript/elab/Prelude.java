@@ -198,7 +198,9 @@ public final class Prelude {
         entry("ESQL.sum", 1),
         entry("ESQL.max", 1),
         entry("ESQL.min", 1),
-        entry("ESQL.bucket", 2)
+        entry("ESQL.bucket", 2),
+        entry("ESQL.top", 3),
+        entry("ESQL.values", 1)
     );
 
     private static Map<String, TypeScheme> buildModule() {
@@ -261,6 +263,8 @@ public final class Prelude {
         module.put("ESQL.max", esqlAggPolyScheme());           // ∀(r:Row)(a:Type). (Record r → a) → a
         module.put("ESQL.min", esqlAggPolyScheme());
         module.put("ESQL.bucket", esqlBucketScheme());
+        module.put("ESQL.top", esqlTopScheme());
+        module.put("ESQL.values", esqlValuesScheme());
         return Map.copyOf(module);
     }
 
@@ -774,5 +778,23 @@ public final class Prelude {
     // ESQL.bucket : Double → Double → Double
     private static TypeScheme esqlBucketScheme() {
         return TypeScheme.mono(new MonoType.Arrow(DBL, new MonoType.Arrow(DBL, DBL)));
+    }
+
+    // ESQL.top : ∀(a:Type). a → Double → Keyword → List a
+    // Used inside ESQL.stats/statsBy closures: ESQL.top r.field 3 "desc"
+    // The field projection r.field provides the value (Symbol at NbE time),
+    // and the type a unifies with the field's type from the enclosing record.
+    private static TypeScheme esqlTopScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(A0, new MonoType.Arrow(DBL, new MonoType.Arrow(KW, list(A0)))));
+    }
+
+    // ESQL.values : ∀(a:Type). a → List a
+    // Used inside ESQL.stats/statsBy closures: ESQL.values r.field
+    private static TypeScheme esqlValuesScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(A0, list(A0)));
     }
 }

@@ -99,7 +99,8 @@ public class TransportPiescriptSendAction extends HandledTransportAction<Piescri
             transportService.getLocalNode().getId(),
             indicesService,
             exchangeService,
-            task
+            task,
+            null // no force function — inbox closures don't need type-driven materialization
         );
     }
 

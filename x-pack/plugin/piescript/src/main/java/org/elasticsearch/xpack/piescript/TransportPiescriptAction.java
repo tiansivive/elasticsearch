@@ -30,6 +30,7 @@ import org.elasticsearch.xpack.piescript.eval.Evaluator;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParsingException;
+import org.elasticsearch.xpack.piescript.types.MonoType;
 
 import java.util.List;
 import java.util.Map;
@@ -69,7 +70,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         this.exchangeService = exchangeService;
     }
 
-    private EvalDependencies buildEvalDeps(Task task) {
+    private EvalDependencies buildEvalDeps(Task task, java.util.function.Function<MonoType, MonoType> force) {
         return new EvalDependencies(
             client,
             executor,
@@ -79,7 +80,8 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             transportService.getLocalNode().getId(),
             indicesService,
             exchangeService,
-            task
+            task,
+            force
         );
     }
 
@@ -126,7 +128,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             var elaborator = new Elaborator(state);
             var coreExpr = elaborator.elaborateProgram(cst);
             var type = CorePrinter.printType(coreExpr.type(), state);
-            var evaluator = new Evaluator(buildEvalDeps(task));
+            var evaluator = new Evaluator(buildEvalDeps(task, state::force));
             evaluator.evaluate(
                 coreExpr,
                 listener.delegateFailureAndWrap((l, value) -> l.onResponse(PiescriptResponse.fromValue(value, type)))
@@ -185,7 +187,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
             String zonker = CorePrinter.printZonker(state);
             List<String> diagnostics = state.diagnostics();
 
-            var evaluator = new Evaluator(buildEvalDeps(task));
+            var evaluator = new Evaluator(buildEvalDeps(task, state::force));
             evaluator.evaluate(
                 coreExpr,
                 ActionListener.wrap(

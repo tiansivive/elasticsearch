@@ -13,6 +13,7 @@ import org.elasticsearch.xpack.esql.action.EsqlQueryResponse;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Converts an {@link EsqlQueryResponse} into a piescript {@link Value.ListVal}.
@@ -27,7 +28,9 @@ import java.util.List;
  * {@link EsqlQueryResponse#rows()}. Datetime, IP, version, and geo types all
  * arrive as {@code String}. This converter maps them to {@link Value.KeywordVal}.
  *
- * <p>Multi-value fields ({@code List<?>}) use a v0 simplification: only the
+ * <p>Multi-value fields ({@code List<?>}) are materialized as {@code ListVal} when
+ * the elaborated type says the field is {@code List a} (e.g., from {@code ESQL.top}
+ * or {@code ESQL.values}). Otherwise, the v0 simplification applies: only the
  * first element is kept.
  */
 public final class EsqlValueConverter {
@@ -36,36 +39,39 @@ public final class EsqlValueConverter {
 
     /**
      * Convert an entire ESQL query response into a materialized list.
-     * Column names become record field keys; cell values become field values.
-     * Column order is preserved via {@link LinkedHashMap}.
+     * Columns in {@code listColumns} are materialized as {@code ListVal};
+     * all others use scalar conversion (first element for MV).
      */
-    public static Value.ListVal convertResponse(EsqlQueryResponse response) {
+    public static Value.ListVal convertResponse(EsqlQueryResponse response, Set<String> listColumns) {
         List<ColumnInfoImpl> columns = response.columns();
         var elements = new ArrayList<Value>();
         for (Iterable<Object> row : response.rows()) {
-            elements.add(convertRow(columns, row));
+            elements.add(convertRow(columns, row, listColumns));
         }
         return new Value.ListVal(elements);
     }
 
     /**
-     * Convert a single ESQL row into a {@link Value.RecordVal} by zipping
-     * column metadata with cell values.
+     * Backward-compatible overload — all columns use scalar conversion.
      */
-    static Value.RecordVal convertRow(List<ColumnInfoImpl> columns, Iterable<Object> row) {
+    public static Value.ListVal convertResponse(EsqlQueryResponse response) {
+        return convertResponse(response, Set.of());
+    }
+
+    static Value.RecordVal convertRow(List<ColumnInfoImpl> columns, Iterable<Object> row, Set<String> listColumns) {
         var fields = new LinkedHashMap<String, Value>();
         int i = 0;
         for (Object cell : row) {
-            fields.put(columns.get(i).name(), convertCell(cell));
+            String colName = columns.get(i).name();
+            fields.put(colName, listColumns.contains(colName) ? convertCellAsList(cell) : convertCell(cell));
             i++;
         }
         return new Value.RecordVal(fields);
     }
 
     /**
-     * Convert a single ESQL cell value to a piescript {@link Value}.
-     * Dispatches on Java runtime type since ESQL's {@code ResponseValueUtils}
-     * has already performed the block-to-object conversion.
+     * Convert a single ESQL cell value to a piescript {@link Value} (scalar).
+     * For MV fields, takes only the first element (v0 simplification).
      */
     static Value convertCell(Object cell) {
         if (cell == null) return new Value.NullVal();
@@ -78,5 +84,22 @@ public final class EsqlValueConverter {
             return list.isEmpty() ? new Value.NullVal() : convertCell(list.getFirst());
         }
         return new Value.KeywordVal(cell.toString());
+    }
+
+    /**
+     * Convert a cell to a {@code ListVal} — all elements preserved.
+     * Used for columns whose elaborated type is {@code List a}.
+     */
+    private static Value convertCellAsList(Object cell) {
+        if (cell == null) return new Value.ListVal(List.of());
+        if (cell instanceof List<?> list) {
+            var elements = new ArrayList<Value>(list.size());
+            for (Object elem : list) {
+                elements.add(convertCell(elem));
+            }
+            return new Value.ListVal(elements);
+        }
+        // Scalar value for a List-typed column — wrap in singleton list
+        return new Value.ListVal(List.of(convertCell(cell)));
     }
 }
