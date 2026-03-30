@@ -227,6 +227,8 @@ in List.map (fn user -> {
 | `ESQL.where` with `IS NOT NULL` | :memo: Requires null-check syntax or `!= 0` workaround |
 | `METADATA _index` support in ESQL.from | :memo: Not yet — metadata fields not in row type |
 | `ESQL.sortDesc` for descending sort | :white_check_mark: Done |
+| `ESQL.topBy` — correlated TOP with outputField | :memo: Needed for multi-field risk inputs (avoids CONCAT hack) |
+| Composite aggregation paging (after_key loop) | :white_check_mark: Works — each `query ;` compiles a fresh ESQL string with the updated filter |
 
 ### Performance Consideration
 
