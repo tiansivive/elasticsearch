@@ -72,6 +72,9 @@ distributed computing with code mobility, coordinated by the Join Calculus.
 - Typeclasses + RawData → Lucene push-down (principled optimization via type system)
 - Exchange streaming (scale via compute engine, orchestrated explicitly by piescript)
 - Push-down to ESQL text (deprioritized — typeclass approach is more general)
+- External interaction model: actor lifecycle, named channels, SSE streaming (see [vision.md § External Interaction Model](vision.md#external-interaction-model))
+- Plugin SPI for typed builtins (Kafka, HTTP, custom connectors)
+- FFI via Painless allowlist (ad-hoc JVM access)
 - Phase 6: QTT multiplicities, session types
 - Phase 7: Module system (stored programs with imports)
 - Phase 8: IDE tooling
