@@ -1,19 +1,30 @@
 #!/usr/bin/env bash
 # Multi-node cross-node execution tests.
-# Requires: 3-node cluster with security disabled, piescript-test index created.
+# Requires: 3-node cluster with piescript-test index created.
 #
-# Run with:
-#   ./gradlew run -Dtests.es.xpack.security.enabled=false -Drun.license_type=trial \
-#     -I ../scripts/es-dev-config/multinode.gradle
+# Works with security enabled or disabled:
+#   Security off:  ./gradlew run -Dtests.es.xpack.security.enabled=false -Drun.license_type=trial -I ../scripts/es-dev-config/multinode.gradle
+#   Security on:   ./gradlew run -Drun.license_type=trial -I ../scripts/es-dev-config/multinode.gradle
+#
 # Then:
-#   bash x-pack/plugin/piescript/debug/setup-test-index-multinode.sh
+#   bash x-pack/plugin/piescript/debug/setup-test-index-multinode.sh   # (no-auth setup)
+#   -- or --
+#   bash x-pack/plugin/piescript/debug/setup-kibana-multinode.sh       # (auth setup + Kibana)
+#
 #   bash x-pack/plugin/piescript/debug/test-multinode.sh
 
 BASE="localhost:9200"
 EVAL="$BASE/_piescript/eval"
 CT='Content-Type: application/json'
 
-post() { curl -s -X POST "$EVAL" -H "$CT" -d "$1" | jq; }
+# Auto-detect security: try unauthenticated request, fall back to auth
+if curl -s -o /dev/null -w '%{http_code}' "$BASE" 2>/dev/null | grep -q '^200$'; then
+  AUTH=""
+else
+  AUTH="-u test_user:x-pack-test-password"
+fi
+
+post() { curl -s $AUTH -X POST "$EVAL" -H "$CT" -d "$1" | jq; }
 
 echo "========================================"
 echo "  Multi-Node Cross-Execution Tests"

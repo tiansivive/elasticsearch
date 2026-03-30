@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
 # Create the piescript-test index with 3 shards (one per node in a 3-node cluster).
-# Security disabled — no auth needed.
+# Works with security enabled or disabled.
 # Safe to run repeatedly — deletes the old index first.
 
 BASE="localhost:9200"
 
+# Auto-detect security
+if curl -s -o /dev/null -w '%{http_code}' "$BASE" 2>/dev/null | grep -q '^200$'; then
+  AUTH=""
+else
+  AUTH="-u test_user:x-pack-test-password"
+fi
+
 echo "=== Cancelling in-flight piescript tasks ==="
-# Cancel any hung piescript requests from previous runs to free up thread pool
-curl -s -X POST "$BASE/_tasks/_cancel?actions=indices:data/read/piescript*&wait_for_completion=false" 2>/dev/null | jq '.node_failures // empty' 2>/dev/null
+curl -s $AUTH -X POST "$BASE/_tasks/_cancel?actions=indices:data/read/piescript*&wait_for_completion=false" 2>/dev/null | jq '.node_failures // empty' 2>/dev/null
 sleep 1
 
 echo "=== Deleting old index ==="
-curl -s -X DELETE "$BASE/piescript-test" | jq
+curl -s $AUTH -X DELETE "$BASE/piescript-test" | jq
 
 echo ""
 echo "=== Creating index (3 shards, 0 replicas) ==="
-curl -s -X PUT "$BASE/piescript-test" \
+curl -s $AUTH -X PUT "$BASE/piescript-test" \
   -H 'Content-Type: application/json' \
   -d '{
     "settings": { "number_of_shards": 3, "number_of_replicas": 0 },
@@ -31,7 +37,7 @@ curl -s -X PUT "$BASE/piescript-test" \
 
 echo ""
 echo "=== Indexing sample docs ==="
-curl -s -X POST "$BASE/piescript-test/_bulk?refresh=true" \
+curl -s $AUTH -X POST "$BASE/piescript-test/_bulk?refresh=true" \
   -H 'Content-Type: application/json' \
   -d '
 {"index":{}}
@@ -50,4 +56,4 @@ curl -s -X POST "$BASE/piescript-test/_bulk?refresh=true" \
 
 echo ""
 echo "=== Shard allocation ==="
-curl -s "$BASE/_cat/shards/piescript-test?v" 
+curl -s $AUTH "$BASE/_cat/shards/piescript-test?v"
