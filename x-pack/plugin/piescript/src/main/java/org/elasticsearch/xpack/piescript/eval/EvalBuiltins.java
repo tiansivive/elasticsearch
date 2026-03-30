@@ -216,6 +216,23 @@ final class EvalBuiltins {
                 var b = compileValueToEsql(args.get(1));
                 listener.onResponse(new Value.Symbol("BUCKET(" + a + ", " + b + ")"));
             }
+            case "ESQL.top" -> {
+                var field = compileValueToEsql(args.get(0));
+                int count = (int) requireDouble(args.get(1), "ESQL.top");
+                var order = switch (args.get(2)) {
+                    case Value.KeywordVal k -> k.value();
+                    default -> throw new AssertionError("type checker bug: expected Keyword for ESQL.top order, got " + args.get(2));
+                };
+                if ("asc".equals(order) == false && "desc".equals(order) == false) {
+                    listener.onFailure(new EvaluationException("ESQL.top: order must be \"asc\" or \"desc\", got \"" + order + "\""));
+                    return;
+                }
+                listener.onResponse(new Value.Symbol("TOP(" + field + ", " + count + ", \"" + order + "\")"));
+            }
+            case "ESQL.values" -> {
+                var field = compileValueToEsql(args.get(0));
+                listener.onResponse(new Value.Symbol("VALUES(" + field + ")"));
+            }
             case "ESQL.stats" -> esqlStatsCommand(eval, args, listener);
             case "ESQL.statsBy" -> esqlStatsByCommand(eval, args, listener);
             default -> listener.onFailure(new EvaluationException("unknown built-in: " + name));

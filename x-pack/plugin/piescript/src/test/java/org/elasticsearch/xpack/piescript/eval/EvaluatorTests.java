@@ -1149,6 +1149,7 @@ public class EvaluatorTests extends ESTestCase {
             transportService.getLocalNode().getId(),
             null,
             null,
+            null,
             null
         );
     }

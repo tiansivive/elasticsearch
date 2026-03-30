@@ -294,6 +294,37 @@ in when (result_ch count) -> count'
 post "{\"program\": $(echo "$PROG27" | jq -Rs .)}"
 
 echo ""
+echo "=== 28. ESQL.statsBy with ESQL.top — MV aggregate returns List ==="
+PROG28='use "piescript-test" as idx;
+query ESQL.from idx
+  |> ESQL.statsBy
+       (fn r -> { top_ages: ESQL.top r.age 3 "desc" })
+       (fn r -> { active: r.active })
+  |> ESQL.limit 10;'
+post "{\"program\": $(echo "$PROG28" | jq -Rs .)}"
+
+echo ""
+echo "=== 29. ESQL.values — unique values as List ==="
+PROG29='use "piescript-test" as idx;
+query ESQL.from idx
+  |> ESQL.stats (fn r -> { names: ESQL.values r.name });'
+post "{\"program\": $(echo "$PROG29" | jq -Rs .)}"
+
+echo ""
+echo "=== 30. ESQL.top + List.reduce — user-defined aggregate over MV result ==="
+PROG30='use "piescript-test" as idx;
+let raw = query ESQL.from idx
+  |> ESQL.statsBy
+       (fn r -> { top_scores: ESQL.top r.score 5 "desc" })
+       (fn r -> { active: r.active });
+in List.map (fn row -> {
+  active: row.active,
+  top_scores: row.top_scores,
+  total: List.reduce (fn acc v -> acc + v) 0 row.top_scores
+}) raw'
+post "{\"program\": $(echo "$PROG30" | jq -Rs .)}"
+
+echo ""
 echo "========================================"
 echo "  Done"
 echo "========================================"
