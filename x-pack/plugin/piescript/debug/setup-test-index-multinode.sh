@@ -5,11 +5,15 @@
 
 BASE="localhost:9200"
 
-# Auto-detect security
-if curl -s -o /dev/null -w '%{http_code}' "$BASE" 2>/dev/null | grep -q '^200$'; then
-  AUTH=""
-else
-  AUTH="-u test_user:x-pack-test-password"
+# Auto-detect security: try unauthenticated, then known credential combos
+AUTH=""
+if ! curl -s -o /dev/null -w '%{http_code}' "$BASE" 2>/dev/null | grep -q '^200$'; then
+  for creds in "elastic:password" "elastic-admin:elastic-password" "test_user:x-pack-test-password"; do
+    if curl -s -u "$creds" -o /dev/null -w '%{http_code}' "$BASE" 2>/dev/null | grep -q '^200$'; then
+      AUTH="-u $creds"
+      break
+    fi
+  done
 fi
 
 echo "=== Cancelling in-flight piescript tasks ==="
