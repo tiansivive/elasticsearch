@@ -2,8 +2,7 @@
 # Set up a multinode ES cluster for Kibana development.
 #
 # Prerequisites:
-#   ./gradlew run -Drun.license_type=trial \
-#     -I ../scripts/es-dev-config/multinode.gradle
+#   ./gradlew run -Drun.license_type=trial -I ../scripts/es-dev-config/multinode.gradle --stacktrace
 #
 # This keeps security ENABLED (the default) so Kibana can connect.
 # Default superuser: test_user / x-pack-test-password
@@ -14,8 +13,22 @@
 # Login to Kibana as: test_user / x-pack-test-password
 
 BASE="localhost:9200"
-USER="test_user:x-pack-test-password"
 
+# Auto-detect credentials — try common defaults from gradlew run
+USER=""
+for creds in "elastic:password" "elastic-admin:elastic-password" "test_user:x-pack-test-password"; do
+  if curl -s -u "$creds" -o /dev/null -w '%{http_code}' "$BASE" 2>/dev/null | grep -q '^200$'; then
+    USER="$creds"
+    break
+  fi
+done
+if [ -z "$USER" ]; then
+  echo "ERROR: could not authenticate to $BASE with any known credentials"
+  exit 1
+fi
+echo "Using credentials: ${USER%%:*}"
+
+echo ""
 echo "=== Waiting for cluster ==="
 until curl -s -u "$USER" "$BASE/_cluster/health" | grep -q '"status"'; do
   echo "  waiting..."
@@ -26,18 +39,6 @@ echo "  cluster is up"
 echo ""
 echo "=== Cluster health ==="
 curl -s -u "$USER" "$BASE/_cluster/health" | jq '{status, number_of_nodes, active_primary_shards}'
-
-echo ""
-echo "=== Setting kibana_system password ==="
-curl -s -u "$USER" -X POST "$BASE/_security/user/kibana_system/_password" \
-  -H 'Content-Type: application/json' \
-  -d '{"password": "kibana"}' | jq
-
-echo ""
-echo "=== Setting elastic password (for Kibana enrollment) ==="
-curl -s -u "$USER" -X POST "$BASE/_security/user/elastic/_password" \
-  -H 'Content-Type: application/json' \
-  -d '{"password": "elastic"}' | jq
 
 echo ""
 echo "=== Creating piescript-test index (3 shards) ==="
@@ -83,19 +84,28 @@ echo ""
 echo "=== Node info ==="
 curl -s -u "$USER" "$BASE/_cat/nodes?v&h=name,ip,node.role"
 
+# Set passwords LAST — changing elastic password invalidates our current credentials
+echo ""
+echo "=== Setting elastic password to 'changeme' (Kibana dev default) ==="
+curl -s -u "$USER" -X POST "$BASE/_security/user/elastic/_password" \
+  -H 'Content-Type: application/json' \
+  -d '{"password": "changeme"}' | jq
+
+# Now set kibana_system AFTER elastic password change, using new elastic creds
+echo ""
+echo "=== Setting kibana_system password to 'changeme' ==="
+curl -s -u "elastic:changeme" -X POST "$BASE/_security/user/kibana_system/_password" \
+  -H 'Content-Type: application/json' \
+  -d '{"password": "changeme"}' | jq
+
 echo ""
 echo "========================================"
 echo "  Ready for Kibana"
 echo "========================================"
 echo ""
-echo "  Kibana config (kibana.yml):"
-echo "    elasticsearch.hosts: [\"http://localhost:9200\"]"
-echo "    elasticsearch.username: \"kibana_system\""
-echo "    elasticsearch.password: \"kibana\""
+echo "  Kibana dev (yarn start --no-base-path) uses elastic:changeme by default."
+echo "  No kibana.yml changes needed."
 echo ""
-echo "  Or start Kibana dev with:"
-echo "    yarn start --no-base-path"
-echo ""
-echo "  Login: test_user / x-pack-test-password"
-echo "  (or elastic / elastic)"
+echo "  Login to Kibana:  elastic / changeme"
+echo "  Curl access:      curl -u elastic:changeme localhost:9200/..."
 echo "========================================"

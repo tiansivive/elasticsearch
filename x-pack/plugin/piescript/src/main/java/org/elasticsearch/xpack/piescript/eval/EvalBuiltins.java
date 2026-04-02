@@ -376,7 +376,7 @@ final class EvalBuiltins {
         var pipeline = requireSymbol(args.get(1), "ESQL." + command.toLowerCase());
         eval.applyFunction(closure, new Value.Symbol(""), listener.delegateFailureAndWrap((l, result) -> {
             if (result instanceof Value.RecordVal rec) {
-                var fields = new java.util.ArrayList<>(rec.fields().keySet());
+                var fields = rec.fields().values().stream().map(EvalBuiltins::compileValueToEsql).toList();
                 l.onResponse(new Value.Symbol(pipeline.esql() + " | " + command + " " + String.join(", ", fields)));
             } else {
                 l.onFailure(

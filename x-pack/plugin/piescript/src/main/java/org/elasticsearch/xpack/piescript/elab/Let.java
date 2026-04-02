@@ -7,6 +7,7 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
+import org.elasticsearch.xpack.esql.core.type.DataType;
 import org.elasticsearch.xpack.esql.core.type.EsField;
 import org.elasticsearch.xpack.esql.core.type.InvalidMappedField;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
@@ -124,21 +125,7 @@ final class Let {
 
         var rowFields = new LinkedHashMap<String, MonoType>();
         var fieldTypes = new LinkedHashMap<String, String>();
-        for (var entry : mapping.fieldMap().entrySet()) {
-            String fieldName = entry.getKey();
-            EsField esField = entry.getValue();
-            if (fieldName.startsWith("_")) {
-                continue;
-            }
-            if (esField instanceof InvalidMappedField conflict) {
-                rowFields.put(fieldName, Elaborator.UNSUPPORTED);
-                elab.state.addDiagnostic("field [" + fieldName + "] in [" + rawIndexName + "]: " + conflict.errorMessage());
-                continue;
-            }
-            MonoType piescriptType = DataTypeMapping.toPiescriptType(esField.getDataType());
-            rowFields.put(fieldName, piescriptType);
-            fieldTypes.put(fieldName, esField.getDataType().name().toLowerCase());
-        }
+        convertFields(mapping.fieldMap(), rowFields, fieldTypes, "", rawIndexName, elab);
 
         var rowType = RowType.closed(rowFields);
         var indexType = new MonoType.AppType(Elaborator.INDEX, rowType);
@@ -199,6 +186,57 @@ final class Let {
         }
 
         return new CoreLet(src.source(), name, wrappedRhs.type(), wrappedRhs, body, body.type());
+    }
+
+    /**
+     * Recursively convert an {@code EsField} map into piescript row fields.
+     * Object-typed fields become nested {@code RecordType}s; leaf fields map
+     * via {@link DataTypeMapping}. Flattened dotted names go into {@code fieldTypes}
+     * for runtime use (e.g., {@code IndexVal.fieldTypes}).
+     */
+    private static void convertFields(
+        java.util.Map<String, EsField> fields,
+        LinkedHashMap<String, MonoType> rowFields,
+        LinkedHashMap<String, String> fieldTypes,
+        String prefix,
+        String indexName,
+        Elaborator elab
+    ) {
+        fields.forEach((fieldName, esField) -> {
+            if (fieldName.startsWith("_")) return;
+            var fullName = prefix.isEmpty() ? fieldName : prefix + "." + fieldName;
+            var converted = convertField(esField, fieldTypes, fullName, indexName, elab);
+            if (converted != null) {
+                rowFields.put(fieldName, converted);
+            }
+        });
+    }
+
+    private static MonoType convertField(
+        EsField esField,
+        LinkedHashMap<String, String> fieldTypes,
+        String fullName,
+        String indexName,
+        Elaborator elab
+    ) {
+        return switch (esField) {
+            case InvalidMappedField conflict -> {
+                elab.state.addDiagnostic("field [" + fullName + "] in [" + indexName + "]: " + conflict.errorMessage());
+                yield Elaborator.UNSUPPORTED;
+            }
+            default -> switch (esField.getDataType()) {
+                case OBJECT -> {
+                    var nested = new LinkedHashMap<String, MonoType>();
+                    convertFields(esField.getProperties(), nested, fieldTypes, fullName, indexName, elab);
+                    yield nested.isEmpty() ? null : new MonoType.RecordType(RowType.closed(nested));
+                }
+                default -> {
+                    var type = DataTypeMapping.toPiescriptType(esField.getDataType());
+                    fieldTypes.put(fullName, esField.getDataType().name().toLowerCase());
+                    yield type;
+                }
+            };
+        };
     }
 
     /**
