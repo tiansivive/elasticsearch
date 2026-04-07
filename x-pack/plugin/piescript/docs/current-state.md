@@ -40,7 +40,7 @@ cluster-state-free.
 model is the Join Calculus (D-040), with `spawn`/`when`/`send`/channels as coordination primitives.
 The roadmap has been restructured (D-042) around a distributed vertical slice: Block C (cross-node
 execution), Block D (local data access via `scan`). See [roadmap.md](roadmap.md) for the block
-structure, [mvp.md](mvp.md) for concrete examples of what piescript enables today, and
+structure, [mvp.md](archive/mvp.md) for concrete examples of what piescript enables today, and
 [roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt)
 for Phase 1 items carried forward.
 
@@ -303,7 +303,7 @@ the full consolidated list.
 
 Review:
 
-- [mvp.md](mvp.md) for concrete examples of what piescript enables today
+- [mvp.md](archive/mvp.md) for concrete examples of what piescript enables today
 - [vision.md](vision.md) for the MVP goal and design philosophy
 - [roadmap.md](roadmap.md) for the updated block breakdown and MVP milestone
 - [decisions.md](decisions.md) for all architectural decisions (D-040 through D-052)
