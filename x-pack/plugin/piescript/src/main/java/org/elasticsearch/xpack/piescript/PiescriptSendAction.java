@@ -21,7 +21,7 @@ import org.elasticsearch.action.ActionType;
 public class PiescriptSendAction extends ActionType<ActionResponse.Empty> {
 
     public static final PiescriptSendAction INSTANCE = new PiescriptSendAction();
-    public static final String NAME = "indices:data/read/piescript/send";
+    public static final String NAME = "internal:compute/piescript/send";
 
     private PiescriptSendAction() {
         super(NAME);

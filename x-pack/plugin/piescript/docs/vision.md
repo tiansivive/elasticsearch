@@ -222,7 +222,7 @@ lineage.
 
 ## MVP: Distributed Vertical Slice
 
-> See [mvp.md](mvp.md) for concrete examples of what piescript can do today and what's aspirational,
+> See [archive/mvp.md](archive/mvp.md) for the completed MVP (archived 2026-04-06),
 > including a real-world risk scoring case study and the distributed vertical slice target.
 
 The MVP goal is a piescript program that demonstrates **explicit distributed computation**:

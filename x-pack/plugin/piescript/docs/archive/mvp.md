@@ -348,3 +348,73 @@ The distributed vertical slice (Blocks B–D) directly addresses coordinator-bou
 shipping code to data nodes. Scale optimizations (Exchange streaming, typeclass push-down) are
 post-MVP enhancements that piescript orchestrates explicitly via channels — the Exchange is ES
 infrastructure, not hidden runtime magic.
+
+---
+
+## MVP Closure (2026-04-06)
+
+The MVP is complete. Everything described in this document either works today or has been
+superseded by a better approach.
+
+### What was achieved
+
+**Distributed vertical slice (Blocks A–E)**: Topology discovery, cross-node code execution via
+channels, local shard data access, write primitives, and ESQL query compilation — all working
+end-to-end on a 3-node cluster with security enabled.
+
+**Risk score calculation**: The aspirational case study from this document now runs against real
+data. The piescript version uses T-LINQ ESQL compilation (`ESQL.from` → `ESQL.statsBy` with
+`ESQL.top` → `ESQL.limit`), type-driven MV materialization, and a user-defined `pseries_weighted_sum`
+function via `List.reduce` + `Math.pow`. Tested successfully against a nested test index with
+alert-like data structure:
+
+```
+use "nested-test" as idx;
+let pseries = fn s values ->
+  let state = List.reduce (fn acc v ->
+    { sum: acc.sum + v / Math.pow acc.i s, i: acc.i + 1 }
+  ) { sum: 0.0, i: 1.0 } values
+  in state.sum
+
+in let raw = query ESQL.from idx
+  |> ESQL.where (fn r -> r.alert.risk_score > 0)
+  |> ESQL.statsBy
+       (fn r -> {
+         alert_count: ESQL.count "*",
+         top_scores: ESQL.top r.alert.risk_score 10 "desc"
+       })
+       (fn r -> { user_name: r.user.name })
+  |> ESQL.limit 100;
+
+in List.map (fn user -> {
+  user_name: user.user_name,
+  alert_count: user.alert_count,
+  risk_score: pseries 1.5 user.top_scores
+}) raw
+```
+
+Result: `[{user_name: "alice", alert_count: 2, risk_score: 117.89}, {user_name: "bob", ...}]`
+
+**Additional capabilities beyond original MVP scope:**
+- Block F: T-LINQ ESQL compilation with 20+ combinators (NbE Symbol-based)
+- D-053: F-omega-lite type system (kinds-as-types, row operators, `force` normalizer)
+- Block G: Columnar streaming (`Shard.stream`, `Page.toList`, Exchange via `ExchangeService`)
+- MV aggregates (`ESQL.top`, `ESQL.values`) with type-driven materialization
+- Nested record types from field caps (OBJECT fields → nested `RecordType`)
+- Security: `cluster:compute/piescript` namespace, works with auth enabled
+
+### What was learned
+
+- **AI-assisted prototyping works** for bridging domain expertise gaps (PLT → ES internals)
+- **The type system pays for itself** — row-typed indices, kind-checked type constructors, and
+  NbE compilation caught real bugs at elaboration time
+- **ES's plugin/transport infrastructure is powerful** — `ExchangeService`, `IndicesService`,
+  `ClusterService`, Guice injection, transport actions all compose well once understood
+- **The Join Calculus coordination model scales** — channels, send, when, spawn work cleanly
+  for distributed multi-node orchestration
+
+### What comes next
+
+This MVP doc is now archived. The next phase focuses on language fundamentals (recursion, error
+handling, pattern matching, primitives), the external interaction model (actor lifecycle, plugin
+SPI, FFI), and a refined roadmap. See `docs/roadmap.md` for the active development plan.

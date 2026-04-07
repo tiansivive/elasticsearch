@@ -9,7 +9,6 @@ package org.elasticsearch.xpack.piescript;
 
 import org.elasticsearch.action.ActionRequest;
 import org.elasticsearch.action.ActionRequestValidationException;
-import org.elasticsearch.action.CompositeIndicesRequest;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 
@@ -17,7 +16,7 @@ import java.io.IOException;
 
 import static org.elasticsearch.action.ValidateActions.addValidationError;
 
-public class PiescriptRequest extends ActionRequest implements CompositeIndicesRequest {
+public class PiescriptRequest extends ActionRequest {
 
     private final String program;
     private final boolean dev;

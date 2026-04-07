@@ -614,7 +614,7 @@ public class Constants {
         "indices:data/read/esql/resolve_fields",
         "indices:data/read/esql/resolve_views",
         "indices:data/read/esql/search_shards",
-        "indices:data/read/piescript",
+        "cluster:compute/piescript",
         "indices:data/read/explain",
         "indices:data/read/field_caps",
         "indices:data/read/get",

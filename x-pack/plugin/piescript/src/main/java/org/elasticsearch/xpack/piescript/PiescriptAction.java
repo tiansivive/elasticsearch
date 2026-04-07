@@ -12,7 +12,7 @@ import org.elasticsearch.action.ActionType;
 public class PiescriptAction extends ActionType<PiescriptResponse> {
 
     public static final PiescriptAction INSTANCE = new PiescriptAction();
-    public static final String NAME = "indices:data/read/piescript";
+    public static final String NAME = "cluster:compute/piescript";
 
     private PiescriptAction() {
         super(NAME);
