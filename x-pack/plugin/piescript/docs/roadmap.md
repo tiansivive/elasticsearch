@@ -36,7 +36,7 @@
 ## MVP Milestone — Distributed Vertical Slice
 
 > See [vision.md § MVP](vision.md#mvp-distributed-vertical-slice) for the full rationale.
-> See [mvp.md](mvp.md) for concrete examples of what piescript enables today and what's aspirational.
+> See [archive/mvp.md](archive/mvp.md) for the completed MVP (archived 2026-04-06).
 >
 > **Revised**: 2026-03-17. The MVP target has shifted from "unified data pipelines" to
 > "distributed computing vertical slice" — proving that piescript can discover topology, ship code
