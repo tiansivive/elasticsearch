@@ -2531,3 +2531,27 @@ piescript's existing async patterns (CPS via `ActionListener`, `Channel` for com
   user checking `done` first.
 
 **Ref**: [Block G plan](compute_engine_streaming_f5db78f2), Claude Code session 2026-03-26
+
+---
+
+## D-055: Action Namespace — cluster:compute instead of indices:data/read
+
+**Phase**: Block G | **Status**: accepted
+
+**Context**: With security enabled, `indices:data/read/piescript` required `CompositeIndicesRequest`
+on `PiescriptRequest` and special-casing in `RBACEngine.shouldAuthorizeIndexActionNameOnly()`. The
+send action `indices:data/read/piescript/send` hit an assertion in `RBACEngine` because it wasn't
+in the allowlist — any `indices:` action that isn't explicitly listed is rejected.
+
+**Decision**: Main action → `cluster:compute/piescript` (cluster-level auth, no index resolution
+needed). Send action → `internal:compute/piescript/send` (system-internal, not user-facing).
+Removed `CompositeIndicesRequest` from `PiescriptRequest`. Removed piescript from `RBACEngine`
+allowlist.
+
+**Rationale**: Piescript is a compute engine that MAY touch indices, not an indices API. The
+`cluster:` namespace means a simple cluster privilege check — no index resolution at the action
+level. ESQL queries running inside piescript handle their own index authorization via their own
+transport actions. The send action is node-to-node internal transport, same pattern as ESQL's
+`internal:data/read/esql/exchange`.
+
+**Supersedes**: D-003 security model (which used `CompositeIndicesRequest` + `indices:` namespace).

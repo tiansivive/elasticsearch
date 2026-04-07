@@ -38,6 +38,7 @@ TransportPiescriptAction     ← Transport layer: orchestrates pipeline on GENER
   │     │
   │     ▼
   │   Index Resolution        ← Phase 2: resolve index patterns via Field Capabilities
+  │     │                        (OBJECT fields → nested RecordType recursively)
   │     │
   │     ▼
   │   Elaborator              ← Phase 1b+: bidirectional HM inference → Core IR
@@ -69,15 +70,14 @@ Client (JSON response)
 
 ### Action Definition — `PiescriptAction`
 
-- `ActionType<PiescriptResponse>` registered under `indices:data/read/piescript`.
-- The `indices:data/read/` prefix integrates with ES security privilege resolution: users with
-  index-level read access can run piescript programs that touch those indices.
+- `ActionType<PiescriptResponse>` registered under `cluster:compute/piescript`.
+- The `cluster:compute/` prefix means piescript is a cluster-level action, not an indices action.
+  Simple cluster privilege check — no index resolution at the action level. ESQL queries running
+  inside piescript handle their own index authorization.
 
 ### Request — `PiescriptRequest`
 
-- Extends `ActionRequest`, implements `CompositeIndicesRequest`.
-- `CompositeIndicesRequest` tells the security subsystem that the action touches indices determined
-  at runtime (like ESQL), so authorization delegates to the underlying ESQL execution.
+- Extends `ActionRequest`.
 - Carries a single `program` string. Validates that it is non-blank.
 - Serializable over transport via `StreamInput`/`StreamOutput`.
 
@@ -103,15 +103,16 @@ Client (JSON response)
 
 ## Security Model
 
-Piescript reuses ESQL's authorization model:
+Piescript uses a cluster-level action namespace (D-055):
 
-1. The action name `indices:data/read/piescript` is registered in `RBACEngine
-   .shouldAuthorizeIndexActionNameOnly()`, meaning the security engine checks index-level
-   permissions but does not require a specific piescript privilege.
+1. The action name `cluster:compute/piescript` is a cluster action. Authorization is a simple
+   cluster privilege check — no index resolution at the action level, no `CompositeIndicesRequest`.
 2. The action is added to the operator privileges allowlist in
    `Constants.java` so operator users can execute it.
-3. At runtime, the `CompositeIndicesRequest` marker means index resolution is deferred to the ESQL
-   engine, which performs its own authorization checks on the resolved indices.
+3. ESQL queries running inside piescript handle their own index-level authorization. Piescript is
+   a compute engine that MAY touch indices, not an indices API.
+4. The send action `internal:compute/piescript/send` is system-internal (node-to-node transport),
+   not user-facing. Same pattern as ESQL's `internal:data/read/esql/exchange`.
 
 ## Core IR
 
@@ -252,7 +253,7 @@ auto-removed — the `SubscribableListener` caches the result for late `when` su
 registry is a Guice singleton instantiated in `PiescriptPlugin.createComponents()` and injected
 into both `TransportPiescriptAction` and `TransportPiescriptSendAction`.
 
-**Transport action** — a single handler: `PiescriptSendAction` (`indices:data/read/piescript/send`).
+**Transport action** — a single handler: `PiescriptSendAction` (`internal:compute/piescript/send`).
 `PiescriptSendRequest` carries `(String channelId, Value payload)` serialized via
 `ValueSerialization`. `TransportPiescriptSendAction` dispatches based on channel ID:
 - **Regular channels**: looks up the listener in `ChannelRegistry`, completes it with the payload.
