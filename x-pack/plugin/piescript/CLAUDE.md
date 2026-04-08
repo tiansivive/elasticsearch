@@ -8,13 +8,23 @@ and follow any links they contain recursively until you have a complete picture 
 1. **[docs/AGENTS.md](docs/AGENTS.md)** — project context, design constraints, coding guidelines, chat history, design space instructions
 2. **[docs/current-state.md](docs/current-state.md)** — what's implemented now, known limitations
 3. **[docs/architecture.md](docs/architecture.md)** — system design, Core IR, async evaluator, channels
-4. **[docs/decisions.md](docs/decisions.md)** — architectural decisions and rationale (54 ADRs — check before suggesting alternatives)
+4. **[docs/decisions.md](docs/decisions.md)** — architectural decisions and rationale (55 ADRs — check before suggesting alternatives)
 5. **[docs/roadmap.md](docs/roadmap.md)** — block-based development plan with status markers
 6. **[docs/design-space/index.md](docs/design-space/index.md)** — tagged knowledge base of the full design landscape
+7. **Design space catalog** — run `python3 docs/design-space/catalog.py --compact` to scan all 200+ tracked design topics
+8. **Thread** — read `docs/design-space/thread.md` for the paper trail of prior work
+9. **Queue** — check `docs/design-space/queue.md` for open pending items
 
 If any of these files link to other documents (vision, data-access, references, plans, etc.),
 read those too. The goal is to have the full project context before making any changes or
 suggestions. Do not skip this step. Do not assume you know the project from a prior session.
+
+**Design space lookups are mandatory.** Before proposing or implementing any design change,
+search the catalog for related topics and read the relevant zettels. Follow their `Depends on`,
+`Enables`, and `Connections` edges to understand the full context. Pay attention to `superseded`
+tags and `supersedes`/`rejected-in-favor-of` edges — these mark ideas that were already
+considered and deliberately dropped. Don't revisit settled decisions without new justification.
+See [docs/AGENTS.md § Design Space Knowledge Base](docs/AGENTS.md) for the full workflow.
 
 ## Additional Documentation
 

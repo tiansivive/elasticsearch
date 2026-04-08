@@ -228,11 +228,60 @@ Prior design discussions are preserved in agent transcripts:
 The `docs/design-space/` directory is a tagged knowledge base of piescript's full design
 landscape. See [design-space/index.md](design-space/index.md) for the format specification.
 
-**Agent responsibilities:**
-- Read the design space before proposing new features — check if it's already tracked
-- Create new item files in `design-space/items/` when discussions surface new concepts
+**Catalog script** — run to get a scannable overview of all tracked design topics:
+
+```bash
+python3 docs/design-space/catalog.py --compact    # one line per zettel: title, file, tags
+python3 docs/design-space/catalog.py              # full: frontmatter + description + connections
+python3 docs/design-space/catalog.py types         # filter by tag or keyword
+```
+
+**Agent responsibilities — lookup workflow:**
+
+Before doing any design work, implementation, or proposing changes:
+
+1. **Scan the catalog** (`python3 docs/design-space/catalog.py --compact`) to see what's tracked.
+2. **Read relevant zettels** — open the specific `.md` files for topics related to your work.
+3. **Follow connections** — each zettel has `Depends on`, `Enables`, and `Connections` edges
+   linking to other zettels via `[[name]]`. Read linked zettels to understand the full context
+   around any design area. Don't stop at the first zettel — follow the graph.
+4. **Check before proposing** — if a topic is already tracked (especially with `designed` or
+   `implemented` tags), reference the existing zettel rather than reinventing. Equally important:
+   check for `superseded` tags and `supersedes`/`rejected-in-favor-of` connections — these mark
+   ideas that were already considered and deliberately moved past. Don't re-propose something
+   that was superseded without acknowledging why it was dropped and what changed.
+
+**Agent responsibilities — maintenance:**
+
+- Create new zettel files in `design-space/zettels/` when discussions surface new concepts
 - Update the `maturity` tag when items are implemented or superseded
 - Add your session ID to `refs` (e.g., `session:your-session-id`) when discussing an item
 - Link to plans and transcripts via `plan:` and `session:` ref prefixes
 - When creating ADRs, add `adr:D-NNN` refs to related design space items
 - When an item is superseded, change its maturity tag and note what replaced it
+
+## Thread & Queue
+
+Two files track the *work layer* on top of the zettelkasten. Zettels are the atomic
+knowledge units; thread and queue are workflows over them.
+See [[thread-queue-system.meta]] for the full design.
+
+### Thread — `docs/design-space/thread.md`
+
+Append-only paper trail of work across sessions. Each block records a session's path
+through the zettel graph using labeled edges (`[[A]] -- verb -> [[B]]`) and action
+annotations (`ENQUEUE`, `RESOLVED`, `SPAWN`).
+
+### Queue — `docs/design-space/queue.md`
+
+Flat FIFO list of pending work. Each item references a zettel. Resolve top-down.
+`[ ]` open, `[x]` resolved, `[~]` dropped.
+
+**Agent responsibilities:**
+
+- **On session start:** read `thread.md` for context, scan `queue.md` for open items.
+- **During work:** append edges and actions to `thread.md` in a session block.
+- **When deferring:** ensure zettel exists → add `ENQUEUE` to thread → add item to queue.
+- **When resolving:** mark queue item `[x]` → append `RESOLVED` to thread.
+- **When branching:** add `SPAWN` to thread, noting the sub-topic.
+- **Proactively** create queue items when discussion surfaces future work — notify user.

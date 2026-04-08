@@ -11,7 +11,24 @@ the most downstream work.
 
 ```bash
 # Find highest-priority items (most depended-on)
-grep -roh '\[\[.*\]\]' docs/design-space/items/ | sort | uniq -c | sort -rn | head -20
+grep -roh '\[\[.*\]\]' docs/design-space/zettels/ | sort | uniq -c | sort -rn | head -20
+```
+
+## Hub score (master nodes)
+
+Zettels with high combined incoming + outgoing link counts are hubs — connection
+points that tie many concepts together. High hub score is emergent, not assigned.
+
+```bash
+# Find hub zettels (most total connections)
+cd docs/design-space/zettels
+for f in *.md; do
+  name="${f%.md}"
+  incoming=$(grep -roh "\[\[$name\]\]" *.md | wc -l)
+  outgoing=$(grep -oh '\[\[.*\]\]' "$f" | wc -l)
+  total=$((incoming + outgoing))
+  echo "$total $incoming↓ $outgoing↑ $name"
+done | sort -rn | head -20
 ```
 
 ## Staleness
@@ -37,7 +54,7 @@ areas are mature vs underexplored.
 # Count items per concern × maturity
 for tag in language types esql data infrastructure lifecycle external; do
   echo "=== $tag ==="
-  grep -rl "$tag" docs/design-space/items/ | while read f; do
+  grep -rl "$tag" docs/design-space/zettels/ | while read f; do
     grep "maturity" "$f" | head -1
   done | sort | uniq -c
 done
