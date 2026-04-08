@@ -1,0 +1,17 @@
+---
+tags: [types, implemented, kinds]
+refs:
+  - adr:D-053
+  - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+---
+# Kind System
+
+The kind system classifies types by their "type of type." Kinds are `MonoType` values: `TCon("Type")` for value types, `TCon("Row")` for row types, arrow kinds via `MonoType.Arrow` for type constructors (e.g., `List : Type -> Type`, `ESQL : Row -> Type`, `& : Row -> Row -> Row`). The same unifier solves kind constraints -- no separate kind checker. `Prelude.KINDS` maps every builtin type constructor to its kind. Kind errors are caught by unification at type application sites, not by runtime assertions. Formerly a separate `Kind` enum (deleted by D-053).
+
+**Depends on**: [[f-omega-lite.types]]
+**Enables**: [[row-operators.types]], [[label-kind.types]]
+**Connections**:
+- related: GHC TypeInType-style — kind constraint improvements (ascription-site checks, record field type kinds, arrow param/result kinds) are future work for better error messages
+- related: [[unification-algorithm.types]] — same unifier solves kind constraints (D-053)
+- related: [[rowtype-as-monotype.types]] — row-kindedness assertion prevents unsound type applications
+- related: [[local-kind.types]] — proposed Local kind extends the kind vocabulary

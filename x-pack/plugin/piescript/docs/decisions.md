@@ -27,6 +27,8 @@ Each decision follows this lightweight ADR (Architecture Decision Record) struct
 New plugins should use the current API surface. `ActionRequest` integrates cleanly with
 `HandledTransportAction` and the modern action registration mechanism.
 
+**Tracked in**: [[es-plugin.infrastructure]]
+
 ---
 
 ## D-002: Response Type — Raw EsqlQueryResponse, no wrapper
@@ -88,6 +90,8 @@ a pure synchronous engine wrapped by an Executor on its own thread pool.
 
 **Ref**: [Phase 2 eager eval + deadlock fix](303bcf3e-9eef-4719-a47d-24c1ff27a675)
 
+**Tracked in**: [[generic-thread-pool.infrastructure]]
+
 ---
 
 ## D-005: Type System — Bidirectional Hindley-Milner with zonker-based elaboration
@@ -129,6 +133,8 @@ GHC's OutsideIn(X)).
 
 **Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
 
+**Tracked in**: [[hindley-milner.types]], [[zonker.types]], [[system-f-core.types]]
+
 ---
 
 ## D-006: Variable Binding — De Bruijn Indices
@@ -151,6 +157,8 @@ converts to de Bruijn indices.
 
 **Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
 
+**Tracked in**: [[de-bruijn-indices.language]]
+
 ---
 
 ## D-007: Null Semantics (v0) — Null unifies with Any
@@ -171,6 +179,8 @@ when ADTs land (post-Phase 2).
 
 **Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
 
+**Tracked in**: [[null-as-bottom.types]]
+
 ---
 
 ## D-008: Node Infrastructure — Only Core IR extends Node
@@ -190,6 +200,8 @@ the Node dependency narrow also reduces coupling to ESQL internals.
 
 **Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
 
+**Tracked in**: [[core-ir.language]]
+
 ---
 
 ## D-009: Literal Types — Aligned with ESQL DataType
@@ -207,6 +219,8 @@ is critical. Using the same type universe avoids lossy conversions and ensures t
 can flow into ESQL expressions (and vice versa) without surprises.
 
 **Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
+
+**Tracked in**: [[unified-double.types]]
 
 ---
 
@@ -227,6 +241,8 @@ for `if` can still feel natural.
 
 **Ref**: [Phase 1 discussion](3cd2a822-792c-4179-a00e-0ba98b875f52)
 
+**Tracked in**: [[pattern-matching.language]]
+
 ---
 
 ## D-011: ESQL Plugin Dependency — extendedPlugins, not runtime classpath
@@ -244,6 +260,8 @@ on `xpackModule('esql')` and `xpackModule('esql-core')`.
 ensures ESQL is loaded before piescript at runtime and makes the dependency explicit in the build
 graph. `compileOnly` means piescript doesn't bundle ESQL classes — they're provided by the ES
 distribution. Copying interfaces would create a maintenance burden and divergence risk.
+
+**Tracked in**: [[es-plugin.infrastructure]]
 
 ---
 
@@ -289,6 +307,8 @@ See D-040 and [architecture.md § Theoretical Model](architecture.md).
 
 **Ref**: [architecture.md § The Plan Graph](architecture.md), [references.md § Free Monads](references.md)
 
+**Tracked in**: [[plan-graph.language]], [[free-monad.types]]
+
 ---
 
 ## D-013: Two-Layer IR — Functional Expressions and Process Descriptions
@@ -325,6 +345,8 @@ operations), not at the IR level.
 
 **Ref**: [architecture.md § The Two-Layer IR](architecture.md)
 
+**Tracked in**: [[two-layer-ir.language]]
+
 ---
 
 ## D-014: Code Mobility — Closures as Traveling Code
@@ -358,6 +380,8 @@ execution contexts?
 **Ref**: [references.md § Sangiorgi (agent-passing)](references.md),
 [architecture.md § Traveling Code](architecture.md)
 
+**Tracked in**: [[code-mobility.coordination]], [[purity.language]]
+
 ---
 
 ## D-015: Join Calculus Influence on Primitive Selection
@@ -388,6 +412,8 @@ local synchronization patterns (messages travel to a destination and interact on
 
 **Ref**: [references.md § The Join Calculus](references.md),
 [references.md § JoCaml](references.md)
+
+**Tracked in**: [[join-calculus.coordination]]
 
 ---
 
@@ -438,6 +464,8 @@ case "map" -> (Value lambda, Value stream) -> {
 prelude built-ins, not Core IR nodes — is unchanged.
 
 **Ref**: Master plan § 6.1, § 6.2
+
+**Tracked in**: [[prelude.language]]
 
 ---
 
@@ -520,6 +548,8 @@ committed. See [vision.md § Speculative](vision.md).
 
 **Ref**: [references.md § Linear Haskell, QTT](references.md)
 
+**Tracked in**: [[qtt-linearity.types]], [[session-types.types]]
+
 ---
 
 ## D-019: Eager Unification — Phase 1 Simplification
@@ -557,6 +587,8 @@ replaced with a constraint-based approach (e.g., OutsideIn(X) style). The elabor
 (recursive descent, bidirectional) is compatible with both — the change is in how constraints are
 dispatched, not in the traversal itself.
 
+**Tracked in**: [[deferred-constraints.types]]
+
 ---
 
 ## D-020: PrimOp Typing — Concrete Integer-Only (Phase 1)
@@ -584,6 +616,8 @@ are type errors.
 **Migration path**: when type classes arrive (Phase 5+), arithmetic operators become methods on a
 `Num` type class, comparison on `Ord`, etc. Coercion rules (`Integer` widens to `Long`) can be
 added as an intermediate step before type classes, using explicit coercion primitives.
+
+**Tracked in**: [[unified-double.types]]
 
 ---
 
@@ -616,6 +650,8 @@ referenced fields — no extra fields allowed.
 **Migration path**: when open-row unification arrives (Phase 2), the parameter type changes to
 `{ x: β | ρ }` (open row with a row variable tail). This allows the sugar to accept records with
 additional fields, which is the correct semantics.
+
+**Tracked in**: [[row-polymorphism.types]]
 
 ---
 
@@ -674,6 +710,8 @@ argument to the closure's captured environment.
 and fastest lookup mechanism. No hashing, no name comparisons. `prepend` is a single array copy.
 Closures capture the environment by cloning the array at lambda creation time.
 
+**Tracked in**: [[evaluator.language]], [[de-bruijn-indices.language]]
+
 ---
 
 ## D-025: Evaluator Trusts the Type Checker
@@ -691,6 +729,8 @@ runtime errors are null-in-arithmetic (D-027) and division by zero.
 in function position or a non-record in projection position. If it happens, the type checker has a
 bug. Using `AssertionError` makes this distinction clear: it's an invariant violation, not a
 user-caused condition.
+
+**Tracked in**: [[evaluator.language]]
 
 ---
 
@@ -712,6 +752,8 @@ simpler, safer, and sufficient. The conversion boundary is narrow (one line in `
 from ESQL result pages will need conversion to `String` at the boundary. The reverse conversion
 (`String` to `BytesRef`) will be needed if piescript values flow into ESQL query parameters.
 
+**Tracked in**: [[keyword-string.types]]
+
 ---
 
 ## D-027: Null in Arithmetic — Runtime Error
@@ -729,6 +771,8 @@ in <op> operation")`. Division by zero also throws `EvaluationException`.
 catch the cases where this unsoundness surfaces at runtime. Treating null in arithmetic as a
 user-facing error (not an `AssertionError`) is correct because it stems from a user-written
 program (`null` is user-provided), not a type checker bug.
+
+**Tracked in**: [[null-as-bottom.types]]
 
 ---
 
@@ -770,6 +814,8 @@ tokens (see D-033). In type annotation positions, the parser uses `UPPER_IDENT` 
 constructors and `LOWER_IDENT` for type variables. Expression-level rules accept both via
 a helper `ident` rule. This enforces the convention at the grammar level, not the elaborator.
 
+**Tracked in**: [[rigid-variables.types]]
+
 ---
 
 ## D-029: Phase Reordering — Open Rows Before Pattern Matching
@@ -801,6 +847,8 @@ issue — functions like `.x` cannot accept records with extra fields.
   constraints.
 - D-021 (closed-row accessor/update sugar) is explicitly superseded by the open-row work in
   Phase 1d.
+
+**Tracked in**: [[row-polymorphism.types]], [[pattern-matching.language]]
 
 ---
 
@@ -837,6 +885,8 @@ operating on field-set differences).
 
 **Ref**: Leijen — *Extensible records with scoped labels* (2005). See [references.md](references.md).
 
+**Tracked in**: [[row-polymorphism.types]]
+
 ---
 
 ## D-031: Rigid Type Variables — Skolem Constants for Bound Variables
@@ -867,6 +917,8 @@ sealed interface. Rigids are skolem constants representing bound type variables.
   eagerly solved, defeating universal quantification.
 - `TypeScheme` remains our type abstraction (no `Forall` variant in `MonoType` needed for
   rank-1).
+
+**Tracked in**: [[rigid-variables.types]]
 
 ---
 
@@ -900,6 +952,8 @@ specified here. D-035 eliminated `TypeWalker.walkType`, `TypeWalker.generalize`,
 `TypeWalker.instantiate`. `resolveDeep` remains in `TypeWalker` and is used by `CorePrinter`
 for display; it will eventually be replaced by environment-based Rigid resolution in
 downstream passes. The `zonkOrKeep` vs `Optional`-returning `zonk` deviation remains.
+
+**Tracked in**: [[zonker.types]], [[resolve-deep.types]]
 
 ---
 
@@ -978,6 +1032,8 @@ fresh Metas.
   Krishnaswami 2013, GHC's OutsideIn(X)).
 
 **Ref**: [System F Core IR session](8f5cc3a8-4c26-4f71-8fb0-1ea3c17f527b)
+
+**Tracked in**: [[system-f-core.types]]
 
 ---
 
@@ -1061,6 +1117,8 @@ nested `CoreTypeApp` nodes using those same fresh metas.
 GHC Core (System FC with explicit type abstractions and applications),
 [System F Core IR session](8f5cc3a8-4c26-4f71-8fb0-1ea3c17f527b)
 
+**Tracked in**: [[system-f-core.types]], [[deferred-constraints.types]]
+
 ---
 
 ## D-036: Bidirectional Checking Mode — Missing, Tracked for Implementation
@@ -1118,6 +1176,8 @@ deferred solving, not bidirectional HM.
 
 **Ref**: [Bidirectional elaborator session](3308f68e-e239-4a60-912c-47cfba6eabcc),
 [Bidir refinements & D-038](303bcf3e-9eef-4719-a47d-24c1ff27a675)
+
+**Tracked in**: [[bidir-checking.types]]
 
 ---
 
@@ -1197,6 +1257,8 @@ constructed directly from the annotation, bypassing `generalize`.
 
 **Ref**: [Bidir refinements & D-038](303bcf3e-9eef-4719-a47d-24c1ff27a675)
 
+**Tracked in**: [[forall-type.types]]
+
 ---
 
 ## D-039: Eager Stream Evaluation — Synchronous Evaluator with Client Injection
@@ -1230,6 +1292,8 @@ threads is resolved by running on `ThreadPool.Names.GENERIC` (see D-004 revision
 prototype scope. Phase 3 introduces streaming/push-down to ESQL for efficient processing.
 
 **Ref**: [Phase 2 eager eval session](303bcf3e-9eef-4719-a47d-24c1ff27a675)
+
+**Tracked in**: [[eager-materialization.data]]
 
 ---
 
@@ -1345,6 +1409,8 @@ piescript's lowering pass. See [architecture.md § Theoretical Model](architectu
 [references.md § Join Calculus](references.md),
 [references.md § Sangiorgi (agent-passing)](references.md)
 
+**Tracked in**: [[join-calculus.coordination]], [[plan-graph.language]], [[par-blocks.coordination]]
+
 ---
 
 ## D-041: Block A Implementation Decisions — `when` Keyword, Uniformly Async Evaluator, Positional Collector
@@ -1409,6 +1475,8 @@ channels complete out of binding order. The positional collector writes each res
 slot index, guaranteeing correct ordering regardless of completion timing.
 
 **Ref**: [Block A plan](../../.cursor/plans/block_a_implementation_2fdbab36.plan.md)
+
+**Tracked in**: [[when-synchronization.coordination]], [[evaluator.language]]
 
 ---
 
@@ -1518,6 +1586,8 @@ are refined.
 
 **Ref**: [Distributed execution discussion](14bf4826-a39e-4012-ab4c-d73ad902a95f)
 
+**Tracked in**: [[spawn-bang.coordination]], [[code-mobility.coordination]], [[topology.infrastructure]]
+
 ---
 
 ## D-043: `Stream` → `List` Rename
@@ -1539,6 +1609,8 @@ reserved for future lazy/Exchange-backed streaming (post-MVP).
 serialization, all tests.
 
 **Ref**: Block B implementation session
+
+**Tracked in**: [[list-type.language]]
 
 ---
 
@@ -1595,6 +1667,8 @@ working with topology results and other list values.
 field (Block C), non-STARTED shard states.
 
 **Ref**: Block B implementation session
+
+**Tracked in**: [[topology.infrastructure]]
 
 ---
 
@@ -1728,6 +1802,8 @@ replaces the `<ownerNodeId>:<channelUuid>` naming scheme with structured fields.
 
 **Ref**: Block C design discussion
 
+**Tracked in**: [[channels.infrastructure]], [[channel-registry.infrastructure]], [[send.coordination]], [[serialization.infrastructure]], [[inbox.infrastructure]]
+
 ---
 
 ## D-046: Value restriction for let-generalization
@@ -1768,6 +1844,8 @@ For non-values, constraints are solved eagerly and the type remains monomorphic.
   can be expanded. The value restriction is conservative but safe.
 
 **Ref**: Wright (1995) "Simple Imperative Polymorphism", OCaml value restriction
+
+**Tracked in**: [[value-restriction.types]]
 
 ---
 
@@ -1828,6 +1906,8 @@ The initiator's only contract is "the message was delivered (or not)."
 
 **Ref**: Block C design discussion, pi-calculus asynchronous output semantics
 
+**Tracked in**: [[fire-and-forget.coordination]], [[send.coordination]]
+
 ---
 
 ## D-048: Split topology into cluster topology and index routing
@@ -1875,6 +1955,8 @@ All are Prelude builtins — no grammar or Core IR changes needed.
 
 **Ref**: Block C cross-node execution discussion
 
+**Tracked in**: [[topology.infrastructure]]
+
 ---
 
 ## D-049: Polymorphic equality (`==` / `!=`)
@@ -1919,6 +2001,8 @@ Ordering operators (`<`, `>`, `<=`, `>=`) remain `Integer → Integer → Boolea
 - No changes to the grammar, parser, or Core IR.
 
 **Ref**: Block C manual testing, multinode debug scripts
+
+**Tracked in**: [[polymorphic-equality.types]]
 
 ---
 
@@ -2040,6 +2124,8 @@ Future options include scope-based release (spawn cleanup) or bracket patterns.
 - `Maybe` / ADTs for consume exhaustion signaling
 
 **Ref**: [Block D design discussion](01e7770e-9e20-41ae-a116-2e78142bb672), Block D plan
+
+**Tracked in**: [[shard-read.data]], [[use-declarations.data]], [[index-type.data]], [[rowtype-as-monotype.types]], [[label-kind.types]]
 
 ---
 
@@ -2203,6 +2289,8 @@ These are intentional simplifications, not forgotten items:
   benefits all piescript programs.
 
 **Ref**: [Block E design + implementation](104647a1-8ee2-4796-a7b3-f13317d8d22c)
+
+**Tracked in**: [[shard-write.data]], [[index-bulk.data]]
 
 ---
 
@@ -2376,6 +2464,8 @@ monad description: `Symbol` accumulates a description of the ESQL computation, i
 
 **Ref**: [T-LINQ design discussion](this session), [Block F plan](block_f_linq_query_e7171607)
 
+**Tracked in**: [[esql-compilation.esql]], [[esql-combinators.esql]], [[nbe-compilation.esql]]
+
 ## D-053: F-omega-lite Type System — Kinds as Types, `force` Normalizer, Row Operators, ESQL Stats
 
 - **Context**: ESQL grouping (`STATS ... BY`) requires the output row type to be the merge of
@@ -2421,6 +2511,8 @@ monad description: `Symbol` accumulates a description of the ESQL computation, i
   - Separate kind-checking pass: rejected — kinds-as-types reuses the existing unifier.
 
 **Ref**: [F-omega plan](f-omega_type_system_09acfb27), [Implementation session](846bd5a8-3b35-4321-848a-c9b17a22f109)
+
+**Tracked in**: [[f-omega-lite.types]], [[row-operators.types]], [[esql-aggregates.esql]]
 
 ---
 
@@ -2532,6 +2624,8 @@ piescript's existing async patterns (CPS via `ActionListener`, `Channel` for com
 
 **Ref**: [Block G plan](compute_engine_streaming_f5db78f2), Claude Code session 2026-03-26
 
+**Tracked in**: [[exchange-streaming.infrastructure]], [[shard-stream.data]], [[materialization-boundary.data]]
+
 ---
 
 ## D-055: Action Namespace — cluster:compute instead of indices:data/read
@@ -2555,3 +2649,5 @@ transport actions. The send action is node-to-node internal transport, same patt
 `internal:data/read/esql/exchange`.
 
 **Supersedes**: D-003 security model (which used `CompositeIndicesRequest` + `indices:` namespace).
+
+**Tracked in**: [[security-namespace.infrastructure]], [[es-plugin.infrastructure]]
