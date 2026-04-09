@@ -6,11 +6,16 @@ refs:
 ---
 # Combinator Fusion
 
-Fusing adjacent map/filter/reduce into single passes. Wu & Schrijvers (MPC 2015) on fusing free monad handlers. filter p . filter q = filter (p && q). map f . map g = map (f . g). Relevant to both in-memory list processing and ESQL compilation.
+Fusing adjacent map/filter/reduce into single passes.
+
+- Wu & Schrijvers (MPC 2015) on fusing [[free-monad.types]] handlers
+- `filter p . filter q = filter (p && q)`; `map f . map g = map (f . g)`
+- In-memory: reduces traversal count
+- In ESQL: combines WHERE clauses or EVAL expressions
 
 **Depends on**: [[lowering-pass.performance]], [[bird-meertens.types]]
 **Enables**: (none directly)
 **Connections**:
-- related: in-memory reduces traversal count; in ESQL combines WHERE clauses or EVAL expressions
-- related: [[esql-compilation.esql]] — fusing WHERE/EVAL in compiled ESQL queries
-- related: [[push-down-compilation.performance]] — fusion is a complementary optimization to push-down
+- optimizes: [[esql-compilation.esql]] — fusing WHERE/EVAL in compiled ESQL queries
+- complements: [[push-down-compilation.performance]] — fusion is a complementary optimization to push-down
+- related: [[free-monad.types]] — Wu & Schrijvers show fusion of free monad handlers; same theoretical lineage

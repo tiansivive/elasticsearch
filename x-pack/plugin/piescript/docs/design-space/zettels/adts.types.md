@@ -1,5 +1,5 @@
 ---
-tags: [types, language, open]
+tags: [types, language, open, feature, concept]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
@@ -12,7 +12,8 @@ User-defined algebraic data types (sum + product types). Required for proper nul
 **Depends on**: [[hindley-milner.types]]
 **Enables**: [[pattern-matching.language]], [[result-types.types]], [[null-as-bottom.types]]
 **Connections**:
-- contrasts-with: [[gadt-rejection.types]] — GADTs would require OutsideIn(X); F-omega approach handles what GADTs would have needed
-- related: plain ADTs + pattern matching is the near-term target
-- related: [[recursive-types.types]] — iso-recursive types require ADTs (fold/unfold are constructors)
-- related: [[type-narrowing.types]] — ADTs enable TypeScript-style type refinement via pattern matching
+- part-of: [[future-type-system.roadmap]]
+- contrasts-with: [[gadt-rejection.types]] — GADTs would require OutsideIn(X); [[f-omega-lite.types]] approach handles what GADTs would have needed
+- enables: [[pattern-matching.language]] — plain ADTs + pattern matching is the near-term target
+- prerequisite-for: [[recursive-types.types]] — iso-recursive types require ADTs (fold/unfold are constructors)
+- prerequisite-for: [[type-narrowing.types]] — ADTs enable TypeScript-style type refinement via pattern matching

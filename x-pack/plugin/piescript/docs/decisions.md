@@ -44,6 +44,8 @@ directly, (b) create a `PiescriptResponse` wrapper.
 would be empty ceremony. When Phase 1c introduces non-query expressions that produce values (not
 tabular results), a custom response type will be introduced.
 
+**Tracked in**: [[es-plugin.infrastructure]]
+
 ---
 
 ## D-003: Security Model — CompositeIndicesRequest + RBAC delegation
@@ -64,6 +66,8 @@ reference any index). The security subsystem needs to know how to authorize the 
 and ensures piescript inherits ESQL's security guarantees automatically. The alternative — parsing
 the program to extract index names for upfront authorization — would require a full parser, which
 doesn't exist yet in Phase 0.
+
+**Tracked in**: [[security-namespace.infrastructure]]
 
 ---
 
@@ -90,7 +94,7 @@ a pure synchronous engine wrapped by an Executor on its own thread pool.
 
 **Ref**: [Phase 2 eager eval + deadlock fix](303bcf3e-9eef-4719-a47d-24c1ff27a675)
 
-**Tracked in**: [[generic-thread-pool.infrastructure]]
+**Tracked in**: [[generic-thread-pool.infrastructure]], [[transport-pipeline-evolution.infrastructure]]
 
 ---
 
@@ -512,6 +516,8 @@ trivially safe. The core decision — streams allow multi-use without linearity 
 In Block D's lowering pass, fan-out over described (not materialized) streams will be handled
 by exchange operators or reference counting, as originally envisioned.
 
+**Tracked in**: [[list-type.language]]
+
 ---
 
 ## D-018: Linearity Roadmap — QTT for Channels, Not Streams
@@ -671,6 +677,8 @@ requires at least one digit after the dot: `42.0` is valid, `42.` is not.
 and causes a real ambiguity with field projection syntax. Requiring at least one digit is standard
 practice (Haskell, OCaml, Rust all require digits after the decimal point).
 
+**Tracked in**: [[decimal-literal-ambiguity.language]]
+
 ---
 
 ## D-023: PiescriptResponse — Wrapper, Not Subclass
@@ -692,6 +700,8 @@ ref-counting for off-heap memory). Subclassing it from an external plugin would 
 dependency. A wrapper cleanly separates concerns: piescript owns its value format, ESQL owns its
 columnar format. A single `ActionType<PiescriptResponse>` keeps the REST handler and transport
 layer unified.
+
+**Tracked in**: [[es-plugin.infrastructure]]
 
 ---
 
@@ -730,7 +740,7 @@ in function position or a non-record in projection position. If it happens, the 
 bug. Using `AssertionError` makes this distinction clear: it's an invariant violation, not a
 user-caused condition.
 
-**Tracked in**: [[evaluator.language]]
+**Tracked in**: [[evaluator.language]], [[evaluator-trusts-typechecker.language]]
 
 ---
 
@@ -987,6 +997,8 @@ Parser rules are updated:
 - Keywords (`let`, `fn`, `in`, etc.) are matched before identifiers by ANTLR's priority rules,
   so no conflicts arise.
 
+**Tracked in**: [[antlr-grammar.language]]
+
 ---
 
 ## D-034: Type Annotations Elaborate to `TypeScheme`
@@ -1217,6 +1229,8 @@ correct and the type bodies are small in practice. Revisit when type complexity 
 instantiation becomes a measurable cost.
 
 **Ref**: [Bidirectional elaborator session](3308f68e-e239-4a60-912c-47cfba6eabcc)
+
+**Tracked in**: [[environment-carrying-instantiation.types]]
 
 ---
 

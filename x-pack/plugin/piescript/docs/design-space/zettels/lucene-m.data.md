@@ -1,20 +1,33 @@
 ---
-tags: [data, open, theoretical]
+tags: [data, open, theoretical, concept]
 refs:
   - doc:data-access.md
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
 # LuceneM Free Monad
 
-Free monad over Lucene primitives — the "assembly language" of data access. Each operation is a constructor (building a LuceneM value does nothing; it *describes* what to do). An interpreter executes the description, managing resource lifecycle automatically.
+[[free-monad.types]] over Lucene primitives — the "assembly language" of data access. Each operation is a constructor (building a LuceneM value does nothing; it *describes* what to do). An interpreter executes the description, managing [[searcher-lifecycle.data]] automatically.
 
-Gives full control over every Lucene primitive: searcher acquisition, query compilation, segment iteration, DocValues reading, Collector-based push processing. Resource management is automatic (interpreter releases searchers on completion). This is the escape hatch for programs that interleave data access with coordination logic — custom merge joins, per-segment spawn for user-controlled parallelism, searcher lifecycle spanning multiple coordination steps.
+Gives full control over every Lucene primitive:
+- [[index-searcher.es-internals]] acquisition
+- [[lucene-query-builders.es-internals]] compilation
+- [[lucene-segments.es-internals]] iteration
+- [[doc-values.es-internals]] reading
+- [[lucene-collectors.es-internals]]-based push processing. This is the escape hatch for programs that interleave data access with coordination - custom merge joins
+- [[segment-parallelism.data]] for user-controlled parallelism
+- [[searcher-lifecycle.data]] spanning multiple coordination steps.
 
-Block D's `open`/`consume`/`read` are what LuceneM primitives will eventually compile to. Once LuceneM exists, those become internal implementation details.
+Block D's [[shard-read.data]] primitives (`open`/`consume`/`read`) are what LuceneM primitives will eventually compile to.
 
-**Depends on**: [[shard-read.data]], [[free-monad.types]]
-**Enables**: [[data-access-hierarchy.data]]
+**Depends on**: [[shard-read.data]], [[free-monad.types]], [[searcher-lifecycle.data]]
+**Enables**: [[data-access-hierarchy.data]], [[segment-parallelism.data]]
 **Connections**:
-- related: [[data-access-hierarchy.data]] — Level 3 in the data access hierarchy; not yet designed in detail
-- related: currently the physical primitives (Level 4) are exposed directly
+- part-of: [[data-access-architecture.roadmap]]
+- part-of: [[data-access-hierarchy.data]] — Level 3 in the data access hierarchy; not yet designed in detail
 - related: [[blockloader.data]] — BlockLoader is a Lucene read optimization that LuceneM could expose
+- compiles-to: [[shard-read.data]] — currently the physical primitives (Level 4) are exposed directly; LuceneM compiles to them
+- related: [[index-searcher.es-internals]] — searcher acquisition is a core LuceneM operation
+- related: [[lucene-segments.es-internals]] — segment-level iteration for fine-grained control
+- related: [[doc-values.es-internals]] — DocValues reading for field access
+- related: [[lucene-collectors.es-internals]] — push-based processing model
+- related: [[lucene-query-builders.es-internals]] — query compilation within LuceneM programs

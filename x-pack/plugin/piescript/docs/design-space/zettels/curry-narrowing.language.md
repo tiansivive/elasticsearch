@@ -7,10 +7,15 @@ refs:
 ---
 # Curry Narrowing
 
-Curry language narrowing-based functional-logic patterns (functions as patterns). In Curry, functions can run "backwards" — given a result, the runtime narrows the input space to find values that produce it. This unifies pattern matching and function application: a function definition is simultaneously a pattern that can be matched against. Combined with CHAM, this enables declarative concurrent reactions.
+Curry language narrowing-based functional-logic patterns (functions as patterns).
+
+- In Curry, functions can run "backwards" — given a result, the runtime narrows the input space to find values that produce it
+- This unifies [[pattern-matching.language]] and function application: a function definition is simultaneously a pattern that can be matched against
+- Combined with [[cham-patterns.coordination]], this enables declarative concurrent reactions
 
 **Depends on**: [[multi-value-channels.coordination]]
 **Enables**: (none)
 **Connections**:
-- informs: [[cham-patterns.coordination]] — CHAM + Curry = declarative concurrent reactions
-- related: [[pattern-matching.language]] — narrowing generalizes pattern matching
+- part-of: [[future-coordination.roadmap]]
+- related: [[cham-patterns.coordination]] — CHAM + Curry = declarative concurrent reactions
+- subsumes: [[pattern-matching.language]] — narrowing generalizes pattern matching
