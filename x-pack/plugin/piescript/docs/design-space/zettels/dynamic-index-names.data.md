@@ -1,12 +1,12 @@
 ---
-tags: [data, types, open]
+tags: [data, types, open, concept, question]
 refs:
   - vision:data-access
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
 # Dynamic Index Names
 
-When the index is a runtime value, schema depends on external cluster state. Honest type is Dynamic with explicit narrowing. Options: GADT-based refinement (OutsideIn(X)), CPS-style validation, Reflect typeclass.
+When the index is a runtime value, schema depends on external cluster state. Honest type is Dynamic with explicit narrowing. Options: GADT-based refinement (OutsideIn(X)), CPS-style validation, Reflect [[typeclasses.types]].
 
 Three approaches compared:
 
@@ -22,3 +22,5 @@ All three are future work. Static `use` declarations cover the common case where
 **Enables**: (none directly)
 **Connections**:
 - contrasts-with: [[use-declarations.data]] — static names (via `use`) get full type safety; dynamic names are the escape hatch
+- related: [[typeclasses.types]] — Reflect typeclass approach requires typeclass machinery
+- tradeoff-with: [[gadt-rejection.types]] — GADT-based refinement option would require OutsideIn(X)

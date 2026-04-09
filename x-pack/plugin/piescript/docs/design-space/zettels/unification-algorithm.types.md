@@ -1,5 +1,5 @@
 ---
-tags: [types, unification, implemented]
+tags: [types, unification, implemented, concept]
 refs:
   - adr:D-005
   - adr:D-019
@@ -8,15 +8,22 @@ refs:
 ---
 # Unification Algorithm
 
-Robinson unification with occurs check. Null-as-bottom special case (D-007). Leijen-style open-row unification (D-030) with tail solving. Returns `Optional<TypeError>`. Kind unification reuses the same algorithm (D-053). First-order only -- higher-order unification deliberately avoided.
+Robinson unification with occurs check:
+- [[null-as-bottom.types]] special case (D-007)
+- Leijen-style open-[[row-polymorphism.types]] unification (D-030) with tail solving
+- Returns `Optional<TypeError>` (see [[type-errors.types]])
+- [[kind-system.types]] unification reuses the same algorithm (D-053)
+- First-order only -- [[higher-order-unification.types]] deliberately avoided
 
 **Depends on**: [[hindley-milner.types]]
 **Enables**: [[row-polymorphism.types]], [[kind-system.types]], [[deferred-constraints.types]]
 **Connections**:
-- related: [[kind-system.types]] — same unifier solves type constraints AND kind constraints (D-053)
+- uses: [[kind-system.types]] — same unifier solves type constraints AND kind constraints (D-053)
 - contrasts-with: [[higher-order-unification.types]] — deliberately NOT chosen
-- related: [[meta-variables.types]] — metas are the holes that unification solves
-- related: [[rigid-variables.types]] — unification rejects rigid-vs-anything-else mismatches
-- related: [[null-as-bottom.types]] — Null unifies with every type (special case, D-007)
-- related: [[recursive-types.types]] — occurs check in the unifier blocks recursive types
-- related: [[schema-permutation.types]] — row unification must handle field order invariance
+- uses: [[meta-variables.types]] — metas are the holes that unification solves
+- constrains: [[rigid-variables.types]] — unification rejects rigid-vs-anything-else mismatches
+- specializes: [[null-as-bottom.types]] — Null unifies with every type (special case, D-007)
+- constrains: [[recursive-types.types]] — occurs check in the unifier blocks recursive types
+- extends: [[schema-permutation.types]] — row unification must handle field order invariance
+- produces: [[type-errors.types]] — unification failures surface as TypeError variants
+- uses: [[row-polymorphism.types]] — Leijen-style open-row unification with tail solving

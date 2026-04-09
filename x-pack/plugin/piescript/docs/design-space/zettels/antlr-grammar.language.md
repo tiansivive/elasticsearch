@@ -1,5 +1,5 @@
 ---
-tags: [language, syntax, implemented]
+tags: [language, syntax, implemented, documentation]
 refs:
   - adr:D-022
   - adr:D-033
@@ -14,7 +14,9 @@ Lexer and parser grammar. `UPPER_IDENT`/`LOWER_IDENT` split (D-033) for type var
 **Depends on**: (none)
 **Enables**: [[core-ir.language]]
 **Connections**:
+- part-of: [[phase-1.roadmap]]
 - informs: [[core-ir.language]] — parsing produces CST; elaboration converts to Core IR
-- related: grammar enforces case conventions at the syntax level, not the elaborator
-- related: [[type-annotations.types]] — UPPER_IDENT/LOWER_IDENT split enables type annotation parsing
-- related: [[elaboration-architecture.types]] — CST from ANTLR is consumed by the elaborator
+- constrains: [[ident-case-convention.language]] — grammar enforces case conventions at the syntax level, not the elaborator
+- enables: [[type-annotations.types]] — UPPER_IDENT/LOWER_IDENT split enables type annotation parsing
+- informs: [[elaboration-architecture.types]] — CST from ANTLR is consumed by the elaborator
+- constrains: [[decimal-literal-ambiguity.language]] — DECIMAL_LITERAL token rule lives in this grammar

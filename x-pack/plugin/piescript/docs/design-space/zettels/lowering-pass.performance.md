@@ -6,11 +6,11 @@ refs:
 ---
 # Lowering Pass
 
-Future: evaluator splits into partial evaluator (produces free monad residual) → optimizer (push-down, fusion, dead-branch elimination) → runtime interpreter. Analogous to GHC Core → STG → Cmm or ESQL Logical Plan → Physical Plan → Operator Pipeline.
+Future: [[evaluator.language]] splits into partial evaluator (produces [[free-monad.types]] residual) then optimizer ([[push-down-compilation.performance]], [[combinator-fusion.performance]], dead-branch elimination) then runtime interpreter. Analogous to GHC Core to STG to Cmm or ESQL Logical Plan to Physical Plan to Operator Pipeline.
 
 **Depends on**: [[free-monad.types]]
 **Enables**: [[push-down-compilation.performance]], [[combinator-fusion.performance]]
 **Connections**:
 - related: [[evaluator.language]] — runtime interpreter from Block A becomes the backend; additive change, nothing thrown away
-- related: [[bytecode-compilation.performance]] — bytecode compilation is a possible target after lowering
-- related: [[phase-transition-architecture.language]] — the evaluator evolution this lowering pass is part of
+- prerequisite-for: [[bytecode-compilation.performance]] — bytecode compilation is a possible target after lowering
+- part-of: [[phase-transition-architecture.language]] — the evaluator evolution this lowering pass is part of
