@@ -1,14 +1,21 @@
 ---
-tags: [infrastructure, es-internals, tech-debt]
+tags: [infrastructure, es-internals, tech-debt, task, known-issue]
 refs:
   - adr:D-055
+  - code:ValueSerialization.java
+  - code:CoreExprSerialization.java
+  - code:TypeSerialization.java
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
 # Transport Versioning
 
-No `TransportVersion` guards on serialization — all Value/CoreExpr/Type serialization writes and reads without version checks. This means piescript cannot be safely used in mixed-version clusters. The fix: add `TransportVersion` fields to serialization methods, gate new variants behind version checks, and handle unknown variants gracefully on older nodes.
+No `TransportVersion` guards on [[serialization.infrastructure]] -- all Value/CoreExpr/Type serialization writes and reads without version checks:
+- Piescript cannot be safely used in mixed-version clusters
+- Fix: add `TransportVersion` fields to serialization methods, gate new variants behind version checks, handle unknown variants gracefully on older nodes
+- Affects [[code-mobility.coordination]] since closures are serialized across nodes
 
 **Depends on**: [[serialization.infrastructure]], [[es-plugin.infrastructure]]
 **Enables**: (none directly)
 **Connections**:
-- related: [[serialization-boundary.infrastructure]] — versioning is part of the wire boundary story
+- part-of: [[serialization-boundary.infrastructure]] — versioning is part of the wire boundary story
+- constrains: [[code-mobility.coordination]] — closures sent across nodes need version-safe serialization

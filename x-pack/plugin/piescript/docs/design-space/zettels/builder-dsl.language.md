@@ -1,5 +1,5 @@
 ---
-tags: [tooling, language, implemented]
+tags: [tooling, language, implemented, documentation]
 refs:
   - code:Exprs.java
   - code:Values.java
@@ -13,4 +13,6 @@ refs:
 **Depends on**: [[core-ir.language]]
 **Enables**: (none directly)
 **Connections**:
-- related: [[core-printer.tooling]] — builder constructs IR, printer displays it
+- part-of: [[block-c.roadmap]]
+- complements: [[core-printer.tooling]] — builder constructs IR, printer displays it
+- uses: [[core-ir.language]] — factory methods produce `CoreExpr` nodes

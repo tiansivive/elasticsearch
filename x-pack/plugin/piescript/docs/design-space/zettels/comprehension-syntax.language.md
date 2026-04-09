@@ -1,5 +1,5 @@
 ---
-tags: [language, esql, open]
+tags: [language, esql, open, feature, concept, question]
 refs:
   - vision:long-term
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
@@ -17,5 +17,7 @@ The ESQL typing problem motivates this zettel directly. The current opaque `quer
 **Depends on**: [[typeclasses.types]], [[query-typeclass.data]]
 **Enables**: (none directly)
 **Connections**:
-- related: [[t-linq.esql]] — the "language-integrated query" aspect of the name T-LINQ
-- related: instance selection: implicit vs explicit
+- part-of: [[data-access-architecture.roadmap]]
+- inspired-by: [[t-linq.esql]] — the "language-integrated query" aspect of the name T-LINQ
+- uses: [[query-typeclass.data]] — desugaring targets the Query typeclass combinators
+- implements: [[esql-compilation.esql]] — comprehensions make every ESQL transformation a typed piescript expression

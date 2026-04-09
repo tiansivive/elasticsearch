@@ -114,15 +114,40 @@ Actions are verbs describing what the edge does. Common ones:
 | Action | Meaning |
 |--------|---------|
 | `informs` | Theoretical basis or influence |
+| `inspired-by` | Creative influence (softer than `informs`) |
 | `supersedes` | Replaces a previous approach |
-| `implemented-by` | Concrete implementation of this concept |
 | `rejected-in-favor-of` | Was considered but not chosen |
-| `contrasts-with` | Different approach to same problem |
+| `contrasts-with` | Different approach to same problem (adversarial) |
+| `alternative-to` | Different approach, both viable (non-adversarial) |
+| `complements` | Works well together with |
 | `part-of` | This concept is a component of the linked concept |
-| `subsumes` | This concept is a generalization that includes the linked concept |
-| `overlaps` | Partial conceptual overlap — not identical but shared territory |
+| `subsumes` | Generalization that includes the linked concept |
+| `specializes` | Specific case of a more general concept |
+| `overlaps` | Partial conceptual overlap — shared territory |
 | `duplicates` | Same concept tracked separately — should be merged |
-| `related` | General relationship |
+| `implements` | Concrete realization of the linked design |
+| `extends` | Builds on top of the linked item |
+| `refines` | Narrows or improves the linked item |
+| `uses` | Practical dependency — X uses Y at runtime or build time |
+| `example-of` | Concrete instance of a pattern or concept |
+| `validates` | Provides evidence that the linked approach works |
+| `evolved-into` | Changed over time and became the linked item |
+| `constrains` | Imposes constraints on the linked item |
+| `tension-with` | Design tension — pulling in different directions |
+| `tradeoff-with` | Choosing one affects the other |
+| `prerequisite-for` | Must be done before (implementation ordering) |
+| `blocks` | Prevents the linked item from proceeding |
+| `unblocks` | Removes a blocker for the linked item |
+| `closes` | Resolves or completes the linked item |
+| `motivates` | This problem/need is why the linked item exists |
+| `solves` | Addresses the problem described by the linked item |
+| `workaround-for` | Temporary fix for the linked item |
+| `analogous-to` | Same pattern in a different domain |
+| `related` | General relationship (use sparingly — prefer a specific verb) |
+
+**Convention:** active voice — "this zettel [verb] that zettel." If you need the
+inverse direction, write the edge on the other zettel. Avoid inverse pairs like
+`implements`/`implemented-by`.
 
 New actions appear as needed — just use a verb that describes the relationship.
 
@@ -137,10 +162,11 @@ table for vocabulary consistency.
 | `aggregation` | STATS, GROUP BY, aggregates, fold/reduce patterns |
 | `async` | Asynchronous execution, ActionListener, CPS |
 | `channels` | Channel mechanism, messaging, coordination |
-| `columnar` | Column-store, Page/Block, compute engine, Block builders |
+| `columnar` | Column-store representation: Page/Block, Block builders. For Elasticsearch’s columnar **runtime** (`org.elasticsearch.compute`), see **`compute-engine`**. |
 | `comparable` | Comparison with external systems (Spark, Flink, Ray, Painless) |
 | `compilation` | Bytecode, JVM codegen, ESQL compilation, pure fragment detection |
-| `compute` | Computation model, distributed execution |
+| `compute` | Computation model, distributed execution (piescript-level; not the ES `org.elasticsearch.compute` stack) |
+| `compute-engine` | Elasticsearch columnar runtime: `org.elasticsearch.compute` — data `Page`/`Block`/`BlockFactory`, `Driver`/`Operator` chains, exchange. Distinct from `compute`. |
 | `concurrency` | Parallel execution, synchronization |
 | `control-flow` | Loops, recursion, branching |
 | `coordination` | Join Calculus, spawn/when/send patterns |
@@ -176,6 +202,7 @@ table for vocabulary consistency.
 | `primitives` | Base types, literals, built-in values |
 | `push-down` | Query optimization, predicate push-down |
 | `resources` | Resource management, cleanup, lifecycle |
+| `roadmap` | Implementation milestone, phase, block, or delivery unit |
 | `row-types` | Row polymorphism, row operators, record types |
 | `runtime` | Runtime behavior, evaluation, dispatch, polymorphism |
 | `safety` | Type safety, purity guarantees, serialization boundary |
@@ -190,6 +217,38 @@ table for vocabulary consistency.
 | `typeclasses` | Typeclass system and specific typeclass designs |
 | `types` | Type system, inference, checking, kinds |
 | `unification` | Robinson algorithm, occurs check, row/kind unification |
+| `task` | Actionable work item — something to build, fix, or implement |
+| `concept` | Design idea, pattern, or architectural choice |
+| `decision` | A settled choice, often linked to an ADR |
+| `prior-art` | How external systems solved this problem |
+| `motivation` | Problem statement, why something exists |
+| `exploration` | Open-ended thinking, not yet committed |
+| `pattern` | Reusable approach or technique |
+| `fix` | Something broken to repair |
+| `feature` | Concrete capability to build |
+| `epic` | Large multi-step work effort |
+| `bug` | Known defect |
+| `known-issue` | Documented limitation, not necessarily a bug |
+| `workaround` | Temporary solution |
+| `question` | Open question to resolve |
+| `problem` | Identified problem needing a solution |
+| `solution` | An answer to a problem or question |
+| `interface` | API boundary, contract, protocol surface |
+| `protocol` | Communication or coordination protocol |
+| `capability` | System capability or affordance |
+| `report` | Analysis or findings |
+| `documentation` | Documents what exists |
+| `blocker` | Currently blocks other work (state tag — remove when unblocked) |
+| `deferred` | Explicitly postponed (state tag — remove or update when addressed) |
+| `migration` | Requires migration or transition plan |
+| `category-theory` | Mathematical foundations — catamorphisms, bananas, homomorphisms, CCC |
+| `mutability` | Mutable state, ownership, shared state concerns |
+| `scheduling` | Task scheduling, fairness, preemption, persistent tasks |
+| `ml` | Machine learning workflows, inference, model evaluation |
+| `mem-management` | Memory lifecycle, GC, ref counting, circuit breakers |
+| `write-path` | Write concerns — shard write, bulk, ingest, replication, indexing pressure |
+| `query-theory` | Query compilation theory — shredding, normalization, comprehensions |
+| `beam` | BEAM/Erlang runtime lessons — scheduling, GC, supervision, hot code |
 
 ## Tag aliases
 
@@ -198,7 +257,16 @@ When searching or filtering, treat aliased tags as interchangeable.
 
 | Alias | Canonical |
 |-------|-----------|
-| (none yet) | |
+| `design-pattern` | `pattern` |
+| `machine-learning` | `ml` |
+| `intermediate-representation` | `ir` |
+| `infra` | `infrastructure` |
+| `erlang` | `beam` |
+| `gc` | `mem-management` |
+| `memory` | `mem-management` |
+| `cat-theory` | `category-theory` |
+| `writes` | `write-path` |
+| `es-compute` | `compute-engine` |
 
 New aliases appear as needed — add them when the same concept genuinely goes by two names.
 
@@ -213,9 +281,13 @@ tags that describe the group's purpose. A tag can appear in multiple groups or n
 | Maturity | How baked is this concept? | universal | `implemented`, `designed`, `open`, `theoretical`, `tech-debt`, `superseded` |
 | Foundations | What theory or technique underpins this? | topic | `pi-calculus`, `nbe`, `polymorphism`, `unification`, `inference`, `effects` |
 | Distribution | How do things move and coordinate across nodes? | topic | `distributed`, `coordination`, `mobility`, `orchestration`, `serialization`, `channels`, `async`, `concurrency` |
-| Data path | How does data flow from storage to piescript values? | topic | `lucene`, `columnar`, `materialization`, `streaming`, `aggregation`, `push-down`, `data-processing` |
+| Data path | How does data flow from storage to piescript values? | topic | `lucene`, `columnar`, `compute-engine`, `materialization`, `streaming`, `aggregation`, `push-down`, `data-processing` |
+| Purpose | What kind of artifact is this? | topic | `task`, `concept`, `decision`, `documentation`, `report` |
+| Workflow | Function in the work process? | workflow | `prior-art`, `motivation`, `exploration`, `pattern`, `fix`, `feature`, `epic`, `bug`, `known-issue`, `workaround`, `question`, `problem`, `solution`, `interface`, `protocol`, `capability`, `blocker`, `deferred`, `migration` |
 
-`universal` — expected on most zettels. `topic` — use when relevant.
+`universal` — expected on most zettels. 
+`topic` — use when relevant.
+`workflow` — describes the zettel's function in work processes (design, implementation, debugging).
 
 New groups and roles appear as patterns emerge.
 
