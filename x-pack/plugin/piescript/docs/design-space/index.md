@@ -165,6 +165,7 @@ Actions are verbs describing what the edge does. Common ones:
 | `motivates` | This problem/need is why the linked item exists |
 | `solves` | Addresses the problem described by the linked item |
 | `workaround-for` | Temporary fix for the linked item |
+| `enhances` | Adds capability to the linked item (the linked item works without it, but is better with it) |
 | `analogous-to` | Same pattern in a different domain |
 | `includes` | This collection/thread contains the linked item |
 | `related` | General relationship (use sparingly — prefer a specific verb) |

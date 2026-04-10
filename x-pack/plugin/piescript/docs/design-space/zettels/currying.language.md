@@ -18,3 +18,4 @@ Piescript functions are curried — multi-argument functions are chains of singl
 **Connections**:
 - uses: [[serialization.infrastructure]] — `BuiltinVal` serialization preserves partial args
 - uses: [[closure-val.language]] — `BuiltinVal` is the runtime representation of curried partial application
+- related: [[pattern-reuse.language]] — lambda params can use pattern destructuring (`fn { x, y } -> ...`); desugars to `fn $arg -> match $arg | { x, y } -> ...`

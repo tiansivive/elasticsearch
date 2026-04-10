@@ -22,3 +22,4 @@ Both use the same pattern: evaluate into a domain, get stuck on unknowns, read b
 - complements: [[force-threading.types]] — force is the type-level NbE; threaded to evaluator via [[eval-dependencies.language]]
 - subsumes: [[row-operators.types]] — &, Pick, Omit are reducible builtins in force
 - uses: [[symbol-partial-evaluation.esql]] — value-level NbE implemented via Symbol partial evaluation
+- analogous-to: [[type-level-matching.types]] — value-level `CoreMatch` and type-level `force` cases are the same NbE structure at different levels

@@ -178,3 +178,73 @@ Added `testLocalExchangeStreaming` to `PiescriptIT.java` and `testRemoteExchange
 
 RESOLVED [[exchange-remote-testing.infrastructure]] — added cross-node tests
 RESOLVED Block G integration tests — updated `data-completeness.thread.md`
+
+---
+
+## session:pattern-matching-design — 2026-04-10 [language-expressiveness, error-handling, design]
+
+Design discussion for pattern matching as the critical unblock for recursion.
+
+Started from recursion — discovered the false dependency chain: D-010 tied `if/then/else`
+to `match`, `match` was incorrectly listed as depending on ADTs, so recursion appeared
+blocked by the full ADT + pattern matching stack. Fixed: basic pattern matching (Boolean,
+literals, wildcards, records, lists) is independent of ADTs. Constructor patterns come
+later with ADTs, but neither blocks the other.
+
+Created [[pattern-matching.hub]] with 6 sub-zettels splitting the old monolithic
+[[pattern-matching.language]] (now deleted):
+- [[match-syntax.language]] — ML-style `match x | pat -> body`, `if/then/else` as sugar
+- [[pattern-types.language]] — 7 pattern forms including record/list tail with `|`
+- [[match-type-checking.language]] — elaboration algorithm via unification
+- [[pattern-reuse.language]] — extending patterns to lambda/when/let (future sugar)
+- [[type-level-matching.types]] — future type families generalizing `force`
+- [[core-match.language]] — CoreMatch IR node + Pattern sealed hierarchy
+
+Key design decisions:
+- `|` for tails (records and lists), consistent with row type syntax and Erlang cons
+- `...` reserved for record spread in expressions (new zettel: [[record-spread.language]])
+- Record tail `| rest` binds a **record** at value level (rows are type-level only)
+- Nested patterns are not a special case — Pattern hierarchy is recursive by definition
+- No exhaustiveness checking in v1; runtime error if no match
+- Pattern infrastructure designed for reuse across match/lambda/when/let
+
+[[recursion.language]] -- blocked-by -> [[pattern-matching.hub]]
+[[pattern-matching.hub]] -- complements -> [[adts.types]]
+[[pattern-matching.hub]] -- enables -> [[recursion.language]]
+[[pattern-matching.hub]] -- specializes -> [[curry-narrowing.language]]
+[[pattern-matching.hub]] -- specializes -> [[cham-patterns.coordination]]
+[[pattern-matching.hub]] -- enhances -> [[when-synchronization.coordination]]
+[[pattern-matching.hub]] -- enhances -> [[currying.language]]
+[[nbe-dual-pattern.types]] -- analogous-to -> [[type-level-matching.types]]
+
+Created [[record-spread.language]] — `...` operator for record expression merging
+Created [[design-to-implementation.meta]] — workflow: zettels → hub → plan → queue → ADR
+
+Updated CLAUDE.md, AGENTS.md, /load skill — agents now read all `meta` zettels at session start.
+Updated [[language-expressiveness.thread]] — pattern matching bumped to position 1 (priority `now`).
+Updated [[error-handling.thread]] — pattern matching no longer depends on ADTs.
+Added `enhances` verb to index.md edge vocabulary.
+Updated 13 zettels to point from [[pattern-matching.language]] to [[pattern-matching.hub]].
+
+SPAWN [[pattern-matching.hub]] — hub zettel with 6 sub-zettels
+SPAWN [[record-spread.language]] — `...` spread operator for record expressions
+SPAWN [[design-to-implementation.meta]] — workflow meta zettel
+
+---
+
+## session:data-access-restructure — 2026-04-10 [data, architecture, meta]
+
+Archived the monolithic `data-access.md` document and restructured the data access design space into atomic zettels.
+
+Promoted `data-access-architecture.roadmap` to a proper hub representing the full data access landscape (ESQL, physical, streaming, Query typeclass) rather than just the `Query a` vision. Extracted the equational vs sequential argument into `data-access-rationale` and the mermaid architecture into `data-access-diagram`.
+
+Refined file naming guidelines in `index.md` to avoid redundant qualifiers (e.g., `data-access-hierarchy.md` instead of `data-access-hierarchy.data.md`) and clarified multiple qualifier usage.
+
+[[data-access-architecture.roadmap]] -- includes -> [[data-access-rationale]], [[data-access-diagram]], [[data-access-hierarchy]]
+[[data-access-rationale]] -- overlaps -> [[data-access-hierarchy]]
+
+SPAWN [[data-access-rationale]] — equational vs sequential argument
+SPAWN [[data-access-diagram]] — mermaid architecture diagram
+SPAWN [[data-access-restructure.session]] — session zettel
+
+RESOLVED Archive `data-access.md` to `docs/archive/data-access.pre-threads.md`

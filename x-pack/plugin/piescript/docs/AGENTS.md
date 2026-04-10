@@ -240,6 +240,12 @@ landscape. See [design-space/index.md](design-space/index.md) for the format spe
 When creating or editing zettels, follow the format specification and naming conventions
 established in [design-space/index.md](design-space/index.md).
 
+**Agent responsibilities — on session start:**
+
+1. **Read all meta zettels** (`./scripts/catalog.py meta`). These define how the design space
+   works: workflow conventions, tag vocabulary, the design-to-implementation pipeline. See
+   [[design-to-implementation.meta]] for the full workflow.
+
 **Agent responsibilities — lookup workflow:**
 
 Before doing any design work, implementation, or proposing changes:

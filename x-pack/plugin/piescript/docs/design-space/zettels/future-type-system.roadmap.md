@@ -10,7 +10,7 @@ Type system aspirations beyond F-omega-lite: typeclasses for ad-hoc polymorphism
 - part-of: [[vision-hub.roadmap]]
 - subsumes: [[typeclasses.types]]
 - subsumes: [[adts.types]]
-- subsumes: [[pattern-matching.language]]
+- subsumes: [[pattern-matching.hub]]
 - subsumes: [[recursion.language]]
 - subsumes: [[qtt-linearity.types]]
 - subsumes: [[session-types.types]]

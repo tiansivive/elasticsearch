@@ -11,20 +11,22 @@ mechanisms, and reusable definitions.
 
 ## Sequence
 
-1. **Recursion** [[recursion.language]] — needs-design
-   `let rec` / `fix` / `rec` keyword. Enables pagination loops, iterative
-   algorithms. Tension with [[stack-depth.language]] (no TCO).
-
-2. **String/list concat** [[string-concat.language]] — ready
-   `<>` for Keyword concat, `++` for List concat. Future typeclass candidates.
-
-3. **ADTs** [[adts.types]] — needs-design
-   Sum + product types. Declaration syntax, constructor naming.
+1. **Pattern matching** [[pattern-matching.hub]] — now
+   Match expressions (`match x | pat -> body`), `if/then/else` as sugar.
+   Independent of ADTs — basic patterns (Boolean, literal, wildcard, record, list).
+   Unblocks recursion. See hub for sub-zettels.
    _Shared with: error-handling_
 
-4. **Pattern matching** [[pattern-matching.language]] — needs-design (after ADTs)
-   Match expressions, exhaustiveness, `if/then/else` as sugar.
-   Depends on: [[adts.types]]
+2. **Recursion** [[recursion.language]] — needs-design (after pattern matching)
+   `loop` builtin or `let rec`. Blocked by pattern matching (needs branching).
+   Enables pagination loops, iterative algorithms.
+
+3. **String/list concat** [[string-concat.language]] — ready
+   `<>` for Keyword concat, `++` for List concat. Future typeclass candidates.
+
+4. **ADTs** [[adts.types]] — needs-design
+   Sum + product types. Declaration syntax, constructor naming.
+   Complements pattern matching (constructor patterns) but neither blocks the other.
    _Shared with: error-handling_
 
 5. **GroupBy combinator** [[groupby.language]] — needs-design
@@ -60,7 +62,7 @@ mechanisms, and reusable definitions.
 - includes: [[recursion.language]]
 - includes: [[string-concat.language]]
 - includes: [[adts.types]]
-- includes: [[pattern-matching.language]]
+- includes: [[pattern-matching.hub]]
 - includes: [[groupby.language]]
 - includes: [[traverse.language]]
 - includes: [[comprehension-syntax.language]]

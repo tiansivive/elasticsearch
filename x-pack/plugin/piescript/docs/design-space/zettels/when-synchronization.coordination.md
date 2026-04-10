@@ -22,3 +22,4 @@ refs:
 - uses: [[positional-collector.coordination]] — `GroupedActionListener` was rejected because it stores by arrival order, not binding order (D-041 S3)
 - replaces: [[par-blocks.coordination]] — when provides strictly more expressive multi-way synchronization than par blocks
 - complements: [[spawn.coordination]] — spawn+when is the core coordination pattern; spawn creates channels that when synchronizes on
+- related: [[pattern-reuse.language]] — `when` channel bindings currently bind a single variable per channel; pattern destructuring (`when (ch { name: n }) -> ...`) would desugar to wrapping the body in a `CoreMatch` per binding
