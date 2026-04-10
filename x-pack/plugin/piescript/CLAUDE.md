@@ -13,7 +13,7 @@ and follow any links they contain recursively until you have a complete picture 
 6. **[docs/design-space/index.md](docs/design-space/index.md)** — tagged knowledge base of the full design landscape
 7. **Design space catalog** — run `./scripts/catalog.py --compact` to scan all 200+ tracked design topics
 8. **Thread** — read `docs/design-space/thread.md` for the paper trail of prior work
-9. **Queue** — check `docs/design-space/zettels/global-pending.queue.md` for open pending items
+9. **Queue** — run `./scripts/queue.py` for all pending items, or check `docs/design-space/zettels/global-pending.queue.md` directly
 
 If any of these files link to other documents (vision, data-access, references, plans, etc.),
 read those too. The goal is to have the full project context before making any changes or

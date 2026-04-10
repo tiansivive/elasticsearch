@@ -28,20 +28,18 @@ All scripts are executable and run from the piescript root directory.
 ./scripts/catalog.py              # full catalog
 ./scripts/catalog.py --compact    # one line per zettel
 ./scripts/catalog.py types        # filter by keyword
-./scripts/catalog.py --es-code-gaps  # ES-internals without code: refs
+./scripts/catalog.py --markdown   # plain markdown output
 ```
 
-### tech_debt.py — tech debt report
+### queue.py — pending work report
 
-Scans zettels tagged `tech-debt`, `task`, or `known-issue` and produces a
-prioritized report grouped by concern area.
+Shows open items from queue zettels and active thread priorities.
 
 ```bash
-./scripts/tech_debt.py            # Rich terminal output
-./scripts/tech_debt.py --markdown # plain markdown (pipeable)
-./scripts/tech_debt.py --sort priority  # sort by dependency count (default)
-./scripts/tech_debt.py --sort alpha     # sort alphabetically
-./scripts/tech_debt.py --include-resolved  # include implemented items
+./scripts/queue.py                 # all pending items
+./scripts/queue.py --markdown      # plain markdown
+./scripts/queue.py --queues-only   # only queue zettels
+./scripts/queue.py --threads-only  # only thread priorities
 ```
 
 ### roadmap_status.py — thread-based roadmap dashboard
@@ -68,18 +66,6 @@ index table and consistency report.
 ./scripts/adr_index.py --markdown          # plain markdown
 ./scripts/adr_index.py --consistency-only  # just problems
 ./scripts/adr_index.py --status accepted   # filter by status
-```
-
-### vision_coverage.py — vision section coverage
-
-Reports which `vision.md` sections are covered by zettels (candidates for
-trimming).
-
-```bash
-./scripts/vision_coverage.py              # full report
-./scripts/vision_coverage.py --markdown   # plain markdown
-./scripts/vision_coverage.py --trim-only  # only trim candidates
-./scripts/vision_coverage.py --detail     # expand zettel descriptions
 ```
 
 ## Dependencies
