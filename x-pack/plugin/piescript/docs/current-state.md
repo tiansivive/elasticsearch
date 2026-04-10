@@ -136,7 +136,7 @@ today.
 | Non-STARTED shard states in `topology` | Deferred | Only STARTED shards included (D-044) |
 | Scheduled async execution | Block E+ | No persistent task or scheduler |
 | Push-down optimizer | Deferred | Typeclass-driven push-down to Lucene (future optimization) |
-| Streaming data access (Block G) | Mostly done | Columnar Pages via Block builders, Exchange builtins via `ExchangeService`, `Shard.stream`/`Page.toList`/`Page.count`. Integration tests still needed. |
+| Streaming data access (Block G) | Done | Columnar Pages via Block builders, Exchange builtins via `ExchangeService`, `Shard.stream`/`Page.toList`/`Page.count`. Integration tests completed for local and cross-node streaming. |
 | Multi-value field semantics (Block H) | Planned | MV-capable runtime values, scalar pervasion, `Single a` boxing, `MV.*` builtins. Currently MV fields are truncated to first value. |
 | Feature flag / license gating | TBD | No gating mechanism |
 
@@ -266,8 +266,7 @@ via `Index.bulk`, replication monitoring via `Shard.globalCheckpoint`, and list 
 
 **The distributed vertical slice with read-write capability is complete.** A piescript program can
 discover topology, ship closures to data nodes, read local data, transform it, write results
-back to indices (via shard-level Engine writes or the Bulk API), refresh for visibility, and
-monitor replication via global checkpoints.
+back to indices (via shard-level Engine writes or the Bulk API), refresh for visibility, monitor replication via global checkpoints, and stream columnar data across nodes via Exchange.
 
 **Next steps are organized by work concern threads** — run `python3 scripts/roadmap_status.py` to
 see all threads with status and priority. The five thread hubs are:

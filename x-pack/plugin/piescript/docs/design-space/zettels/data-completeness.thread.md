@@ -11,8 +11,8 @@ coverage, and infrastructure hardening.
 
 ## Sequence
 
-1. **Block G integration tests** [[block-g.roadmap]] — ready
-   Exchange builtins implemented, integration tests still pending.
+1. **Block G integration tests** [[block-g.roadmap]] — resolved
+   Exchange builtins implemented, integration tests added for local and cross-node streaming.
 
 2. **Empty mapping diagnostics** [[empty-mapping-diagnostics.data]] — ready
    Emit diagnostic when field caps returns no usable fields instead of

@@ -1,5 +1,5 @@
 ---
-tags: [infrastructure, distributed, open, task]
+tags: [infrastructure, distributed, implemented, task]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
