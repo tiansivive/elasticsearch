@@ -165,3 +165,16 @@ architecture, speculative sections, ML workflows, external interaction model
 — all now in zettels and thread hubs.
 
 RESOLVED "Revise vision.md" — speculative sections moved to zettels
+
+## session:block-g-integration-tests — 2026-04-10 [data-completeness, infrastructure, testing]
+
+Implemented the missing integration tests for Block G Exchange streaming.
+Discovered and fixed a bug in `EvalExchange.java` where `Exchange.connect` was hardcoded to use `getLocalNodeConnection()`, making cross-node exchange impossible.
+Updated `ExchangeVal` to include the producer's `nodeId` so the consumer can establish a remote transport connection to the correct node.
+Added `testLocalExchangeStreaming` to `PiescriptIT.java` and `testRemoteExchangeStreaming` to `PiescriptMultiNodeIT.java`.
+
+[[block-g.roadmap]] -- validates -> [[exchange-streaming.infrastructure]]
+[[exchange-streaming.infrastructure]] -- implements -> [[exchange-remote-testing.infrastructure]]
+
+RESOLVED [[exchange-remote-testing.infrastructure]] — added cross-node tests
+RESOLVED Block G integration tests — updated `data-completeness.thread.md`

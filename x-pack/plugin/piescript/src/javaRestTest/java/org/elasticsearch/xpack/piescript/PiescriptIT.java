@@ -594,6 +594,46 @@ public class PiescriptIT extends ESRestTestCase {
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
     }
 
+    // ──── Block G: Exchange streaming (D-054) ────
+
+    public void testLocalExchangeStreaming() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            let shards = Index.shards idx;
+            let shard = List.head shards;
+            let exch = Exchange.open ["name", "age", "active"] 1024.0;
+            
+            let sink = Exchange.sink exch;
+            let sch = Shard.open idx shard { match_all: true };
+            let ch = spawn!;
+            
+            let u3 = when (sch searcher) ->
+              let docs = Shard.consume 100.0 searcher in
+              let page = Shard.stream searcher docs in
+              let u1 = Exchange.addPage sink page in
+              let u2 = Exchange.finish sink in
+              send ch "sent";
+            
+            let source = Exchange.connect exch;
+            let countCh = spawn!;
+            let p = Exchange.poll source (fn page ->
+              send countCh (Page.count page)
+            );
+            
+            when (ch producerStatus) & (p done) & (countCh count) ->
+              { producer: producerStatus, count: count }
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        assertOK(response);
+
+        Map<String, Object> responseMap = entityAsMap(response);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) responseMap.get("result");
+        assertThat(result.get("producer"), equalTo("sent"));
+        assertThat(((Number) result.get("count")).doubleValue(), equalTo(3.0));
+    }
+
     // ──── ESQL query compilation (Block F — D-052) ────
 
     public void testEsqlFromWhereLimit() throws IOException {
@@ -681,7 +721,7 @@ public class PiescriptIT extends ESRestTestCase {
 
     private static Request piescriptRequest(String program) {
         Request request = new Request("POST", "/_piescript/eval");
-        String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"");
+        String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
         request.setJsonEntity("{\"program\":\"" + escaped + "\"}");
         request.addParameter("error_trace", "true");
         RequestOptions.Builder options = RequestOptions.DEFAULT.toBuilder();
@@ -692,7 +732,7 @@ public class PiescriptIT extends ESRestTestCase {
 
     private static Request piescriptDevRequest(String program) {
         Request request = new Request("POST", "/_piescript/dev");
-        String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"");
+        String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
         request.setJsonEntity("{\"program\":\"" + escaped + "\"}");
         request.addParameter("error_trace", "true");
         RequestOptions.Builder options = RequestOptions.DEFAULT.toBuilder();

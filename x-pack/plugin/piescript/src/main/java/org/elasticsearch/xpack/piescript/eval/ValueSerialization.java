@@ -99,6 +99,7 @@ public final class ValueSerialization {
             }
             case Value.ExchangeVal v -> {
                 out.writeByte(TAG_EXCHANGE);
+                out.writeString(v.nodeId());
                 out.writeString(v.exchangeId());
                 out.writeStringCollection(v.columnNames());
                 out.writeVInt(v.bufferSize());
@@ -147,10 +148,11 @@ public final class ValueSerialization {
                 yield new Value.IndexVal(name, uuid, fieldTypes);
             }
             case TAG_EXCHANGE -> {
+                var nodeId = in.readString();
                 var exchangeId = in.readString();
                 var columnNames = in.readCollectionAsList(StreamInput::readString);
                 var bufferSize = in.readVInt();
-                yield new Value.ExchangeVal(exchangeId, columnNames, bufferSize);
+                yield new Value.ExchangeVal(nodeId, exchangeId, columnNames, bufferSize);
             }
             default -> throw new IOException("unknown Value tag: " + tag);
         };

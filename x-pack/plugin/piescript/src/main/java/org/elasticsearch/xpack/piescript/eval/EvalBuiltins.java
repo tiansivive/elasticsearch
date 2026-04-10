@@ -122,6 +122,7 @@ final class EvalBuiltins {
             case "Page.count" -> EvalPage.count(requirePageVal(args.get(0), name), listener);
             // ──── Exchange.* builtins (Block G — D-054) ────
             case "Exchange.open" -> EvalExchange.open(
+                eval,
                 requireList(args.get(0), name).elements(),
                 requireDouble(args.get(1), name),
                 listener

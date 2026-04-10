@@ -73,6 +73,34 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
                 """);
             assertOK(adminClient().performRequest(createIndex));
         }
+
+        if (indexExists("piescript-mn-read") == false) {
+            Request createRead = new Request("PUT", "/piescript-mn-read");
+            createRead.setJsonEntity("""
+                {
+                  "settings": {"number_of_shards": 1, "number_of_replicas": 0},
+                  "mappings": {
+                    "properties": {
+                      "name":  {"type": "keyword"},
+                      "score": {"type": "double"}
+                    }
+                  }
+                }
+                """);
+            assertOK(adminClient().performRequest(createRead));
+
+            Request bulk = new Request("POST", "/piescript-mn-read/_bulk");
+            bulk.addParameter("refresh", "true");
+            bulk.setJsonEntity("""
+                {"index":{}}
+                {"name":"alice","score":100.0}
+                {"index":{}}
+                {"name":"bob","score":95.5}
+                {"index":{}}
+                {"name":"carol","score":80.0}
+                """);
+            assertOK(adminClient().performRequest(bulk));
+        }
     }
 
     // ──── Topology ────
@@ -234,6 +262,43 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
         assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
     }
 
+    // ──── Block G: Exchange streaming (D-054) ────
+
+    public void testRemoteExchangeStreaming() throws IOException {
+        String program = """
+            use "piescript-mn-read" as idx;
+            let shards = Index.shards idx;
+            let shard = List.head shards;
+            let topo = Cluster.topology "cluster";
+            
+            let ch = spawn!;
+            let u = send shard.node.inbox (fn info ->
+              let exch = Exchange.open ["name", "score"] 1024.0 in
+              let sink = Exchange.sink exch in
+              let sch = Shard.open idx shard { match_all: true } in
+              let u3 = when (sch searcher) ->
+                let docs = Shard.consume 100.0 searcher in
+                let page = Shard.stream searcher docs in
+                let u1 = Exchange.addPage sink page in
+                let u2 = Exchange.finish sink in
+                send ch { node: info.name, exch: exch }
+              in true
+            );
+            
+            when (ch producerResult) ->
+              let source = Exchange.connect producerResult.exch in
+              let countCh = spawn! in
+              let p = Exchange.poll source (fn page ->
+                send countCh (Page.count page)
+              ) in
+              when (p done) & (countCh count) ->
+                { producer: producerResult.node, count: count }
+            """;
+        var result = evalRecord(program);
+        assertThat(result.get("producer"), notNullValue());
+        assertThat(((Number) result.get("count")).doubleValue(), equalTo(3.0));
+    }
+
     // ──── Helpers ────
 
     private Object eval(String program) throws IOException {
@@ -260,7 +325,7 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
 
     private static Request piescriptRequest(String program) {
         Request request = new Request("POST", "/_piescript/eval");
-        String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"");
+        String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
         request.setJsonEntity("{\"program\":\"" + escaped + "\"}");
         request.addParameter("error_trace", "true");
         RequestOptions.Builder options = RequestOptions.DEFAULT.toBuilder();

@@ -150,7 +150,7 @@ public sealed interface Value {
      * @param columnNames ordered field names mapping block indices to record fields
      * @param bufferSize maximum number of pages buffered in the exchange
      */
-    record ExchangeVal(String exchangeId, List<String> columnNames, int bufferSize) implements Value {}
+    record ExchangeVal(String nodeId, String exchangeId, List<String> columnNames, int bufferSize) implements Value {}
 
     /**
      * An exchange sink handle. Non-serializable, node-local.
