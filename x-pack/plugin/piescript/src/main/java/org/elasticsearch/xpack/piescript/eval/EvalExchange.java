@@ -37,14 +37,14 @@ final class EvalExchange {
      * Creates a serializable exchange descriptor. No infrastructure is created yet —
      * that happens when {@code Exchange.sink} or {@code Exchange.connect} is called.
      */
-    static void open(List<Value> columnNameValues, double bufferSize, ActionListener<Value> listener) {
+    static void open(Evaluator eval, List<Value> columnNameValues, double bufferSize, ActionListener<Value> listener) {
         try {
             var columnNames = columnNameValues.stream().map(v -> switch (v) {
                 case Value.KeywordVal k -> k.value();
                 default -> throw new AssertionError("type checker bug: expected Keyword in column names, got " + v);
             }).toList();
             var exchangeId = UUID.randomUUID().toString();
-            listener.onResponse(new Value.ExchangeVal(exchangeId, columnNames, (int) bufferSize));
+            listener.onResponse(new Value.ExchangeVal(eval.deps.localNodeId(), exchangeId, columnNames, (int) bufferSize));
         } catch (Exception e) {
             listener.onFailure(new EvaluationException("Exchange.open failed", e));
         }
@@ -77,11 +77,16 @@ final class EvalExchange {
             var deps = eval.deps;
             var exchangeService = deps.exchangeService();
             var sourceHandler = new ExchangeSourceHandler(exchangeVal.bufferSize(), deps.executor());
+            
+            var connection = exchangeVal.nodeId().equals(deps.localNodeId())
+                ? deps.transportService().getLocalNodeConnection()
+                : deps.transportService().getConnection(deps.clusterService().state().nodes().get(exchangeVal.nodeId()));
+
             var remoteSink = exchangeService.newRemoteSink(
                 deps.task(),
                 exchangeVal.exchangeId(),
                 deps.transportService(),
-                deps.transportService().getLocalNodeConnection()
+                connection
             );
             sourceHandler.addRemoteSink(remoteSink, true, () -> {}, 1, ActionListener.noop());
             var sourceHandle = sourceHandler.createExchangeSource();
