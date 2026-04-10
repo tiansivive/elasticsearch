@@ -1,7 +1,9 @@
 ---
-tags: [types, open, control-flow, task, concept]
+tags: [types, open, control-flow, task, concept, needs-design, later]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:language-expressiveness
+  - thread:type-foundations
 ---
 # Recursive Types
 

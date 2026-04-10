@@ -20,7 +20,7 @@ Recurring pattern: high-level API + shard-level primitives for both read and wri
 - part-of: [[block-e.roadmap]]
 - prerequisite-for: [[lucene-m.data]] — shard-level tier is the foundation for the future LuceneM free monad
 - uses: high-level tier delegates to existing ES infrastructure
-- evolved-into: [[data-access-hierarchy.data]] — the four-level hierarchy formalizes the two-tier pattern
+- evolved-into: [[data-access-hierarchy]] — the four-level hierarchy formalizes the two-tier pattern
 - complements: [[query-typeclass.data]] — Query typeclass makes the tiers composable under a unified interface
 - uses: [[esql-compilation.esql]] — high-level read tier delegates to ESQL
 - uses: [[index-bulk.data]] — high-level write tier delegates to Bulk API

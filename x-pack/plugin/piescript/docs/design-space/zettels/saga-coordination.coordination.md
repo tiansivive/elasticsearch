@@ -1,6 +1,7 @@
 ---
-tags: [coordination, distributed, write-path, fault-tolerance, open, concept]
-refs: []
+tags: [coordination, distributed, write-path, fault-tolerance, open, concept, someday]
+refs:
+  - thread:error-handling
 ---
 # Saga Coordination
 

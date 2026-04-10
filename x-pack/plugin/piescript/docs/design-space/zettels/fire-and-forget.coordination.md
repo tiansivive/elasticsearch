@@ -1,8 +1,9 @@
 ---
-tags: [coordination, channels, fault-tolerance, implemented, decision, concept]
+tags: [coordination, channels, fault-tolerance, implemented, decision, concept, later]
 refs:
   - adr:D-047
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:error-handling
 ---
 # Fire-and-Forget Send Semantics
 

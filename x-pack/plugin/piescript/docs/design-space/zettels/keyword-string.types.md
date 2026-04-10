@@ -1,10 +1,11 @@
 ---
-tags: [types, primitives, tech-debt, task, question]
+tags: [types, primitives, tech-debt, task, question, needs-design, later]
 refs:
   - adr:D-026
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
   - code:Value.java
   - code:EsqlValueConverter.java
+  - thread:data-completeness
 ---
 # Keyword String
 

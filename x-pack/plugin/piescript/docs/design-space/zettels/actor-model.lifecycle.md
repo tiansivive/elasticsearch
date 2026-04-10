@@ -1,8 +1,10 @@
 ---
-tags: [lifecycle, external, designed, feature, concept]
+tags: [lifecycle, external, designed, feature, concept, needs-design, someday]
 refs:
   - vision:external-interaction-model
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:distributed-coordination
+  - thread:external-interaction
 ---
 # Actor Model Lifecycle
 
@@ -22,3 +24,4 @@ A piescript program as a persistent actor with identity:
 - related: [[send.coordination]], [[when-synchronization.coordination]] — REST verbs map to send/when primitives
 - complements: [[otp-supervision.coordination]] — supervision trees manage actor fault tolerance and restarts
 - related: [[token-capability-security.security]] — token-based capability access for actor endpoints
+- extends: [[eval-endpoint.infrastructure]] — evolves the single request/response eval endpoint into persistent actor lifecycle

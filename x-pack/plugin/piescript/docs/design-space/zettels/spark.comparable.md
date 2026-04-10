@@ -1,7 +1,7 @@
 ---
 tags: [theoretical, external, comparable, prior-art]
 refs:
-  - doc:data-access.md
+  - doc:archive/data-access.pre-threads.md
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
 # Comparable: Spark

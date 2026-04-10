@@ -1,8 +1,10 @@
 ---
-tags: [lifecycle, external, designed, feature, concept]
+tags: [lifecycle, external, designed, feature, concept, needs-design, someday]
 refs:
   - vision:external-interaction-model
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:distributed-coordination
+  - thread:external-interaction
 ---
 # Named Channels
 

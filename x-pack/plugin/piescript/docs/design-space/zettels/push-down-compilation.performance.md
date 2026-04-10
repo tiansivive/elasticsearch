@@ -1,8 +1,9 @@
 ---
-tags: [performance, types, push-down, open, concept]
+tags: [performance, types, push-down, open, concept, needs-design, someday]
 refs:
-  - doc:data-access.md
+  - doc:archive/data-access.pre-threads.md
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:language-expressiveness
 ---
 # Push-Down Compilation
 
@@ -15,4 +16,4 @@ refs:
 - part-of: [[deferred-push-down.roadmap]]
 - implements: [[compiling-to-categories.performance]] — Elliott (ICFP 2017) formalizes this: same expression, different backends via CCC
 - uses: [[esql-compilation.esql]] — ESQL compilation is the current push-down target
-- complements: [[data-access-hierarchy.data]] — push-down enables the data access hierarchy's declarative levels
+- complements: [[data-access-hierarchy]] — push-down enables the data access hierarchy's declarative levels

@@ -1,7 +1,8 @@
 ---
-tags: [types, language, open, concept]
+tags: [types, language, open, concept, needs-design, later]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:error-handling
 ---
 # Result Types
 

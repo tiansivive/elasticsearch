@@ -15,4 +15,4 @@ Resource lifecycle management for [[index-searcher.es-internals]] acquisitions. 
 - motivates: [[bracket-patterns.language]] — bracket patterns would automate lifecycle
 - part-of: [[lucene-m.data]] — LuceneM interpreter manages this automatically
 - uses: [[index-searcher.es-internals]] — SearcherVal wraps IndexSearcher
-- constrains: [[data-access-hierarchy.data]] — resource lifecycle is critical at Levels 3-4
+- constrains: [[data-access-hierarchy]] — resource lifecycle is critical at Levels 3-4

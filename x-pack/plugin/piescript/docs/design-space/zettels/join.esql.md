@@ -1,7 +1,8 @@
 ---
-tags: [esql, data, open, concept]
+tags: [esql, data, open, concept, needs-design, later]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:data-completeness
 ---
 # ESQL LOOKUP JOIN
 

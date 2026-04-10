@@ -1,6 +1,7 @@
 ---
-tags: [coordination, concurrency, open, concept]
-refs: []
+tags: [coordination, concurrency, open, concept, needs-design, later]
+refs:
+  - thread:distributed-coordination
 ---
 # Dynamic Fan-Out
 

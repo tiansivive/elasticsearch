@@ -21,7 +21,9 @@ The surface primitives ([[spawn.coordination]], `when`, [[send.coordination]], c
 **Enables**: [[spawn.coordination]], [[when-synchronization.coordination]], [[send.coordination]], [[channels.infrastructure]], [[code-mobility.coordination]]
 **Connections**:
 - part-of: [[block-a.roadmap]]
-- supersedes: [[plan-graph.language]] — superseded D-012 plan graph and par blocks
+- replaces: [[plan-graph.language]] — replaced D-012 plan graph (D-040)
+- replaces: [[par-blocks.coordination]] — par blocks replaced by spawn+when which are strictly more expressive (D-040)
 - implements: keyword `when` (not `join`) avoids SQL/ESQL collision (D-041)
 - informs: [[locality-property.coordination]] — the core property that makes distributed join calculus work without consensus
 - validates: [[jocaml.comparable]] — closest practical precedent: OCaml + Join Calculus primitives
+- part-of: [[design-principles.hub]] — "grounded in process algebra" design principle

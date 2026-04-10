@@ -18,3 +18,4 @@ Minimal passthrough to ESQL via REST endpoint. Established build, security, and 
 - subsumes: [[es-plugin.infrastructure]]
 - subsumes: [[security-namespace.infrastructure]]
 - subsumes: [[transport-pipeline.infrastructure]]
+- subsumes: [[eval-endpoint.infrastructure]]

@@ -11,6 +11,8 @@ refs:
 - `statsBy` output type is `ESQL (s & t)` -- merge of aggregates and group keys via [[row-operators.types]] `&` operator
 - Aggregate builtins: `ESQL.count`, `countOf`, `avg`, `sum`, `max`, `min`, `bucket`
 - `ESQL.top` and `ESQL.values` return `List a` (MV-returning)
+- `ESQL.top` originally took a closure `(Record r → a)` like `ESQL.where`, but this created an independent row variable causing unsolved metas. Simplified to take a value directly — the field projection happens in the enclosing `statsBy` closure scope.
+- `ESQL.count` takes a dummy `Keyword` arg (`"*"`) because arity-0 builtins can't execute — see [[nullary-functions.language]]
 - [[type-driven-materialization.esql]] identifies `List`-typed columns
 
 **Depends on**: [[esql-compilation.esql]], [[row-operators.types]], [[f-omega-lite.types]]

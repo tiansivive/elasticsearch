@@ -1,7 +1,9 @@
 ---
-tags: [types, language, open, feature, concept]
+tags: [types, language, open, feature, concept, needs-design, next]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:error-handling
+  - thread:language-expressiveness
 ---
 # Algebraic Data Types
 

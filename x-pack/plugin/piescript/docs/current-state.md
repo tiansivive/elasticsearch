@@ -37,10 +37,12 @@ cluster-state-free.
 **Phase 1e (Pattern Matching) is deferred** — not blocking the MVP-critical path. The execution
 model is the Join Calculus (D-040), with `spawn`/`when`/`send`/channels as coordination primitives.
 The roadmap has been restructured (D-042) around a distributed vertical slice: Block C (cross-node
-execution), Block D (local data access via `scan`). See [roadmap.md](roadmap.md) for the block
-structure, [mvp.md](archive/mvp.md) for concrete examples of what piescript enables today, and
-[roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt)
-for Phase 1 items carried forward.
+execution), Block D (local data access via `scan`). The original block-based roadmap is archived
+at [roadmap.pre-threads.md](archive/roadmap.pre-threads.md). Forward-looking work is now
+organized into thread hub zettels (error-handling, language-expressiveness, data-completeness,
+distributed-coordination, type-foundations) — run `python3 scripts/roadmap_status.py` to see all
+threads with status. See [mvp.md](archive/mvp.md) for concrete examples of what piescript enables
+today.
 
 ## What Works
 
@@ -215,8 +217,8 @@ These are intentional simplifications that will need attention:
 7. **ES conventions tech debt.** Several items related to Elasticsearch plugin conventions and
    production readiness: no `TransportVersion` guards on serialization, no logging, older
    `ActionListener.wrap()` patterns, `ActionType` name scope review needed, and more. See
-   [roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt)
-   for the full list.
+   the original [roadmap.pre-threads.md § Phase 1 Outstanding Tech Debt](archive/roadmap.pre-threads.md#phase-1--outstanding-tech-debt)
+   for the full list; these items are now tracked in their respective thread sequences.
 
 8. **Stack depth risk in evaluator and list combinators.** The evaluator is recursive with no
    trampoline. Pure expressions resolve synchronously via `delegateFailureAndWrap`, building real
@@ -245,7 +247,7 @@ via `scan`, and coordinates results via channels. This proves the core value pro
 controlled distributed computing with code mobility, coordinated by the Join Calculus.
 
 See [vision.md § MVP](vision.md#mvp-distributed-vertical-slice) for the full rationale and
-[roadmap.md § MVP Milestone](roadmap.md#mvp-milestone--distributed-vertical-slice) for the block
+[roadmap.pre-threads.md § MVP Milestone](archive/roadmap.pre-threads.md#mvp-milestone--distributed-vertical-slice) for the block
 mapping.
 
 The unified data pipelines story (replacing Transforms, enrich policies, etc.) remains valid as a
@@ -267,17 +269,16 @@ discover topology, ship closures to data nodes, read local data, transform it, w
 back to indices (via shard-level Engine writes or the Bulk API), refresh for visibility, and
 monitor replication via global checkpoints.
 
-**Next on the roadmap:**
+**Next steps are organized by work concern threads** — run `python3 scripts/roadmap_status.py` to
+see all threads with status and priority. The five thread hubs are:
 
-1. **ESQL.stats** — aggregation support via `Agg a` typed aggregate descriptors. Requires
-   dedicated design session (see D-052 §7).
-2. **Scheduled execution** — `PiescriptPersistentTasksExecutor` wrapping piescript in ES
-   persistent tasks + scheduler infrastructure. See scheduling discussion.
-3. **Internal `LogicalPlan` compilation** — compile to ESQL's internal plan IR instead of
-   strings. Enables arbitrary lambda compilation, full ESQL function coverage (D-052 §8).
-4. **Monadic write description** — CPS/session-typed write pipeline with linearity (Phase 6).
+- **error-handling** — error provenance, diagnostics, empty mapping warnings
+- **language-expressiveness** — pattern matching, comprehension syntax, string concat, nullary functions
+- **data-completeness** — multi-value fields, streaming, ESQL join, scheduled execution
+- **distributed-coordination** — multi-value channels, saga patterns, dynamic fan-out
+- **type-foundations** — `Forall` variant, `Label` kind, session types, lacks constraints
 
-**Phase 1 tech debt** (opportunistic):
+**Phase 1 tech debt** (opportunistic, tracked in thread sequences):
 
 - Replace `resolveDeep` in `CorePrinter` with environment-based Rigid resolution (D-032).
 - Switch `zonkOrKeep` to an `Optional`-returning `zonk` API (D-032).
@@ -286,20 +287,21 @@ monitor replication via global checkpoints.
 - `Label` kind + `Project` type family for type-safe field projection (D-050 future).
 - `ESQL.keep`/`drop`/`rename` take field names as strings, not type-checked closures (D-052).
 
-See [roadmap.md § Phase 1 Outstanding Tech Debt](roadmap.md#phase-1--outstanding-tech-debt) for
-the full consolidated list.
+See the original [roadmap.pre-threads.md](archive/roadmap.pre-threads.md) for the archived
+block-based plan.
 
-**Deferred work**:
+**Deferred work** (tracked in their respective thread sequences or the global queue
+`[[global-pending.queue]]`):
 
-- Multi-value channels (streaming patterns) — old Block B, deferred
-- Scheduled execution (persistent tasks) — post-Block E
-- Typeclass-driven push-down (RawData → Lucene) — future optimization
-- Exchange streaming (scale) — future, orchestrated explicitly by piescript
+- Multi-value channels (streaming patterns) — distributed-coordination thread
+- Scheduled execution (persistent tasks) — data-completeness thread
+- Typeclass-driven push-down (RawData → Lucene) — data-completeness thread
+- Exchange streaming (scale) — data-completeness thread
 - Push-down to ESQL text — deprioritized (typeclass approach is more general)
-- Monadic write description with session types — gated on linearity (Phase 6)
+- Monadic write description with session types — type-foundations thread
 - Painless push-down for writes — gated on closure conversion compiler pass
 - Security pre-check (`HasPrivilegesAction`) — collect read/write targets at elaboration time
-- Cross-shard coordination patterns (saga-style) — possible with channels, no built-in support
+- Cross-shard coordination patterns (saga-style) — distributed-coordination thread
 - Wildcard / alias / data stream patterns in `topology` (D-044)
 - Multi-project support in `topology` (`ProjectId.DEFAULT` used) (D-044)
 - Non-STARTED shard states in `topology` (D-044)
@@ -308,7 +310,8 @@ Review:
 
 - [mvp.md](archive/mvp.md) for concrete examples of what piescript enables today
 - [vision.md](vision.md) for the MVP goal and design philosophy
-- [roadmap.md](roadmap.md) for the updated block breakdown and MVP milestone
+- [roadmap.pre-threads.md](archive/roadmap.pre-threads.md) for the archived block breakdown and MVP milestone
+- `python3 scripts/roadmap_status.py` for the current thread-based roadmap dashboard
 - [decisions.md](decisions.md) for all architectural decisions (D-040 through D-052)
 
 **Ref**: [Phase 2 completion session](303bcf3e-9eef-4719-a47d-24c1ff27a675),

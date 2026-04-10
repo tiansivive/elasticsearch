@@ -1,8 +1,9 @@
 ---
-tags: [types, row-types, typeclasses, open, concept]
+tags: [types, row-types, typeclasses, open, concept, needs-design, later]
 refs:
   - adr:D-053
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:type-foundations
 ---
 # Lacks Constraint
 

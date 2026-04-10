@@ -1,8 +1,9 @@
 ---
-tags: [data, open, concept, question]
+tags: [data, open, concept, question, blocked, later]
 refs:
   - adr:D-051
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:error-handling
 ---
 # Create vs Index
 

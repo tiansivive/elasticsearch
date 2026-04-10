@@ -16,7 +16,7 @@ The [[elaboration-architecture.types]] emits `Constraint(left, right, line, colu
 **Enables**: [[typeclasses.types]]
 **Connections**:
 - part-of: [[phase-1.roadmap]]
-- supersedes: D-019 eager unification — D-035 introduced deferred solving
+- replaces: D-019 eager unification — D-035 introduced deferred solving
 - informs: [[typeclasses.types]] — migration to OutsideIn(X) when typeclasses arrive
 - uses: [[unification-algorithm.types]] — constraints are solved via unification
 - uses: [[binding-levels.types]] — constraints solved incrementally at generalization boundaries

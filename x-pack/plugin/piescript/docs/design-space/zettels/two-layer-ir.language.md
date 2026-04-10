@@ -15,6 +15,6 @@ refs:
 **Depends on**: (none)
 **Enables**: (none directly)
 **Connections**:
-- superseded-by: [[core-ir.language]] — pure/IO boundary analogy still holds, just not as separate hierarchies
+- replaced-by: [[core-ir.language]] — pure/IO boundary analogy still holds, just not as separate hierarchies
 - alternative-to: [[effect-systems.types]] — explicit effect system could provide the pure/effectful boundary that separate IR layers attempted
 - informs: [[spawn.coordination]] — CoreSpawn lives in the single CoreExpr hierarchy instead of a separate CoreProcess

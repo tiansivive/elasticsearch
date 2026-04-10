@@ -36,6 +36,24 @@ in sort order. Examples: `topby.esql.md`, `numerical.typeclass.md`,
 
 When no qualifier is needed: `recursion.md`, `error-handling.md`.
 
+**Multiple qualifiers** are fine when they add clarity. Format:
+`concept.qualifier1.qualifier2.md`. Examples:
+- `risk-scoring.incremental.example.md` — the risk-scoring concept, incremental variant, example artifact
+- `transport-pipeline.infrastructure.evolution.md` — transport-pipeline, in ES infra, tracking its evolution
+
+Read left to right: concept first, then progressively narrowing context hints.
+
+**Avoid redundancy** between the concept name and the qualifier. If the concept
+already contains the domain, don't repeat it as a qualifier:
+- Good: `data-access-hierarchy.md` (concept is `data-access-hierarchy`, no qualifier needed)
+- Bad: `data-access-hierarchy.data.md` (`data` is redundant with `data-access`)
+- Good: `risk-scoring-incremental.example.md` (`.example` adds information)
+- Bad: `risk-scoring-example.example.md` (`example` appears twice)
+
+**Do not use qualifiers for classification.** Tags are for classification.
+The qualifier is a visual grouping hint — scripts and tools must never rely on
+it to determine a zettel's purpose or membership.
+
 ## Zettel format
 
 ```markdown
@@ -86,6 +104,8 @@ prefixes are normal. New prefixes can be added freely — just document them her
 | `doc` | Other documentation file | `doc:data-access.md` |
 | `code` | Source file | `code:EvalExchange.java` |
 | `resource` | Any URI — web link, local file, PDF, GitHub | `resource:https://arxiv.org/pdf/1306.6032.pdf` |
+| `thread` | Work thread this zettel belongs to | `thread:error-handling` |
+| `queue` | Queue this zettel is tracked in | `queue:global-pending` |
 
 ### Edges
 
@@ -116,6 +136,9 @@ Actions are verbs describing what the edge does. Common ones:
 | `informs` | Theoretical basis or influence |
 | `inspired-by` | Creative influence (softer than `informs`) |
 | `supersedes` | Replaces a previous approach |
+| `replaces` | Direct replacement — X does what Y did |
+| `makes-redundant` | Eliminates the need for the linked item (not by replacing, but by changing the landscape) |
+| `obsoletes` | The linked item is no longer valid due to changed conditions |
 | `rejected-in-favor-of` | Was considered but not chosen |
 | `contrasts-with` | Different approach to same problem (adversarial) |
 | `alternative-to` | Different approach, both viable (non-adversarial) |
@@ -143,6 +166,7 @@ Actions are verbs describing what the edge does. Common ones:
 | `solves` | Addresses the problem described by the linked item |
 | `workaround-for` | Temporary fix for the linked item |
 | `analogous-to` | Same pattern in a different domain |
+| `includes` | This collection/thread contains the linked item |
 | `related` | General relationship (use sparingly — prefer a specific verb) |
 
 **Convention:** active voice — "this zettel [verb] that zettel." If you need the
@@ -210,16 +234,22 @@ table for vocabulary consistency.
 | `serialization` | Wire format, cross-node data transfer |
 | `streaming` | Streaming data, backpressure, incremental output |
 | `superseded` | Was planned, now replaced by a different approach |
+| `archived` | No longer active or relevant, kept for history |
+| `obsolete` | Was valid, conditions changed — no longer applicable |
 | `syntax` | Surface syntax, grammar, desugaring, ANTLR |
 | `tech-debt` | Exists but needs fixing, refactoring, or hardening |
 | `theoretical` | Informing our thinking, not a direct implementation target |
 | `tooling` | IDE, modules, stored programs, developer experience |
+| `transport-layer` | Elasticsearch `org.elasticsearch.transport` — `TransportService`, handlers, node-to-node requests. Distinct from “transport” as generic word; use for ES wire stack. |
 | `typeclasses` | Typeclass system and specific typeclass designs |
 | `types` | Type system, inference, checking, kinds |
 | `unification` | Robinson algorithm, occurs check, row/kind unification |
 | `task` | Actionable work item — something to build, fix, or implement |
 | `concept` | Design idea, pattern, or architectural choice |
 | `decision` | A settled choice, often linked to an ADR |
+| `principle` | Foundational design constraint or philosophy |
+| `example` | Concrete usage example, case study, or demonstration pattern |
+| `diagram` | Visual representation — architecture, data flow, dependency graph |
 | `prior-art` | How external systems solved this problem |
 | `motivation` | Problem statement, why something exists |
 | `exploration` | Open-ended thinking, not yet committed |
@@ -249,6 +279,18 @@ table for vocabulary consistency.
 | `write-path` | Write concerns — shard write, bulk, ingest, replication, indexing pressure |
 | `query-theory` | Query compilation theory — shredding, normalization, comprehensions |
 | `beam` | BEAM/Erlang runtime lessons — scheduling, GC, supervision, hot code |
+| `thread` | A work thread — ordered sequence of items forming a parallel concern |
+| `queue` | A pending-work list — global or scoped |
+| `hub` | Navigational hub zettel that groups related items |
+| `paper-trail` | Append-only session log of work across the zettel graph |
+| `note` | Deliberately just a note — use sparingly to highlight non-actionable observations |
+| `now` | Actively being worked on or start immediately |
+| `next` | Next in line after current work |
+| `later` | In the plan, not imminent |
+| `someday` | Aspirational, no timeline |
+| `ready` | All prerequisites met, can start |
+| `blocked` | Waiting on a specific dependency |
+| `needs-design` | Requires a design discussion before implementation |
 
 ## Tag aliases
 
@@ -267,6 +309,8 @@ When searching or filtering, treat aliased tags as interchangeable.
 | `cat-theory` | `category-theory` |
 | `writes` | `write-path` |
 | `es-compute` | `compute-engine` |
+| `es-transport` | `transport-layer` |
+| `adr` | `decision` |
 
 New aliases appear as needed — add them when the same concept genuinely goes by two names.
 
@@ -278,30 +322,56 @@ tags that describe the group's purpose. A tag can appear in multiple groups or n
 | Group | Meaning | Role | Tags |
 |-------|---------|------|------|
 | Concern | What area of the project does this touch? | universal | `language`, `types`, `esql`, `data`, `infrastructure`, `lifecycle`, `external`, `tooling`, `performance`, `security`, `es-internals` |
-| Maturity | How baked is this concept? | universal | `implemented`, `designed`, `open`, `theoretical`, `tech-debt`, `superseded` |
+| Maturity | How baked is this concept? | universal | `implemented`, `designed`, `open`, `theoretical`, `tech-debt`, `superseded`, `archived`, `obsolete` |
 | Foundations | What theory or technique underpins this? | topic | `pi-calculus`, `nbe`, `polymorphism`, `unification`, `inference`, `effects` |
-| Distribution | How do things move and coordinate across nodes? | topic | `distributed`, `coordination`, `mobility`, `orchestration`, `serialization`, `channels`, `async`, `concurrency` |
+| Distribution | How do things move and coordinate across nodes? | topic | `distributed`, `coordination`, `mobility`, `orchestration`, `serialization`, `channels`, `async`, `concurrency`, `transport-layer` |
 | Data path | How does data flow from storage to piescript values? | topic | `lucene`, `columnar`, `compute-engine`, `materialization`, `streaming`, `aggregation`, `push-down`, `data-processing` |
-| Purpose | What kind of artifact is this? | topic | `task`, `concept`, `decision`, `documentation`, `report` |
+| Purpose | What kind of artifact is this? | topic | `task`, `concept`, `decision`, `principle`, `example`, `diagram`, `documentation`, `report` |
 | Workflow | Function in the work process? | workflow | `prior-art`, `motivation`, `exploration`, `pattern`, `fix`, `feature`, `epic`, `bug`, `known-issue`, `workaround`, `question`, `problem`, `solution`, `interface`, `protocol`, `capability`, `blocker`, `deferred`, `migration` |
+| Structure | What organizational role does this zettel play? | structural | `thread`, `queue`, `hub`, `paper-trail`, `note` |
+| Priority | When should this be worked on? How ready is it? | planning | `now`, `next`, `later`, `someday`, `ready`, `blocked`, `needs-design` |
 
 `universal` — expected on most zettels. 
 `topic` — use when relevant.
 `workflow` — describes the zettel's function in work processes (design, implementation, debugging).
+`structural` — organizational role in the knowledge base (most zettels don't need one).
+`planning` — priority and readiness for work threads.
 
 New groups and roles appear as patterns emerge.
 
-## Thread & Queue
+## Threads, Queues & Paper Trail
 
-The design space includes a work layer on top of the zettelkasten:
+The design space includes a work layer on top of the zettelkasten.
 
-- **[thread.md](thread.md)** — append-only paper trail of work across sessions.
-  Edge lines (`[[A]] -- verb -> [[B]]`) record knowledge graph traversal.
-  Action lines (`ENQUEUE`, `RESOLVED`, `SPAWN`) record workflow events.
-- **[queue.md](queue.md)** — flat FIFO list of pending work items referencing zettels.
+### Threads
+
+A **thread** is an ordered sequence of work items forming a parallel concern —
+a named path through the zettel graph that progresses independently.
+
+Thread hubs are zettels tagged `thread`. They contain:
+- A description of the concern
+- An ordered sequence of items with dependency annotations and readiness markers
+- `includes` edges in the Connections section identifying all member zettels
+
+Member zettels point back via `thread:thread-stem` frontmatter refs.
+A zettel can belong to multiple threads (shared dependencies).
+
+Run `python3 scripts/roadmap_status.py` to see all threads with member status.
+
+### Queues
+
+A **queue** is a zettel tagged `queue` — a flat list of pending work items.
+The global queue (`[[global-pending.queue]]`) holds items not yet assigned to
+a thread. Items use `- [ ]` / `- [x]` / `- [~]` checkboxes.
+
+### Paper trail
+
+**[thread.md](thread.md)** — append-only paper trail of work across sessions.
+Edge lines (`[[A]] -- verb -> [[B]]`) record knowledge graph traversal.
+Action lines (`ENQUEUE`, `RESOLVED`, `SPAWN`) record workflow events.
 
 Zettels are the atoms. Threads are paths through the graph. Queues are pending edges.
-See [[thread-queue-system.meta]] for the full design and future MCP vision.
+See [[thread-queue-system.meta]] for the full design.
 
 ## Scope
 

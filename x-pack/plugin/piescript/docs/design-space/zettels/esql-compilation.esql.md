@@ -19,4 +19,4 @@ refs:
 - part-of: [[block-f.roadmap]]
 - inspired-by: [[t-linq.esql]] — draws from Cheney, Lindley & Wadler's T-LINQ (ICFP 2013)
 - prerequisite-for: [[logical-plan-compilation.esql]] — string compilation is MVP; LogicalPlan compilation is the next step
-- supersedes: [[query-syntax-evolution.esql]] — the T-LINQ approach replaced backtick syntax
+- replaces: [[query-syntax-evolution.esql]] — the T-LINQ approach replaced backtick syntax

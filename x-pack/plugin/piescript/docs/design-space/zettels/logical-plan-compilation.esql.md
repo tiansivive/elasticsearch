@@ -1,8 +1,9 @@
 ---
-tags: [esql, performance, compilation, open, concept]
+tags: [esql, performance, compilation, open, concept, needs-design, later]
 refs:
   - adr:D-052
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:data-completeness
 ---
 # Logical Plan Compilation
 

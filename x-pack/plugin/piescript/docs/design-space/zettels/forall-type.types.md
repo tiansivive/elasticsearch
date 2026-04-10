@@ -1,9 +1,11 @@
 ---
-tags: [types, tech-debt, task]
+tags: [types, tech-debt, task, ready, next]
 refs:
   - adr:D-038
   - code:MonoType.java
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:error-handling
+  - thread:type-foundations
 ---
 # Forall Type
 

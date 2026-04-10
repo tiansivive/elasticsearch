@@ -1,9 +1,10 @@
 ---
-tags: [language, tech-debt, fault-tolerance, debugging, task, problem]
+tags: [language, tech-debt, fault-tolerance, debugging, task, problem, ready, next]
 refs:
   - code:EvaluationException.java
   - code:ElaborationException.java
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:error-handling
 ---
 # Error Provenance
 

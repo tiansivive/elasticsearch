@@ -1,11 +1,12 @@
 ---
-tags: [types, implemented, inference, concept]
+tags: [types, implemented, inference, concept, ready, later]
 refs:
   - adr:D-005
   - adr:D-032
   - code:Unifier.java
   - code:piescript.elab
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:type-foundations
 ---
 # Zonker
 

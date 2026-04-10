@@ -8,7 +8,7 @@ refs:
 ---
 # Shard Read
 
-Three pull-based primitives for Level 4 of the [[data-access-hierarchy.data]]:
+Three pull-based primitives for Level 4 of the [[data-access-hierarchy]]:
 
 - `Shard.open` acquires an [[index-searcher.es-internals]] asynchronously via [[channels.infrastructure]].
 - `Shard.consume` iterates a [[doc-id-set-iterator.es-internals]] for up to N docs (synchronous).
@@ -21,7 +21,7 @@ Three pull-based primitives for Level 4 of the [[data-access-hierarchy.data]]:
 **Connections**:
 - part-of: [[block-d.roadmap]]
 - prerequisite-for: [[lucene-m.data]] — maps directly to Lucene's DocIdSetIterator model; foundation for future LuceneM free monad
-- part-of: [[data-access-hierarchy.data]] — Level 4 in the data access hierarchy
+- part-of: [[data-access-hierarchy]] — Level 4 in the data access hierarchy
 - part-of: [[two-tier-architecture.data]] — shard-level read tier in the two-tier architecture
 - optimized-by: [[blockloader.data]] — BlockLoader optimization for shard-level reads
 - complements: [[searcher-lifecycle.data]] — Shard.open is the acquisition side of searcher lifecycle

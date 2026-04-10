@@ -1,11 +1,12 @@
 ---
-tags: [types, implemented, tech-debt, unification, decision, task, concept, known-issue]
+tags: [types, implemented, tech-debt, unification, decision, task, concept, known-issue, later]
 refs:
   - adr:D-007
   - adr:D-027
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
   - code:Unifier.java
   - code:Value.java
+  - thread:error-handling
 ---
 # Null as Bottom
 

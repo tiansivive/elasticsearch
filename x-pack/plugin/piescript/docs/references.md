@@ -295,7 +295,7 @@ The formal foundations for embedding query expressions in a typed functional hos
 replacing opaque query strings with typed, normalizable, compilable expressions. Directly relevant
 to piescript's query language evolution: replacing the opaque `query \`ESQL\`` syntax with
 piescript-native comprehensions or combinators. See
-[data-access.md](data-access.md) for the unified `Query a` typeclass architecture.
+[archive/data-access.pre-threads.md](archive/data-access.pre-threads.md) for the unified `Query a` typeclass architecture (archived — see [[data-access-architecture.roadmap]]).
 
 ### Cheney, Lindley, Wadler — *A Practical Theory of Language-Integrated Query* (ICFP, 2013)
 

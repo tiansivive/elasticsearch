@@ -1,5 +1,5 @@
 ---
-tags: [esql, language, superseded, implemented, decision, concept]
+tags: [esql, language, archived, decision, concept]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
@@ -13,9 +13,9 @@ The query surface evolved through three stages:
 
 Each stage was a deliberate stepping stone. The backtick syntax is now removed.
 
-**Depends on**: [[esql-compilation.esql]]
+**Depends on**: (none)
 **Enables**: (none directly)
 **Connections**:
-- evolved-into: [[esql-compilation.esql]] — backtick stage (Phase 2) was an intentional compromise; replaced with typed compilation in Block F
+- replaced-by: [[esql-compilation.esql]] — backtick stage (Phase 2) was an intentional compromise; replaced with typed compilation in Block F
 - uses: [[t-linq.esql]] — T-LINQ is the theoretical basis for the typed combinator stage
 - uses: [[nbe-compilation.esql]] — NbE is the implementation mechanism for stage 3

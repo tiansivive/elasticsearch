@@ -26,3 +26,6 @@ Piescript touches this stack where it builds or moves **`Page`s** (e.g. [[shard-
 - documents: [[shard-stream.data]] — DocRef batches to `Page`
 - complements: [[type-stack.data]] — Page/Block tier
 - related: [[blockloader.data]] — optional optimized column reads (not yet wired in piescript)
+- constrains: [[circuit-breaker.infrastructure]] — `BlockFactory` / breaker policy on shard stream
+- related: [[doc-values.es-internals]] — Lucene doc values feed columnar materialization
+- related: [[lucene-collectors.es-internals]] — `LeafCollector` / `CollectorManager` usage in ESQL Lucene operators under the driver

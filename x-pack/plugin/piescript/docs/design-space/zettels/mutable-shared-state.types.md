@@ -1,6 +1,7 @@
 ---
-tags: [types, mutability, open, exploration, concept]
-refs: []
+tags: [types, mutability, open, exploration, concept, someday]
+refs:
+  - thread:ownership-resources
 ---
 # Mutable Shared State
 

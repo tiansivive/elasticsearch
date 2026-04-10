@@ -1,8 +1,9 @@
 ---
-tags: [infrastructure, async, implemented, documentation, decision]
+tags: [infrastructure, async, implemented, documentation, decision, es-internals, transport-layer]
 refs:
   - adr:D-004
   - code:TransportPiescriptAction.java
+  - code:server/src/main/java/org/elasticsearch/transport/TransportService.java
 ---
 # Transport Pipeline Evolution
 
@@ -14,6 +15,7 @@ The progression from Phase 0 query passthrough to the unified parse-elaborate-ev
 **Depends on**: [[generic-thread-pool.infrastructure]]
 **Enables**: (none directly)
 **Connections**:
+- uses: [[transport-layer.es]] — transport threading model vs eval pipeline
 - uses: [[generic-thread-pool.infrastructure]] — the GENERIC pool avoids transport-thread deadlocks
 - part-of: [[transport-pipeline.infrastructure]] — the transport action that hosts the full pipeline
 - uses: [[evaluator.language]] — evaluation is the final async pipeline stage

@@ -1,8 +1,9 @@
 ---
-tags: [coordination, channels, open, feature, concept]
+tags: [coordination, channels, open, feature, concept, needs-design, next]
 refs:
   - roadmap:block-b-old
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:distributed-coordination
 ---
 # Multi-Value Channels
 

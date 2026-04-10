@@ -1,7 +1,7 @@
 ---
 tags: [data, open, theoretical, concept]
 refs:
-  - doc:data-access.md
+  - doc:archive/data-access.pre-threads.md
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
 # LuceneM Free Monad
@@ -20,10 +20,10 @@ Gives full control over every Lucene primitive:
 Block D's [[shard-read.data]] primitives (`open`/`consume`/`read`) are what LuceneM primitives will eventually compile to.
 
 **Depends on**: [[shard-read.data]], [[free-monad.types]], [[searcher-lifecycle.data]]
-**Enables**: [[data-access-hierarchy.data]], [[segment-parallelism.data]]
+**Enables**: [[data-access-hierarchy]], [[segment-parallelism.data]]
 **Connections**:
 - part-of: [[data-access-architecture.roadmap]]
-- part-of: [[data-access-hierarchy.data]] — Level 3 in the data access hierarchy; not yet designed in detail
+- part-of: [[data-access-hierarchy]] — Level 3 in the data access hierarchy; not yet designed in detail
 - related: [[blockloader.data]] — BlockLoader is a Lucene read optimization that LuceneM could expose
 - compiles-to: [[shard-read.data]] — currently the physical primitives (Level 4) are exposed directly; LuceneM compiles to them
 - related: [[index-searcher.es-internals]] — searcher acquisition is a core LuceneM operation

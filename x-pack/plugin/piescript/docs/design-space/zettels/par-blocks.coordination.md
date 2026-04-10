@@ -11,6 +11,6 @@ refs:
 **Depends on**: (none)
 **Enables**: (none directly)
 **Connections**:
-- superseded-by: [[spawn.coordination]] — any par block expressible as spawns + when; was original Phase 4
-- superseded-by: [[when-synchronization.coordination]] — when provides strictly more expressive multi-way synchronization
-- superseded-by: [[join-calculus.coordination]] — join calculus model replaced the par block approach (D-040)
+- replaced-by: [[spawn.coordination]] — any par block expressible as spawns + when; was original Phase 4
+- replaced-by: [[when-synchronization.coordination]] — when provides strictly more expressive multi-way synchronization
+- replaced-by: [[join-calculus.coordination]] — join calculus model replaced the par block approach (D-040)
