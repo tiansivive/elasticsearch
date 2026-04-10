@@ -13,7 +13,7 @@ Sum types for error handling:
 - Requires [[adts.types|ADTs]] and [[pattern-matching.language|pattern matching]].
 - Would replace the current unsound [[null-as-bottom.types|null-as-bottom]].
 
-**Depends on**: [[adts.types]], [[pattern-matching.language]]
+**Depends on**: [[adts.types]], [[pattern-matching.hub]]
 **Enables**: [[fire-and-forget.coordination]]
 **Connections**:
 - motivated-by: [[send.coordination]] — `send` returning `Result<Null, SendError>` is the concrete motivation

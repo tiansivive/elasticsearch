@@ -23,14 +23,14 @@ provenance), resource cleanup (bracket patterns), and distributed fault toleranc
    Sum types for Option/Result. Declaration syntax, closed vs open, constructors.
    _Shared with: language-expressiveness_
 
-4. **Pattern matching** [[pattern-matching.language]] — needs-design (after ADTs)
-   Exhaustive match expressions. `if/then/else` desugars to match on Boolean.
-   Depends on: [[adts.types]]
+4. **Pattern matching** [[pattern-matching.hub]] — now
+   Match expressions (`match x | pat -> body`), `if/then/else` as sugar.
+   Independent of ADTs — basic patterns first, constructor patterns with ADTs.
    _Shared with: language-expressiveness_
 
 5. **Result/Option types** [[result-types.types]] — after #3, #4
    `Result a e` / `Option a` replacing null-as-bottom.
-   Depends on: [[adts.types]], [[pattern-matching.language]]
+   Depends on: [[adts.types]], [[pattern-matching.hub]]
 
 6. **Null-as-bottom fix** [[null-as-bottom.types]] — after #5
    Remove unsound `Null` unification. Depends on Option type existing.
@@ -53,7 +53,7 @@ provenance), resource cleanup (bracket patterns), and distributed fault toleranc
 - includes: [[error-provenance.language]]
 - includes: [[forall-type.types]]
 - includes: [[adts.types]]
-- includes: [[pattern-matching.language]]
+- includes: [[pattern-matching.hub]]
 - includes: [[result-types.types]]
 - includes: [[null-as-bottom.types]]
 - includes: [[bracket-patterns.language]]
