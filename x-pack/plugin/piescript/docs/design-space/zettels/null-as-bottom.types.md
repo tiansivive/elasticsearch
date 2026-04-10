@@ -10,7 +10,7 @@ refs:
 ---
 # Null as Bottom
 
-v0: `Null` unifies with every type. Known unsound -- a `NullVal` can appear where a `Double` is expected. `NullVal` in arithmetic throws `EvaluationException` at runtime (D-027). Proper fix requires Option/Maybe type which requires [[adts.types]] and [[pattern-matching.language]].
+v0: `Null` unifies with every type. Known unsound -- a `NullVal` can appear where a `Double` is expected. `NullVal` in arithmetic throws `EvaluationException` at runtime (D-027). Proper fix requires Option/Maybe type which requires [[adts.types]] and [[pattern-matching.hub]].
 
 - [[unification-algorithm.types]] has a special case for Null unifying with any type
 - [[result-types.types]] `Option`/`Maybe` is the proper fix for nullable values
@@ -20,6 +20,6 @@ v0: `Null` unifies with every type. Known unsound -- a `NullVal` can appear wher
 **Enables**: (none directly)
 **Connections**:
 - motivates: [[adts.types]] — proper resolution requires ADTs (Option/Maybe type)
-- motivates: [[pattern-matching.language]] — proper resolution requires pattern matching for Option/Maybe
+- motivates: [[pattern-matching.hub]] — proper resolution requires pattern matching for Option/Maybe
 - uses: [[unification-algorithm.types]] — Null unifies with every type as a special case in the unifier
 - motivates: [[result-types.types]] — Option/Maybe type is the proper fix for nullable values

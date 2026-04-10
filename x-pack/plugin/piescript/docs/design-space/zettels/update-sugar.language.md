@@ -20,3 +20,4 @@ refs:
 - analogous-to: [[accessor-sugar.language]] — same closed->open evolution
 - replaces: D-021 closed-row update sugar — open-row sugar now handles records with extra fields
 - uses: [[row-polymorphism.types]] — open-row parameter type enables polymorphic update
+- extended-by: [[record-spread.language]] — `...` spread syntax extends update with multi-record merging

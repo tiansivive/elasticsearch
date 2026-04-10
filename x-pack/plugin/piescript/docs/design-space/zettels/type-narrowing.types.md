@@ -12,7 +12,7 @@ TypeScript-style type refinement via runtime checks:
 - Would enable safe handling of Dynamic types and mixed-type data
 - Connected to [[elaboration-architecture.types]] since narrowing info must flow through elaboration
 
-**Depends on**: [[adts.types]], [[pattern-matching.language]]
+**Depends on**: [[adts.types]], [[pattern-matching.hub]]
 **Enables**: [[dynamic-index-names.data]]
 **Connections**:
 - related: [[result-types.types]] — requires the type system to track control flow; related to exhaustive matching

@@ -9,11 +9,12 @@ and follow any links they contain recursively until you have a complete picture 
 2. **[docs/current-state.md](docs/current-state.md)** — what's implemented now, known limitations
 3. **[docs/architecture.md](docs/architecture.md)** — system design, Core IR, async evaluator, channels
 4. **[docs/decisions.md](docs/decisions.md)** — architectural decisions and rationale (55 ADRs — check before suggesting alternatives)
-5. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
-6. **[docs/design-space/index.md](docs/design-space/index.md)** — tagged knowledge base of the full design landscape
-7. **Design space catalog** — run `./scripts/catalog.py --compact` to scan all 200+ tracked design topics
-8. **Thread** — read `docs/design-space/thread.md` for the paper trail of prior work
-9. **Queue** — run `./scripts/queue.py` for all pending items, or check `docs/design-space/zettels/global-pending.queue.md` directly
+5. **Meta zettels** — read ALL zettels tagged `meta` (workflow, conventions, tag vocabulary). These define how the design space works. Run `./scripts/catalog.py meta` to find them.
+6. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
+7. **[docs/design-space/index.md](docs/design-space/index.md)** — tagged knowledge base of the full design landscape
+8. **Design space catalog** — run `./scripts/catalog.py --compact` to scan all 200+ tracked design topics
+9. **Thread** — read `docs/design-space/thread.md` for the paper trail of prior work
+10. **Queue** — run `./scripts/queue.py` for all pending items, or check `docs/design-space/zettels/global-pending.queue.md` directly
 
 If any of these files link to other documents (vision, data-access, references, plans, etc.),
 read those too. The goal is to have the full project context before making any changes or

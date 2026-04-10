@@ -9,7 +9,7 @@ refs:
 
 Resource bracketing / try-finally patterns for resource lifecycle. A `bracket acquire release use` combinator ensures that resources ([[searcher-lifecycle.data]], Writers, file handles) are always cleaned up, even when the use computation fails. This is the functional equivalent of try-with-resources.
 
-**Depends on**: [[pattern-matching.language]]
+**Depends on**: [[pattern-matching.hub]]
 **Enables**: safe Searcher/Writer cleanup
 **Connections**:
 - contrasts-with: [[qtt-linearity.types]] — linear types also solve resource safety but differently
