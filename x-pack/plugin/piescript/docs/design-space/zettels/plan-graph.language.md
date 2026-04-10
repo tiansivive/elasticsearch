@@ -12,6 +12,6 @@ The [[evaluator.language|evaluator]] builds a plan graph (DAG) of distributed op
 **Depends on**: (none)
 **Enables**: (none directly)
 **Connections**:
-- superseded-by: [[join-calculus.coordination]] — optimization benefits required significant compiler engineering not immediately justified
+- replaced-by: [[join-calculus.coordination]] — optimization benefits required significant compiler engineering not immediately justified
 - inspired-by: [[free-monad.types]] — the plan graph was a free monad over pi-calculus effects
 - alternative-to: [[cps-evaluation.language]] — direct interpretation via CPS replaced the plan-then-optimize model

@@ -20,7 +20,7 @@ Leijen-style open-row [[unification-algorithm.types|unification]] with flat fiel
 **Enables**: [[row-operators.types]], [[use-declarations.data]], [[esql-compilation.esql]]
 **Connections**:
 - part-of: [[phase-1.roadmap]]
-- supersedes: [[concrete-row-constraints.types]] — superseded D-021 closed-row constraints
+- replaces: [[concrete-row-constraints.types]] — replaced D-021 closed-row constraints with open-row unification
 - inspired-by: Leijen chosen over Remy-style because piescript's `RowType` is already flat
 - specializes: [[unification-algorithm.types]] — row unification is a special case within Robinson unification
 - uses: [[rowtype-as-monotype.types]] — RowType implements MonoType; row-kinded meta variables

@@ -18,5 +18,5 @@ refs:
 **Enables**: (none directly)
 **Connections**:
 - analogous-to: [[accessor-sugar.language]] — same closed->open evolution
-- supersedes: D-021 closed-row update sugar
+- replaces: D-021 closed-row update sugar — open-row sugar now handles records with extra fields
 - uses: [[row-polymorphism.types]] — open-row parameter type enables polymorphic update

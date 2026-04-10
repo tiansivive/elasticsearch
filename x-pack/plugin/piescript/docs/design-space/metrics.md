@@ -65,6 +65,17 @@ done
 The longest dependency chain to a non-implemented item. Deep chains signal
 architectural risk — a change of mind at the root cascades through everything.
 
+## ES-internals code-ref hints
+
+Zettels tagged `es-internals` whose `refs` lack a repo-relative `code:` path under `x-pack/`,
+`server/`, or `libs/` (piescript-only `code:` counts as a gap for *upstream* navigation):
+
+```bash
+./scripts/catalog.py --es-code-gaps
+```
+
+This is a **hint list**, not a quality score — some items intentionally cite only `resource:` or short piescript `code:` names.
+
 ## Orphan items
 
 Items with no `Depends on` and no `Enables` links. These are either:

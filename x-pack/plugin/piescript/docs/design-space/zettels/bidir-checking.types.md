@@ -1,9 +1,10 @@
 ---
-tags: [types, tech-debt, task]
+tags: [types, tech-debt, task, ready, next]
 refs:
   - adr:D-036
   - code:Elaborator.java
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:type-foundations
 ---
 # Bidirectional Checking
 

@@ -1,5 +1,5 @@
 ---
-tags: [types, superseded, concept]
+tags: [types, archived, decision, concept]
 refs:
   - adr:D-053
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87

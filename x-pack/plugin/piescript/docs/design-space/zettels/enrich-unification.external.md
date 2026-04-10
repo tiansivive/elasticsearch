@@ -1,6 +1,7 @@
 ---
-tags: [external, esql, open, concept, feature]
-refs: []
+tags: [external, esql, open, concept, feature, someday]
+refs:
+  - thread:external-interaction
 ---
 # Enrich Unification
 

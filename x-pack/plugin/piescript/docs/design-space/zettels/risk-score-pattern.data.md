@@ -1,5 +1,5 @@
 ---
-tags: [data, esql, implemented, aggregation, concept]
+tags: [data, esql, implemented, aggregation, concept, example]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---

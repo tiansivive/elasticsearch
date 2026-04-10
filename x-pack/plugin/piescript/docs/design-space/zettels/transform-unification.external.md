@@ -1,8 +1,9 @@
 ---
-tags: [external, lifecycle, designed, concept]
+tags: [external, lifecycle, designed, concept, someday]
 refs:
   - vision:fragmentation-problem
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:external-interaction
 ---
 # Transform Unification
 

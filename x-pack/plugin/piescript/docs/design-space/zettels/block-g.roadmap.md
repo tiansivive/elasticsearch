@@ -1,9 +1,10 @@
 ---
-tags: [roadmap, data, streaming, implemented]
+tags: [roadmap, data, streaming, implemented, ready, now]
 refs:
   - adr:D-054
   - plan:compute_engine_streaming_f5db78f2
   - plan:compute_engine_zettels_8b517c82
+  - thread:data-completeness
 ---
 # Block G — Streaming Data Access via Compute Engine
 

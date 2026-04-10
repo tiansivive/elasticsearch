@@ -1,6 +1,7 @@
 ---
-tags: [lifecycle, scheduling, open, exploration, concept, feature]
-refs: []
+tags: [lifecycle, scheduling, open, exploration, concept, feature, someday]
+refs:
+  - thread:distributed-coordination
 ---
 # Long-Lived Computations
 

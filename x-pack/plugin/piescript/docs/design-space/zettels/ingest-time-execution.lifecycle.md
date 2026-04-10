@@ -1,6 +1,7 @@
 ---
-tags: [lifecycle, write-path, open, exploration, feature]
-refs: []
+tags: [lifecycle, write-path, open, exploration, feature, someday]
+refs:
+  - thread:external-interaction
 ---
 # Ingest-Time Execution
 

@@ -17,4 +17,5 @@ refs:
 - part-of: [[block-a.roadmap]]
 - refines: [[spawn-bang.coordination]] — `spawn!` is the primitive form (bare channel); `spawn body` = `let ch = spawn! in fork(send ch body) in ch`
 - uses: [[generic-thread-pool.infrastructure]] — spawn forks computation to the GENERIC thread pool
+- replaces: [[par-blocks.coordination]] — any par block is expressible as spawn + when
 - complements: [[when-synchronization.coordination]] — spawn+when is the core coordination pattern (spawn creates channels, when synchronizes on them)

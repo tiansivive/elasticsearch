@@ -1,8 +1,9 @@
 ---
-tags: [coordination, theoretical]
+tags: [coordination, theoretical, someday]
 refs:
   - vision:speculative
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:distributed-coordination
 ---
 # CHAM Patterns
 
