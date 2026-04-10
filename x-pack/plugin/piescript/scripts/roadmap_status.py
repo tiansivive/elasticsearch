@@ -52,9 +52,11 @@ def _priority(z: dict) -> str:
     return ""
 
 
-def _priority_sort_key(z: dict) -> int:
+def _priority_sort_key(z: dict) -> tuple[int, int]:
+    is_implemented = 1 if _maturity(z) == "implemented" else 0
     p = _priority(z)
-    return PRIORITY_ORDER.index(p) if p in PRIORITY_ORDER else len(PRIORITY_ORDER)
+    priority_idx = PRIORITY_ORDER.index(p) if p in PRIORITY_ORDER else len(PRIORITY_ORDER)
+    return (is_implemented, priority_idx)
 
 
 def _sym_rich(maturity: str) -> str:
