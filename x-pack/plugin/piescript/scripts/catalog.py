@@ -5,7 +5,6 @@ Usage:
     python3 scripts/catalog.py                 # full catalog (Rich)
     python3 scripts/catalog.py types           # filter by keyword
     python3 scripts/catalog.py --compact       # one-line-per-zettel summary
-    python3 scripts/catalog.py --es-code-gaps  # ES-internals without ES-tree code: refs
     python3 scripts/catalog.py --markdown      # plain markdown output
 """
 
@@ -21,50 +20,14 @@ from lib.zettel import load_all_zettels
 signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
 
-def es_code_refs(refs: list) -> bool:
-    prefixes = ("code:x-pack/", "code:server/", "code:libs/")
-    return any(isinstance(r, str) and r.startswith(prefixes) for r in refs)
-
-
 def main() -> None:
     args = sys.argv[1:]
     compact = "--compact" in args
-    es_gaps = "--es-code-gaps" in args
     markdown = "--markdown" in args
     filters = [a for a in args if not a.startswith("--")]
 
     console = Console(force_terminal=not markdown)
     zettels = load_all_zettels()
-
-    if es_gaps:
-        gap = [
-            z
-            for z in zettels
-            if "es-internals" in z["tags"] and not es_code_refs(z["refs"])
-        ]
-        if markdown:
-            print(
-                f"# ES-internals zettels without ES-tree code: refs ({len(gap)} items)\n"
-            )
-            print(
-                "Hint list only — zettels may still cite `resource:`, piescript `code:`, or prose. "
-                "Review before treating as a gap.\n"
-            )
-            for z in gap:
-                tags = ", ".join(z["tags"])
-                print(f"- **{z['title']}** `{z['file']}` [{tags}]")
-        else:
-            table = Table(
-                title=f"ES-internals without ES-tree code: refs ({len(gap)} items)",
-                caption="Hint list only — review before treating as a gap.",
-            )
-            table.add_column("Title", style="bold")
-            table.add_column("File", style="dim")
-            table.add_column("Tags")
-            for z in gap:
-                table.add_row(z["title"], z["file"], ", ".join(z["tags"]))
-            console.print(table)
-        return
 
     if filters:
 
