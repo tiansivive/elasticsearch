@@ -1,7 +1,8 @@
 ---
-tags: [external, motivation, problem]
+tags: [external, motivation, problem, someday]
 refs:
   - vision:fragmentation-problem
+  - thread:external-interaction
 ---
 # Feature Constellation
 

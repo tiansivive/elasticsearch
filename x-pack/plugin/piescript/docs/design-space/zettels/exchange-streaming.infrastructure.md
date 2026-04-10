@@ -18,6 +18,7 @@ refs:
 **Connections**:
 - part-of: [[block-g.roadmap]]
 - part-of: [[deferred-exchange.roadmap]]
+- makes-redundant: [[eager-materialization.data]] — exchange streaming eliminates the need for full eager materialization on the data plane; Page batches stream with backpressure instead of collecting into `List<Value>`
 - uses: [[compute-engine.es]] — ES `org.elasticsearch.compute` hub
 - uses: [[compute-exchange-service.es]] — `ExchangeService` backend
 - implements: [[handle-descriptor-split.pattern]] — Exchange r (descriptor) vs Sink/Source (handles) is the canonical instance

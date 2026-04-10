@@ -1,6 +1,7 @@
 ---
-tags: [security, lifecycle, open, concept]
-refs: []
+tags: [security, lifecycle, open, concept, needs-design, someday]
+refs:
+  - thread:external-interaction
 ---
 # Token Capability Security
 

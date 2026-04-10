@@ -1,8 +1,9 @@
 ---
-tags: [lifecycle, open, feature, concept]
+tags: [lifecycle, open, feature, concept, needs-design, later]
 refs:
   - roadmap:post-mvp
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:distributed-coordination
 ---
 # Scheduled Execution
 

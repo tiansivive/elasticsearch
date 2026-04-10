@@ -1,10 +1,12 @@
 ---
-tags: [language, control-flow, open, feature, task, concept]
+tags: [language, control-flow, open, deferred, feature, task, concept, needs-design, later]
 refs:
   - adr:D-010
   - adr:D-029
   - roadmap:phase-1e
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:error-handling
+  - thread:language-expressiveness
 ---
 # Pattern Matching
 

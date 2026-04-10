@@ -1,8 +1,9 @@
 ---
-tags: [types, open, kinds, concept]
+tags: [types, open, kinds, concept, needs-design, later]
 refs:
   - adr:D-050
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:type-foundations
 ---
 # Label Kind
 

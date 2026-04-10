@@ -9,11 +9,11 @@ and follow any links they contain recursively until you have a complete picture 
 2. **[docs/current-state.md](docs/current-state.md)** — what's implemented now, known limitations
 3. **[docs/architecture.md](docs/architecture.md)** — system design, Core IR, async evaluator, channels
 4. **[docs/decisions.md](docs/decisions.md)** — architectural decisions and rationale (55 ADRs — check before suggesting alternatives)
-5. **[docs/roadmap.md](docs/roadmap.md)** — block-based development plan with status markers
+5. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
 6. **[docs/design-space/index.md](docs/design-space/index.md)** — tagged knowledge base of the full design landscape
-7. **Design space catalog** — run `python3 docs/design-space/catalog.py --compact` to scan all 200+ tracked design topics
+7. **Design space catalog** — run `./scripts/catalog.py --compact` to scan all 200+ tracked design topics
 8. **Thread** — read `docs/design-space/thread.md` for the paper trail of prior work
-9. **Queue** — check `docs/design-space/queue.md` for open pending items
+9. **Queue** — check `docs/design-space/zettels/global-pending.queue.md` for open pending items
 
 If any of these files link to other documents (vision, data-access, references, plans, etc.),
 read those too. The goal is to have the full project context before making any changes or
@@ -29,7 +29,7 @@ See [docs/AGENTS.md § Design Space Knowledge Base](docs/AGENTS.md) for the full
 ## Additional Documentation
 
 - [docs/vision.md](docs/vision.md) — long-term goals, Join Calculus coordination model, external interaction model, design philosophy
-- [docs/data-access.md](docs/data-access.md) — `Query a` typeclass, ESQL/ShardPlan/LuceneM levels
+- [docs/archive/data-access.pre-threads.md](docs/archive/data-access.pre-threads.md) — `Query a` typeclass, ESQL/ShardPlan/LuceneM levels (archived — see [[data-access-architecture.roadmap]])
 - [docs/project-structure.md](docs/project-structure.md) — file layout and module responsibilities
 - [docs/references.md](docs/references.md) — papers, textbooks, and theory
 - [docs/design-space/metrics.md](docs/design-space/metrics.md) — derived metrics for the design space

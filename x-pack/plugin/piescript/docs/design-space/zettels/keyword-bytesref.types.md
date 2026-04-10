@@ -1,9 +1,10 @@
 ---
-tags: [types, runtime, tech-debt, known-issue, task]
+tags: [types, runtime, tech-debt, known-issue, task, later]
 refs:
   - adr:D-026
   - code:EsqlValueConverter.java
   - code:Value.java
+  - thread:data-completeness
 ---
 # Keyword BytesRef Conversion
 

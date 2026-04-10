@@ -1,8 +1,9 @@
 ---
-tags: [performance, types, theoretical]
+tags: [performance, types, theoretical, someday]
 refs:
   - vision:speculative
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:ownership-resources
 ---
 # Zero-Copy Linear Transfer
 

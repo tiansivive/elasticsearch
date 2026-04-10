@@ -20,6 +20,7 @@ Ship closures to remote nodes, get results back. Introduced spawn!, send, fire-a
 - subsumes: [[fire-and-forget.coordination]]
 - subsumes: [[code-mobility.coordination]]
 - subsumes: [[serialization.infrastructure]]
+- subsumes: [[transport-layer.es]] — ES `TransportService` and piescript transport actions
 - subsumes: [[transport-send.infrastructure]]
 - subsumes: [[inbox.infrastructure]]
 - subsumes: [[channel-registry.infrastructure]]

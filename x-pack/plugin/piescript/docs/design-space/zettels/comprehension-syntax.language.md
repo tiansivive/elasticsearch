@@ -1,8 +1,9 @@
 ---
-tags: [language, esql, open, feature, concept, question]
+tags: [language, esql, open, feature, concept, question, needs-design, later]
 refs:
   - vision:long-term
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:language-expressiveness
 ---
 # Comprehension Syntax
 

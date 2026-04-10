@@ -1,9 +1,10 @@
 ---
-tags: [types, theoretical]
+tags: [types, theoretical, someday]
 refs:
   - doc:references.md
   - roadmap:phase-6
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:type-foundations
 ---
 # Session Types
 

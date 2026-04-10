@@ -18,10 +18,10 @@ as closures — safe because the language is pure and referentially transparent.
 | Doc | What it covers |
 |-----|---------------|
 | [vision.md](vision.md) | Long-term goals, Join Calculus coordination model, design philosophy, non-goals |
-| [roadmap.md](roadmap.md) | Block-based development plan with status markers (Blocks A–F complete, D-053 F-omega complete, Blocks G–H planned) |
+| [design-space/thread.md](design-space/thread.md) | Forward-looking roadmap via thread hub zettels (tagged `thread`); run `python3 ../scripts/roadmap_status.py` to see all threads |
 | [current-state.md](current-state.md) | What works **right now**, known limitations, immediate next steps |
 | [architecture.md](architecture.md) | System design, Core IR, async evaluator, channel-based coordination |
-| [data-access.md](data-access.md) | `Query a` typeclass, levels of control (ESQL/ShardPlan/LuceneM), use cases, comparable systems |
+| [archive/data-access.pre-threads.md](archive/data-access.pre-threads.md) | `Query a` typeclass, levels of control (ESQL/ShardPlan/LuceneM), use cases, comparable systems (archived — see [[data-access-architecture.roadmap]]) |
 | [project-structure.md](project-structure.md) | File layout and what each module/file does |
 | [decisions.md](decisions.md) | Key architectural decisions and their rationale |
 | [references.md](references.md) | π-calculus papers, textbooks, implemented languages, and theory |
@@ -36,11 +36,12 @@ as closures — safe because the language is pure and referentially transparent.
    IR representation, null semantics, security model) were deliberated. If you want to revisit one,
    reference the existing decision and explain why.
 
-3. **Check `roadmap.md` for phase boundaries.** Work should align with the current phase. If a
-   feature belongs to a later phase, flag it as out-of-scope rather than implementing it.
+3. **Check thread hub zettels for phase boundaries.** Work should align with active threads
+   (run `python3 scripts/roadmap_status.py`). If a feature belongs to a future thread, flag it
+   as out-of-scope rather than implementing it.
 
 4. **Keep these docs updated.** When you implement something, update `current-state.md` and
-   `roadmap.md` status markers. When you make a non-trivial design decision, add it to
+   the relevant thread hub zettels. When you make a non-trivial design decision, add it to
    `decisions.md`. These are living documents.
 
 5. **Flag improvements proactively.** If you notice something that could be improved, contradicts
@@ -231,16 +232,19 @@ landscape. See [design-space/index.md](design-space/index.md) for the format spe
 **Catalog script** — run to get a scannable overview of all tracked design topics:
 
 ```bash
-python3 docs/design-space/catalog.py --compact    # one line per zettel: title, file, tags
-python3 docs/design-space/catalog.py              # full: frontmatter + description + connections
-python3 docs/design-space/catalog.py types         # filter by tag or keyword
+./scripts/catalog.py --compact    # one line per zettel: title, file, tags
+./scripts/catalog.py              # full: frontmatter + description + connections
+./scripts/catalog.py types        # filter by tag or keyword
 ```
+
+When creating or editing zettels, follow the format specification and naming conventions
+established in [design-space/index.md](design-space/index.md).
 
 **Agent responsibilities — lookup workflow:**
 
 Before doing any design work, implementation, or proposing changes:
 
-1. **Scan the catalog** (`python3 docs/design-space/catalog.py --compact`) to see what's tracked.
+1. **Scan the catalog** (`./scripts/catalog.py --compact`) to see what's tracked.
 2. **Read relevant zettels** — open the specific `.md` files for topics related to your work.
 3. **Follow connections** — each zettel has `Depends on`, `Enables`, and `Connections` edges
    linking to other zettels via `[[name]]`. Read linked zettels to understand the full context
@@ -270,16 +274,18 @@ See [[thread-queue-system.meta]] for the full design.
 
 Append-only paper trail of work across sessions. Each block records a session's path
 through the zettel graph using labeled edges (`[[A]] -- verb -> [[B]]`) and action
-annotations (`ENQUEUE`, `RESOLVED`, `SPAWN`).
+annotations (`ENQUEUE`, `RESOLVED`, `SPAWN`). Thread hub zettels (tagged `thread`) are
+the forward-looking roadmap, organized as parallel work concerns.
 
-### Queue — `docs/design-space/queue.md`
+### Queue — `docs/design-space/zettels/global-pending.queue.md`
 
+The queue is now a zettel (`[[global-pending.queue]]`) in `zettels/`.
 Flat FIFO list of pending work. Each item references a zettel. Resolve top-down.
 `[ ]` open, `[x]` resolved, `[~]` dropped.
 
 **Agent responsibilities:**
 
-- **On session start:** read `thread.md` for context, scan `queue.md` for open items.
+- **On session start:** read `thread.md` for context, scan `[[global-pending.queue]]` for open items.
 - **During work:** append edges and actions to `thread.md` in a session block.
 - **When deferring:** ensure zettel exists → add `ENQUEUE` to thread → add item to queue.
 - **When resolving:** mark queue item `[x]` → append `RESOLVED` to thread.

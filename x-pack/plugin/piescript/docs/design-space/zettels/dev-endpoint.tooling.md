@@ -18,3 +18,4 @@ refs:
 - uses: [[core-printer.tooling]] — relies on `CorePrinter` for output
 - uses: [[deferred-constraints.types]] — displays constraint state for debugging
 - uses: [[zonker.types]] — displays union-find substitution state
+- extends: [[eval-endpoint.infrastructure]] — dev endpoint adds pipeline inspection on top of the eval pipeline

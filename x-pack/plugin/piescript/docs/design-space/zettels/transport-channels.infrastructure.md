@@ -1,14 +1,17 @@
 ---
-tags: [infrastructure, open, task]
+tags: [infrastructure, concept, designed]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
 ---
 # Transport Channels
 
-Using ES `TransportService` directly as the channel mechanism instead of the `ConcurrentHashMap`-based [[channel-registry.infrastructure]]. `TransportService` already handles message routing, connection management, failure detection. Could eliminate the custom registry layer. Would integrate with [[transport-send.infrastructure]] at the transport level rather than going through a separate registry.
+**Status**: Speculative alternative — not the current implementation.
+
+Using ES **`TransportService`** alone as the channel mechanism instead of the `ConcurrentHashMap`-based [[channel-registry.infrastructure]] would lean entirely on transport routing and connection management. The **implemented** path is layered: [[transport-layer.es]] documents `TransportService` + piescript actions; [[channel-registry.infrastructure]] holds owner-node listeners; [[transport-send.infrastructure]] completes them via **`TransportPiescriptSendAction`**. A transport-native design would integrate [[transport-send.infrastructure]] at a lower level and might drop the explicit registry — that remains future exploration if we need fewer moving parts.
 
 **Depends on**: [[channel-registry.infrastructure]]
 **Enables**: (none directly)
 **Connections**:
-- alternative-to: [[channel-registry.infrastructure]] — currently `ChannelRegistry` is a thin layer; transport-native channels would be more ES-idiomatic
-- related: [[transport-send.infrastructure]] — would change how PiescriptSendAction dispatches messages
+- alternative-to: [[channel-registry.infrastructure]] — today `ChannelRegistry` is the coordination layer; this zettel tracks replacing it with transport-only routing
+- related: [[transport-layer.es]] — documents the actual ES transport stack piescript uses today
+- related: [[transport-send.infrastructure]] — would change how `PiescriptSendAction` dispatches relative to registry listeners

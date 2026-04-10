@@ -21,7 +21,7 @@ refs:
 **Enables**: [[evaluator.language]], [[serialization.infrastructure]]
 **Connections**:
 - part-of: [[phase-1.roadmap]]
-- supersedes: D-013 separate `CoreProcess` — single hierarchy (D-040)
+- replaces: [[two-layer-ir.language]] — D-013 separate `CoreProcess` merged into single hierarchy (D-040)
 - uses: [[antlr-grammar.language]] — parsing produces CST; [[elaboration-architecture.types]] converts to Core IR
 - complements: [[closure-val.language]] — CoreLam produces ClosureVal at evaluation time
 - uses: [[de-bruijn-indices.language]] — `CoreVar` uses de Bruijn indices for variable representation

@@ -1,8 +1,9 @@
 ---
-tags: [external, streaming, designed, feature, concept]
+tags: [external, streaming, designed, feature, concept, needs-design, someday]
 refs:
   - vision:external-interaction-model
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:external-interaction
 ---
 # SSE Streaming
 

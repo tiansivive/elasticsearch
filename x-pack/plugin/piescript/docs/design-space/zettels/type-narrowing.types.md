@@ -1,7 +1,8 @@
 ---
-tags: [types, open, task, concept, question]
+tags: [types, open, task, concept, question, needs-design, later]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
+  - thread:type-foundations
 ---
 # Type Narrowing
 

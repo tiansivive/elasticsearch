@@ -15,7 +15,9 @@ Every [[esql-compilation.esql]] query result is fully materialized into `List<Va
 **Enables**: (none directly)
 **Connections**:
 - part-of: [[phase-2.roadmap]]
+- solved-by: [[materialization-boundary.data]] — Block G delivers the mechanism; user/library code chooses the strategy
 - motivates: [[exchange-streaming.infrastructure]] — acceptable for prototype scope; Exchange streaming (Block G) provides the scale path
 - motivates: [[materialization-boundary.data]] — materialization boundary is the design-level solution to eager materialization limits
+- supersedes: [[terminal-operations.language]] -- terminal ops concept shelved while everything is eagerly materialized
 - tension-with: [[type-stack.data]]
 - motivates: [[page-opaque-typed.data]]

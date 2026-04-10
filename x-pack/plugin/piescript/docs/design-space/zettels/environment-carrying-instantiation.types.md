@@ -1,7 +1,8 @@
 ---
-tags: [types, inference, open, concept, exploration]
+tags: [types, inference, open, concept, exploration, later]
 refs:
   - adr:D-037
+  - thread:type-foundations
 ---
 # Environment-Carrying Instantiation
 

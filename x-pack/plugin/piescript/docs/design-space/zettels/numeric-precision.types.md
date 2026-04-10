@@ -1,9 +1,10 @@
 ---
-tags: [types, primitives, open, task, concept, question]
+tags: [types, primitives, open, task, concept, question, someday]
 refs:
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87
   - code:Value.java
   - code:EsqlValueConverter.java
+  - thread:data-completeness
 ---
 # Numeric Precision
 

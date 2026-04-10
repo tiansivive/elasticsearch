@@ -23,5 +23,5 @@ Extends [[hindley-milner.types]] + [[row-polymorphism.types]] toward F-omega-lit
 - uses: [[kind-system.types]] — kinds are MonoType values; kind system is the foundation
 - uses: [[unification-algorithm.types]] — same unifier solves kind constraints
 - implements: [[force-threading.types]] — force function bridges elaboration and evaluation
-- alternative-to: [[gadt-rejection.types]] — F-omega-lite was chosen over GADTs for type-level computation
+- makes-redundant: [[gadt-rejection.types]] — F-omega-lite solved the same typing problem (STATS output) without GADTs (D-053)
 - validates: [[maplist-operator.types]] — demonstrates extensibility of the force/reducible-builtin pattern
