@@ -17,3 +17,5 @@ Meijer, Fokkinga, and Paterson's recursion schemes:
 **Connections**:
 - extends: [[bird-meertens.types]] — BMF covers list homomorphisms; catamorphisms generalize to arbitrary inductive types
 - informs: [[recursive-types.types]] — iso-recursive types need fold/unfold, which are exactly catamorphism/anamorphism at the type level
+- dual-of: [[anamorphisms.types]] — catamorphisms consume (fold/algebra); anamorphisms produce (unfold/coalgebra)
+- dual-of: [[codata.types]] — catamorphisms are for data (initial algebras); codata uses anamorphisms (final coalgebras)

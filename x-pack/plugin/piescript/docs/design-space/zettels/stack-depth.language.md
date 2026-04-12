@@ -15,5 +15,7 @@ refs:
 **Enables**: (none directly)
 **Connections**:
 - motivates: [[iterative-streaming.language]] — the mitigation for list builtin stack growth
-- tension-with: [[recursion.language]] — unbounded recursion would make this critical
+- tension-with: [[recursion.hub]] — unbounded recursion would make this critical
 - tension-with: [[recursive-types.types]] — either recursive type approach makes stack depth critical
+- solves: [[trampolining.technique]]
+- constrains: [[execution-model.question]]

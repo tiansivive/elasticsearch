@@ -23,9 +23,9 @@ provenance), resource cleanup (bracket patterns), and distributed fault toleranc
    Sum types for Option/Result. Declaration syntax, closed vs open, constructors.
    _Shared with: language-expressiveness_
 
-4. **Pattern matching** [[pattern-matching.hub]] — now
+4. **Pattern matching** [[pattern-matching.hub]] — ready
    Match expressions (`match x | pat -> body`), `if/then/else` as sugar.
-   Independent of ADTs — basic patterns first, constructor patterns with ADTs.
+   Phase 1 (basic patterns) complete. ADT constructor patterns deferred.
    _Shared with: language-expressiveness_
 
 5. **Result/Option types** [[result-types.types]] — after #3, #4

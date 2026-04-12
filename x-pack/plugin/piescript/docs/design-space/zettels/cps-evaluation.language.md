@@ -22,3 +22,7 @@ The [[evaluator.language]] is a CPS (continuation-passing style) transformation 
 - implements: [[evaluator.language]] — CPS is the evaluation strategy for the core evaluator
 - uses: [[channels.infrastructure]] — coordination primitives suspend/resume via channel callbacks
 - uses: [[generic-thread-pool.infrastructure]] — `ActionListener` patterns from ES's async infrastructure
+- enables: [[fused-loop-match.language]] — async suspension inside loop iterations
+- enables: [[implicit-recursion.design]] — async-interleaved recursion is naturally stack-safe
+- extends-to: [[cps-transform.compilation]] — evaluation-time CPS can become a compilation technique
+- extends-to: [[cek-machine.evaluation]] — making implicit CPS explicit yields CEK

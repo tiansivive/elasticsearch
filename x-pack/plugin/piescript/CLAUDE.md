@@ -15,6 +15,7 @@ and follow any links they contain recursively until you have a complete picture 
 8. **Design space catalog** — run `./scripts/catalog.py --compact` to scan all 200+ tracked design topics
 9. **Thread** — read `docs/design-space/thread.md` for the paper trail of prior work
 10. **Queue** — run `./scripts/queue.py` for all pending items, or check `docs/design-space/zettels/global-pending.queue.md` directly
+11. **Implementation plan workflow** — read [[implementation-plan-workflow.meta]] before creating or executing work from `.cursor/plans/`. Copy `_TEMPLATE.plan.md` for new plans ([[cursor-plan-template.meta]]). Cursor: use the skill `.cursor/skills/create-plan/SKILL.md` (symlink to `.claude/skills/create-plan/SKILL.md`) for the imperative checklist (zettels, queue, thread, session zettel, debug scripts, docs, review stops). At plan end: **reconcile** zettelkasten to shipped code/docs and **confirm** any new zettels with the user before creating them.
 
 If any of these files link to other documents (vision, data-access, references, plans, etc.),
 read those too. The goal is to have the full project context before making any changes or
@@ -27,6 +28,14 @@ tags and `supersedes`/`rejected-in-favor-of` edges — these mark ideas that wer
 considered and deliberately dropped. Don't revisit settled decisions without new justification.
 See [docs/AGENTS.md § Design Space Knowledge Base](docs/AGENTS.md) for the full workflow.
 
+## Interaction with the user
+
+Same rules as [docs/AGENTS.md § Interaction with the user](docs/AGENTS.md) and
+`.cursor/rules/agent-interaction.mdc`: for **questions or process feedback**, answer in prose only—**no
+repo edits** unless the user explicitly asks you to apply a change. **Confirm** before substantive
+edits; **ask** when intent is unclear; **stop** on conflicting instructions instead of silently
+“fixing.”
+
 ## Additional Documentation
 
 - [docs/vision.md](docs/vision.md) — long-term goals, Join Calculus coordination model, external interaction model, design philosophy
@@ -38,7 +47,10 @@ See [docs/AGENTS.md § Design Space Knowledge Base](docs/AGENTS.md) for the full
 
 ## Implementation Plans
 
-Detailed step-by-step plans live in [.cursor/plans/](.cursor/plans/):
+Detailed step-by-step plans live in [.cursor/plans/](.cursor/plans/). **Workflow**: see
+[docs/design-space/zettels/implementation-plan-workflow.meta.md](docs/design-space/zettels/implementation-plan-workflow.meta.md).
+**Template**: [.cursor/plans/_TEMPLATE.plan.md](.cursor/plans/_TEMPLATE.plan.md). **Agent skill**:
+[.cursor/skills/create-plan/SKILL.md](.cursor/skills/create-plan/SKILL.md) (canonical copy under [.claude/skills/create-plan/SKILL.md](.claude/skills/create-plan/SKILL.md)).
 
 | Plan | Scope |
 |------|-------|

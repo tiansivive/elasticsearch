@@ -22,3 +22,4 @@ refs:
 - tension-with: [[esql-expression-wrapper.types]] — aggregate builtins produce `Symbol` where type says `Double` (a type-level lie); future ESQL expression wrapper type
 - solves: [[risk-score-pattern.data]] — risk score pattern is the motivating use case for ESQL.stats/top
 - uses: [[type-driven-materialization.esql]] — List-typed aggregate columns require type-driven materialization
+- rejected-in-favor-of: [[agg-stripag.rejected]] — Agg/StripAgg wrapper rejected; plain output types chosen

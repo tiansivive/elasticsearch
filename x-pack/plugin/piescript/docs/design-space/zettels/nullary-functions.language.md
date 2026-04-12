@@ -18,4 +18,4 @@ Options for the future: (a) support arity-0 builtins by executing immediately at
 **Connections**:
 - workaround-for: [[esql-aggregates.esql]] — ESQL.count takes dummy Keyword arg
 - related: [[closure-val.language]] — BuiltinVal dispatch only fires on application
-- related: [[recursion.language]] — thunks/lazy evaluation would solve both nullary and recursive patterns
+- related: [[recursion.hub]] — thunks/lazy evaluation would solve both nullary and recursive patterns
