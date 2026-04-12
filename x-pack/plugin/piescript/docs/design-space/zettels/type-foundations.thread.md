@@ -30,7 +30,7 @@ and session-typed channels.
 
 6. **Recursive types** [[recursive-types.types]] — needs-design
    Iso-recursive vs equi-recursive. Relaxing occurs check.
-   Complements: [[recursion.language]]
+   Complements: [[recursion.hub]]
 
 7. **Type narrowing** [[type-narrowing.types]] — needs-design
    TypeScript-style if-check refinement. Depends on ADTs + pattern matching.

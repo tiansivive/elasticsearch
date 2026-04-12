@@ -1,5 +1,5 @@
 ---
-tags: [language, types, inference, implementation, needs-design, now]
+tags: [language, types, inference, implementation, implemented]
 refs:
   - thread:language-expressiveness
 ---

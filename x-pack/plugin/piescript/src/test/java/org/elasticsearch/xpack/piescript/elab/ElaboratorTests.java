@@ -17,6 +17,8 @@ import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
+import org.elasticsearch.xpack.piescript.core.CoreMatch;
+import org.elasticsearch.xpack.piescript.core.Pattern;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
@@ -564,10 +566,6 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
-    public void testIfExprNotSupported() {
-        var ex = expectThrows(ElaborationException.class, () -> elaborate("if true then 1 else 2"));
-        assertThat(ex.getMessage(), containsString("not yet supported"));
-    }
 
     public void testUpdateOnNonRecord() {
         var ex = expectThrows(ElaborationException.class, () -> elaborate("{ 42 | x = 1 }"));
@@ -980,6 +978,70 @@ public class ElaboratorTests extends ESTestCase {
     public void testIndexBulkTypeIsArrow() {
         var result = elaborate("Index.bulk");
         assertThat(resolveType(result), instanceOf(MonoType.Arrow.class));
+    }
+
+    // ──── Pattern Matching ────
+
+    public void testMatchLiteral() {
+        var result = elaborate("match 42 | 42 -> true | _ -> false");
+        assertThat(result, instanceOf(CoreMatch.class));
+        CoreMatch match = (CoreMatch) result;
+        assertEquals(BOOLEAN, resolveType(match));
+        assertEquals(2, match.arms().size());
+        assertThat(match.arms().get(0).pattern(), instanceOf(Pattern.LitPat.class));
+        assertThat(match.arms().get(1).pattern(), instanceOf(Pattern.WildcardPat.class));
+    }
+
+    public void testMatchVariable() {
+        var result = elaborate("match 42 | x -> x");
+        assertThat(result, instanceOf(CoreMatch.class));
+        CoreMatch match = (CoreMatch) result;
+        assertEquals(DOUBLE, resolveType(match));
+        assertThat(match.arms().get(0).pattern(), instanceOf(Pattern.VarPat.class));
+    }
+
+    public void testMatchRecord() {
+        var result = elaborate("match { a: 1, b: 2 } | { a: x } -> x");
+        assertThat(result, instanceOf(CoreMatch.class));
+        CoreMatch match = (CoreMatch) result;
+        assertEquals(DOUBLE, resolveType(match));
+        assertThat(match.arms().get(0).pattern(), instanceOf(Pattern.RecordPat.class));
+    }
+
+    public void testMatchList() {
+        var result = elaborate("match [1, 2] | [x, y] -> x");
+        assertThat(result, instanceOf(CoreMatch.class));
+        CoreMatch match = (CoreMatch) result;
+        assertEquals(DOUBLE, resolveType(match));
+        assertThat(match.arms().get(0).pattern(), instanceOf(Pattern.ListPat.class));
+    }
+
+    public void testMatchConsList() {
+        var result = elaborate("match [1, 2] | [h | t] -> h");
+        assertThat(result, instanceOf(CoreMatch.class));
+        CoreMatch match = (CoreMatch) result;
+        assertEquals(DOUBLE, resolveType(match));
+        assertThat(match.arms().get(0).pattern(), instanceOf(Pattern.ConsListPat.class));
+    }
+
+    public void testIfExprDesugarsToMatch() {
+        var result = elaborate("if true then 1 else 2");
+        assertThat(result, instanceOf(CoreMatch.class));
+        CoreMatch match = (CoreMatch) result;
+        assertEquals(DOUBLE, resolveType(match));
+        assertEquals(2, match.arms().size());
+        assertThat(match.arms().get(0).pattern(), instanceOf(Pattern.LitPat.class));
+        assertThat(match.arms().get(1).pattern(), instanceOf(Pattern.LitPat.class));
+    }
+
+    public void testMatchInconsistentResultTypes() {
+        var e = expectThrows(ElaborationException.class, () -> elaborate("match 42 | 1 -> true | 2 -> 42"));
+        assertThat(e.getMessage(), containsString("type mismatch: expected TCon[name=Double], got TCon[name=Boolean]"));
+    }
+
+    public void testMatchInconsistentPatternTypes() {
+        var e = expectThrows(ElaborationException.class, () -> elaborate("match 42 | \"hello\" -> true"));
+        assertThat(e.getMessage(), containsString("type mismatch: expected TCon[name=Double], got TCon[name=Keyword]"));
     }
 
     // ──── ESQL builtins type inference (Block F — D-052) ────

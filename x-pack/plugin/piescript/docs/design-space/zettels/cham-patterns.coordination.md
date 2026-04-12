@@ -16,3 +16,5 @@ Chemical Abstract Machine (Berry & Boudol 1992) with [[curry-narrowing.language]
 - related: [[multi-value-channels.coordination]] — generalizes [[when-synchronization.coordination]] from simple presence to functional patterns; highly speculative
 - related: [[join-calculus.coordination]] — CHAM reaction rules generalize join calculus join patterns to functional pattern matching over message stores
 - related: [[curry-narrowing.language]] — functional-logic patterns enable declarative concurrent reactions
+- uses: [[logic-programming.hub]] — functional patterns on channel stores use logic-programming-style search
+- uses: [[backtracking.search]] — finding satisfying assignments in message stores requires search

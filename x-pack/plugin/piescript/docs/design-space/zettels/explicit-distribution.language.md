@@ -20,3 +20,4 @@ This means: `topology "index"` returns typed cluster [[topology.infrastructure]]
 - contrasts-with: [[spark.comparable]] — Spark/Ray also have explicit models but are standalone systems
 - uses: [[channels.infrastructure]] — channels are the coordination mechanism for distributed plans
 - uses: [[send.coordination]] — send ships closures to remote nodes
+- tension-with: [[stream-a.language]] — an abstract Stream that hides Exchange orchestration may conflict with piescript's explicit-control philosophy

@@ -10,7 +10,7 @@ at session start.
 
 ## Pipeline
 
-```
+
 1. Discussion → atomic zettels
    Surface a concept → create a zettel in zettels/ → tag, connect, thread
 
@@ -28,6 +28,8 @@ at session start.
    When ready to build → create a plan (.cursor/plans/) from the hub.
    The plan scopes ONE implementation phase from the hub's larger picture.
    Plan tasks reference specific zettels. The hub lives on; the plan completes.
+   For the full checklist (queue zettel, thread, session zettel, debug scripts, review stops),
+   see [[implementation-plan-workflow.meta]] and copy `_TEMPLATE.plan.md` per [[cursor-plan-template.meta]].
 
 5. Queue → track work
    Pending items in [[global-pending.queue]] or thread-specific queues.
@@ -40,7 +42,7 @@ at session start.
 7. Update → close the loop
    After implementation: update current-state.md, tag zettels as `implemented`,
    mark thread/queue items resolved, append to thread.md.
-```
+
 
 ## Key principle
 
@@ -57,3 +59,4 @@ work.
 **Connections**:
 - extends: [[thread-queue-system.meta]] — adds the hub→plan→implement pipeline on top of the thread/queue workflow
 - complements: [[universal-vs-topic.meta]] — meta zettels document the process; topic zettels document the design
+- refined-by: [[implementation-plan-workflow.meta]] — concrete plan authoring/execution checklist and template

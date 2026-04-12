@@ -17,5 +17,8 @@ Curry language narrowing-based functional-logic patterns (functions as patterns)
 **Enables**: (none)
 **Connections**:
 - part-of: [[future-coordination.roadmap]]
+- part-of: [[logic-programming.hub]]
 - related: [[cham-patterns.coordination]] — CHAM + Curry = declarative concurrent reactions
 - subsumes: [[pattern-matching.hub]] — narrowing generalizes pattern matching
+- uses: [[backtracking.search]] — narrowing is goal-directed backtracking
+- uses: [[logic-unification.search]] — narrowing inverts functions via unification

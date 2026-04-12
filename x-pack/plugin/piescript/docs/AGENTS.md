@@ -47,6 +47,21 @@ as closures — safe because the language is pure and referentially transparent.
 5. **Flag improvements proactively.** If you notice something that could be improved, contradicts
    the docs, or duplicates existing work, say so — referencing the relevant doc section.
 
+## Interaction with the user
+
+These norms apply in **every** session. Cursor loads them from `.cursor/rules/agent-interaction.mdc`
+(`alwaysApply: true`) as well.
+
+1. **Questions, meta feedback, or criticism** (e.g. “why did you…”, “don’t do X”, “how should we…”):
+   respond in **text only**. Do **not** edit files or run commands to “fix” the situation unless the
+   user **explicitly** asks you to apply a change.
+2. **Before substantive repo edits**: briefly state what you plan to change; proceed only after
+   **clear approval** or a message that already directs implementation of that change.
+3. **Unclear intent** (including placeholders or partial bullets the user may have left on purpose):
+   **ask**—do not guess, expand, delete, or rewrite their content without confirmation.
+4. **Conflicting instructions**: stop, quote or paraphrase the tension, and ask how to proceed—do not
+   silently pick a resolution.
+
 ## Key Design Constraints
 
 - **Elasticsearch plugin**: Piescript lives inside the ES build system. It must follow ES
@@ -145,7 +160,27 @@ container must hold heterogeneous types (e.g., the zonker maps meta IDs to eithe
 
 Detailed step-by-step implementation plans live in [../.cursor/plans/](../.cursor/plans/). These
 were produced during each block/phase and contain granular task breakdowns, design rationale, and
-completion status. Load the relevant plan when working on or extending a specific block:
+completion status. Load the relevant plan when working on or extending a specific block.
+
+**Workflow (authoring & execution)** — Follow [[implementation-plan-workflow.meta]] for the full
+checklist. In short:
+
+1. **Start** — Create an **implementation zettel** and a **queue zettel** (checklist mirroring plan todos); link the hub, `plan:` ref, and related design zettels. New plans should copy
+   [`_TEMPLATE.plan.md`](../.cursor/plans/_TEMPLATE.plan.md); structure is documented in
+   [[cursor-plan-template.meta]].
+2. **Execute** — Keep queue checkboxes in sync; follow `docs/AGENTS.md` coding guidelines; prefer
+   **stop-after-each-step** when the user requests incremental review (state this in the plan).
+3. **Record** — Append a session block to `design-space/thread.md`; add a **session zettel** with
+   `refs: session:<id>` for substantial work; use `SPAWN` to link session ↔ thread.
+4. **Verify** — Unit tests, `PiescriptIT` when the REST path matters, serialization round-trips when
+   wire format changes; extend `debug/test-dev.sh`, `debug/test-eval.sh`, `debug/test-multinode.sh`
+   when the feature is easy to exercise manually.
+5. **Close** — Update `current-state.md`, thread hub zettels, and `decisions.md` (new ADRs). Then
+   **reconcile** the zettelkasten to shipped reality: call out mismatches between code, docs, and
+   design zettels. **Confirm with the user** any **new** zettels to add (no bulk creation without agreement).
+
+Cursor agents: load the project skill `.cursor/skills/create-plan/SKILL.md` (symlink to `.claude/skills/create-plan/SKILL.md`) when
+driving plan creation or execution.
 
 | Plan file | Scope |
 |-----------|-------|

@@ -1,5 +1,5 @@
 ---
-tags: [language, syntax, types, feature, needs-design, now]
+tags: [language, syntax, types, feature, implemented]
 refs:
   - thread:language-expressiveness
 ---

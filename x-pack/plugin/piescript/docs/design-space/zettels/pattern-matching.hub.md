@@ -1,5 +1,5 @@
 ---
-tags: [language, control-flow, hub, feature, now]
+tags: [language, control-flow, hub, feature, ready]
 refs:
   - adr:D-010
   - adr:D-029
@@ -10,7 +10,7 @@ refs:
 
 Match expressions as the primary control-flow mechanism (D-010). `if`/`then`/`else` is sugar
 for matching on Boolean. 
-Critical unblock for [[recursion.language]] — any loop/recursion needs
+Critical unblock for [[recursion.hub]] — any loop/recursion needs
 branching. 
 Independent of [[adts.types]] — basic matching (Boolean, literals, wildcards, records,
 lists) requires no sum types. 
@@ -19,7 +19,7 @@ Constructor patterns arrive with ADTs later.
 **Includes**: [[match-syntax.language]], [[pattern-types.language]], [[match-type-checking.language]], [[pattern-reuse.language]], [[type-level-matching.types]], [[core-match.language]]
 
 **Depends on**: [[hindley-milner.types]], [[row-polymorphism.types]]
-**Enables**: [[recursion.language]], [[result-types.types]]
+**Enables**: [[recursion.hub]], [[result-types.types]]
 **Connections**:
 - implements: D-010 — match-first philosophy
 - implements: D-029 — open rows before pattern matching

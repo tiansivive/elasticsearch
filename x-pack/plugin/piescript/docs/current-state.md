@@ -3,10 +3,7 @@
 > **Living doc** — update after every implementation session. This is the ground truth for "what
 > exists right now."
 >
-> **Last updated**: 2026-04-07 (Block G Exchange builtins complete. Security namespace →
-> `cluster:compute/piescript` (D-055). Nested record types from field caps. `ESQL.keep`/`drop`
-> dotted path fix. `BooleanBlock` for `Shard.stream`. `Shard.write` INDEX upsert semantics.
-> `force` threaded to evaluator for type-driven materialization.)
+> **Last updated**: 2026-04-10 (Phase 1e Pattern Matching implemented: `match` expressions, `if/then/else` desugaring, literal/variable/wildcard/record/list patterns.)
 
 ## Summary
 
@@ -34,7 +31,7 @@ are enforced at the serialization boundary — attempting to send them across th
 and field metadata). UUID is resolved at evaluation time from `ClusterService`, keeping Core IR
 cluster-state-free.
 
-**Phase 1e (Pattern Matching) is deferred** — not blocking the MVP-critical path. The execution
+**Phase 1e (Pattern Matching) is complete.** The execution
 model is the Join Calculus (D-040), with `spawn`/`when`/`send`/channels as coordination primitives.
 The roadmap has been restructured (D-042) around a distributed vertical slice: Block C (cross-node
 execution), Block D (local data access via `scan`). The original block-based roadmap is archived
@@ -66,6 +63,7 @@ today.
 | Math builtins | `abs`, `floor`, `ceil`, `round`, `sqrt`, `log` (`Double → Double`); `min`, `max`, `pow` (`Double → Double → Double`); `toInt` (`Double → Double`, truncates to integer). All backed by `java.lang.Math`. Curried, so partial application works: `let clamp = min 100 in clamp 150`. |
 | Builder DSL (Block C.4) | `Exprs`, `Values`, and `Types` utility classes in `piescript.core`, `piescript.eval`, and `piescript.types` respectively. Static factory methods for concise construction: `lit(42)`, `lam("x", DOUBLE, body)`, `app(fn, arg)`, `rec(field(...))`, `doubleVal(n)`, `keyword(s)`, `record("k", v)`, `arrow(a, b)`, `list(t)`, `channel(t)`. Type inference where possible (e.g., `lam` computes arrow type, `rec` builds record type from fields). Reduces test and production verbosity. |
 | `use` declaration (Block D) | `use "index-name" as idx` is a top-level declaration that binds a typed `Index r` value. The row type `r` is resolved from field capabilities via the `IndexResolutionPrePass` at elaboration time. Elaborates to `CoreLet` with `LitVal.IndexLit`. |
+| Pattern Matching (Phase 1e) | `match expr | pattern -> body` expressions. Supports literal, variable, wildcard, open-row record, and list patterns. `if c then a else b` is sugar for `match c | true -> a | false -> b`. No exhaustiveness checking yet (throws `EvaluationException` on no match). |
 | `Index r` type (Block D) | `Index r` carries index name, UUID, and field metadata. UUID is resolved at evaluation time from `ClusterService` (not stored in Core IR). `r` is the row type derived from field capabilities. `Index.routing`, `Index.shards`, `Index.nodes` all accept `Index r` (not raw strings). |
 | `Shard.open` / `Shard.consume` / `Shard.read` (Block D) | `Shard.open : Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)` acquires a Lucene `IndexSearcher` asynchronously and delivers it via a channel. `Shard.consume : Double → Searcher r → List (DocRef r)` iterates `DocIdSetIterator` for up to N docs (synchronous). `Shard.read : DocRef r → r` reads all doc-value fields from a document reference (synchronous, throws on missing doc values). |
 | `Searcher r` / `DocRef r` types (Block D) | Opaque, non-serializable node-local types. `Searcher r` wraps Lucene `IndexSearcher` + `SearcherState`. `DocRef r` wraps a Lucene doc ID + `SearcherState` reference. Both parameterized by row type `r` for static type safety. Serialization of these types throws `IOException`. |
@@ -91,12 +89,12 @@ today.
 | Security | `cluster:compute/piescript` namespace (cluster-level auth, D-055). Send action `internal:compute/piescript/send` (system-internal). Works with auth enabled — no `CompositeIndicesRequest`, no `RBACEngine` allowlist entry. ESQL queries inside piescript handle their own index auth. Operator privileges allowlist in `Constants.java`. |
 | Integration tests | 33 single-node tests (`PiescriptIT`) + 12 multi-node tests (`PiescriptMultiNodeIT`) covering query type-checking, eager evaluation, expression evaluation, topology, list utilities, error handling, cross-node execution, `use` declarations, shard data access, shard writes, `Index.bulk`, global checkpoints, and non-serializable value response/wire rejection |
 | Build | Compiles, passes `check`, `spotlessJavaCheck`, `javaRestTest` |
-| ANTLR grammar | Lexer (`PiescriptLexer.g4`) and parser (`PiescriptAntlrParser.g4`) implementing full D1.17 surface syntax plus `SPAWN`, `WHEN`, `AMP` tokens and `SpawnExpr`/`WhenExpr` rules (Block A) |
+| ANTLR grammar | Lexer (`PiescriptLexer.g4`) and parser (`PiescriptAntlrParser.g4`) implementing full D1.17 surface syntax plus `SPAWN`, `WHEN`, `AMP`, `MATCH` tokens and `SpawnExpr`/`WhenExpr`/`MatchExpr` rules |
 | Parser entry point | `PiescriptParser.java` — invokes ANTLR, produces parse tree; `parseToTreeString()` for CST inspection |
 | Core IR printer | `CorePrinter` in `piescript.core`: `printExpr` (zonked), `printExprRaw` (bare metas/rigids), `printConstraints`, `printZonker` — used by dev endpoint for debugging |
 | Parser unit tests | `PiescriptParserTests.java` — comprehensive coverage of every syntax form plus error cases |
 | Type data structures (Phase 1b) | `Kind`, `MonoType`, `RowType`, `TypeScheme`, `LitVal`, `Op` in `piescript.types` package |
-| Core IR (Phase 1b + D-035 + Phase 2 + Block A + Block C) | `CoreExpr` sealed hierarchy in `piescript.core`: `CoreVar`, `CoreFree`, `CoreLit`, `CoreLam`, `CoreApp`, `CoreLet`, `CoreRecord`, `CoreProject`, `CoreUpdate`, `CorePrimOp`, `CoreTypeAbs`, `CoreTypeApp`, `CoreQuery`, `CoreSpawn`, `CoreWhen`, `CoreSend` — extends `Node<CoreExpr>` with `MonoType` on every node. `CoreTypeAbs` and `CoreTypeApp` are unary System F nodes. `CoreFree` is a module-level free variable (built-ins). `CoreQuery` carries an ESQL query string and its resolved list type. `CoreSpawn` wraps a `@Nullable` body expression (type `Channel bodyType`); null body represents bare `spawn!` channel creation. `CoreSend` takes a channel expression and a value expression (type `Null`). `CoreWhen` carries a list of `WhenBinding(CoreExpr channel, @Nullable String debugName)` and a body. |
+| Core IR (Phase 1b + D-035 + Phase 2 + Block A + Block C + Phase 1e) | `CoreExpr` sealed hierarchy in `piescript.core`: `CoreVar`, `CoreFree`, `CoreLit`, `CoreLam`, `CoreApp`, `CoreLet`, `CoreRecord`, `CoreProject`, `CoreUpdate`, `CorePrimOp`, `CoreTypeAbs`, `CoreTypeApp`, `CoreQuery`, `CoreSpawn`, `CoreWhen`, `CoreSend`, `CoreMatch` — extends `Node<CoreExpr>` with `MonoType` on every node. `CoreTypeAbs` and `CoreTypeApp` are unary System F nodes. `CoreFree` is a module-level free variable (built-ins). `CoreQuery` carries an ESQL query string and its resolved list type. `CoreSpawn` wraps a `@Nullable` body expression (type `Channel bodyType`); null body represents bare `spawn!` channel creation. `CoreSend` takes a channel expression and a value expression (type `Null`). `CoreWhen` carries a list of `WhenBinding(CoreExpr channel, @Nullable String debugName)` and a body. `CoreMatch` carries a scrutinee and a list of `Alternative(Pattern, CoreExpr)` arms. |
 | Type unit tests (Phase 1b) | `TypeDataStructureTests.java` — construction, equality, sealed hierarchy, factory methods |
 | Core IR unit tests (Phase 1b) | `CoreExprTests.java` — construction, accessors, equality, replaceChildren, tree traversal |
 | Elaboration context (Phase 1b + Phase 2) | Immutable `ElaborationContext` in `piescript.elab`: typing context (Γ) with de Bruijn-indexed local bindings + module-level free variable map + binding level, passed by value through recursive descent. `lookup()` checks local bindings first; `lookupModule()` falls back to the module map. Local variables shadow module-level names. |
@@ -121,7 +119,6 @@ today.
 
 | Capability | Target Block | Notes |
 |-----------|-------------|-------|
-| Pattern matching | 1e (deferred) | No match expressions (deferred — not blocking Blocks A+; see D-029) |
 | `Label` kind / type-level singletons | Tech debt | Proper fix requires `Label` kind + `Project` type family. See D-050 § Future. |
 | `sort` / `take` combinators | Block D+ | No sorting or top-N selection within piescript. Must push into ESQL. |
 | ESQL expression wrapper type | Future (D-053) | Aggregate builtins produce `Symbol` where type says `Double` — a type-level lie. Wrap in ESQL monad for static safety. |
@@ -266,13 +263,13 @@ via `Index.bulk`, replication monitoring via `Shard.globalCheckpoint`, and list 
 
 **The distributed vertical slice with read-write capability is complete.** A piescript program can
 discover topology, ship closures to data nodes, read local data, transform it, write results
-back to indices (via shard-level Engine writes or the Bulk API), refresh for visibility, monitor replication via global checkpoints, and stream columnar data across nodes via Exchange.
+back to indices (via shard-level Engine writes or the Bulk API), refresh for visibility, monitor replication via global checkpoints, and stream columnar data across nodes via Exchange. In addition, the language now supports pattern matching (`match` expressions) over literals, variables, wildcards, records, and lists.
 
 **Next steps are organized by work concern threads** — run `python3 scripts/roadmap_status.py` to
 see all threads with status and priority. The five thread hubs are:
 
 - **error-handling** — error provenance, diagnostics, empty mapping warnings
-- **language-expressiveness** — pattern matching, comprehension syntax, string concat, nullary functions
+- **language-expressiveness** — comprehension syntax, string concat, nullary functions
 - **data-completeness** — multi-value fields, streaming, ESQL join, scheduled execution
 - **distributed-coordination** — multi-value channels, saga patterns, dynamic fan-out
 - **type-foundations** — `Forall` variant, `Label` kind, session types, lacks constraints

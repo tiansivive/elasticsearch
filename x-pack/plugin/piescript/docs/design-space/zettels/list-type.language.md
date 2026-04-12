@@ -21,3 +21,5 @@ refs:
 - uses: [[cps-evaluation.language]] — `map`/`filter`/`reduce` via `SubscribableListener` chaining for stack safety
 - complements: [[list-literal-syntax.language]] — syntax for constructing List values
 - complements: [[iterative-streaming.language]] — iterative streaming enables lazy processing over List-like sequences
+- contrasts-with: [[stream-a.language]] — List is data (eager, finite); the reserved Stream is codata (lazy, potentially infinite). D-043 reserves "Stream" for this future type.
+- contrasts-with: [[codata.types]] — List is an ADT (initial algebra); Stream would be codata (final coalgebra)

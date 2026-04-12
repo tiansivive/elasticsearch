@@ -340,6 +340,21 @@ in List.map (fn row -> {
 post "{\"program\": $(echo "$PROG30" | jq -Rs .)}"
 
 echo ""
+echo "=== 31. Pattern matching (match) ==="
+PROG31='match { a: 1, b: 2 } | { a: x } -> x'
+post "{\"program\": $(echo "$PROG31" | jq -Rs .)}"
+
+echo ""
+echo "=== 32. Pattern matching (if/else sugar) ==="
+PROG32='if true then 42 else 0'
+post "{\"program\": $(echo "$PROG32" | jq -Rs .)}"
+
+echo ""
+echo "=== 33. Pattern matching (list decomposition) ==="
+PROG33='match [1, 2, 3] | [] -> 0 | [h | t] -> h'
+post "{\"program\": $(echo "$PROG33" | jq -Rs .)}"
+
+echo ""
 echo "========================================"
 echo "  Done"
 echo "========================================"
