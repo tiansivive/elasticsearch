@@ -58,7 +58,7 @@ One program replaces: a Transform (pagination + writes), a Watcher
 (scheduling), a Kafka connector (event publishing), and client-side
 orchestration (progress tracking).
 
-**Depends on**: [[actor-model.lifecycle]], [[named-channels.lifecycle]], [[plugin-spi.external]], [[sse-streaming.external]], [[recursion.language]]
+**Depends on**: [[actor-model.lifecycle]], [[named-channels.lifecycle]], [[plugin-spi.external]], [[sse-streaming.external]], [[recursion.hub]]
 **Enables**: (none directly)
 **Connections**:
 - example-of: [[external-interaction.thread]] — the motivating end-to-end example

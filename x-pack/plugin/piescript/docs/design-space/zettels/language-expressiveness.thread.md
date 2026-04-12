@@ -11,13 +11,13 @@ mechanisms, and reusable definitions.
 
 ## Sequence
 
-1. **Pattern matching** [[pattern-matching.hub]] — now
+1. **Pattern matching** [[pattern-matching.hub]] — ready
    Match expressions (`match x | pat -> body`), `if/then/else` as sugar.
-   Independent of ADTs — basic patterns (Boolean, literal, wildcard, record, list).
+   Phase 1 (basic patterns) complete. ADT constructor patterns deferred.
    Unblocks recursion. See hub for sub-zettels.
    _Shared with: error-handling_
 
-2. **Recursion** [[recursion.language]] — needs-design (after pattern matching)
+2. **Recursion** [[recursion.hub]] — needs-design (after pattern matching)
    `loop` builtin or `let rec`. Blocked by pattern matching (needs branching).
    Enables pagination loops, iterative algorithms.
 
@@ -59,7 +59,7 @@ mechanisms, and reusable definitions.
 **Depends on**: (none — root thread)
 **Enables**: (none directly)
 **Connections**:
-- includes: [[recursion.language]]
+- includes: [[recursion.hub]]
 - includes: [[string-concat.language]]
 - includes: [[adts.types]]
 - includes: [[pattern-matching.hub]]

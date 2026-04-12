@@ -25,6 +25,7 @@ import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
+import org.elasticsearch.xpack.piescript.core.CoreMatch;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreQueryExec;
@@ -174,6 +175,8 @@ public final class Evaluator {
             }));
 
             case CoreWhen when -> EvalCoordination.evaluateWhen(this, when, env, listener);
+
+            case CoreMatch match -> EvalMatch.evaluateMatch(match, env, this, listener);
 
             case CoreQueryExec qe -> evaluate(qe.plan(), env, listener.delegateFailureAndWrap((l, result) -> {
                 if (result instanceof Value.Symbol sym) {

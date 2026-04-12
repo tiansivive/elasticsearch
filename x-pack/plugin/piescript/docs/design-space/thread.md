@@ -248,3 +248,23 @@ SPAWN [[data-access-diagram]] — mermaid architecture diagram
 SPAWN [[data-access-restructure.session]] — session zettel
 
 RESOLVED Archive `data-access.md` to `docs/archive/data-access.pre-threads.md`
+
+## session:5f90891b-2661-476c-b4fe-575b7d34ec22 — 2026-04-10 [language, control-flow, implementation]
+
+Implemented Phase 1 of pattern matching. Added `match` expressions with `Alternative` arms and a sealed `Pattern` hierarchy (literal, variable, wildcard, open-row record, exact list, cons list). `if/then/else` is now sugar over Boolean `match`.
+
+- **IR & Types**: `CoreMatch` and `Alternative` added. `Pattern` hierarchy implemented.
+- **Elaborator**: `Matches.java` handles pattern type inference (unifying scrutinee type with pattern type) and `if` desugaring.
+- **Evaluator**: `EvalMatch.java` implements top-to-bottom arm dispatch and recursive pattern matching. Record patterns bind fields in alphabetical order.
+- **Serialization**: `TAG_MATCH` and recursive `Pattern` serialization added to `CoreExprSerialization`.
+- **Debug Scripts**: Added `match` and `if/else` examples to `test-dev.sh`, `test-eval.sh`, and `test-multinode.sh`.
+
+SPAWN [[pattern-matching-phase1.session]] — session zettel
+RESOLVED [[pattern-matching.hub]] — Phase 1 complete (basic patterns, no ADTs, no exhaustiveness)
+RESOLVED [[core-match.language]] — IR node implemented
+RESOLVED [[match-syntax.language]] — ML-style syntax implemented
+RESOLVED [[pattern-types.language]] — basic patterns implemented
+RESOLVED [[match-type-checking.language]] — unification-based inference implemented
+RESOLVED [[if-as-match-sugar.language]] — desugaring implemented
+
+---

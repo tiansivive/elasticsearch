@@ -30,7 +30,29 @@ expr
     | SPAWN expr                                         # SpawnExpr
     | SEND primary expr                                  # SendExpr
     | WHEN whenBinding (AMP whenBinding)* ARROW expr     # WhenExpr
+    | MATCH expr alternative+                            # MatchExpr
     | pipeExpr                                           # ExprPipe
+    ;
+
+// ──── Match alternatives and patterns ────
+alternative
+    : BAR pattern ARROW expr
+    ;
+
+pattern
+    : UNDERSCORE                                      # WildcardPattern
+    | literal                                         # LitPattern
+    | LOWER_IDENT                                     # VarPattern
+    | LBRACE RBRACE                                   # EmptyRecordPattern
+    | LBRACE recordPatField (COMMA recordPatField)* (BAR LOWER_IDENT)? RBRACE  # RecordPattern
+    | LBRACKET RBRACKET                               # EmptyListPattern
+    | LBRACKET pattern (COMMA pattern)* RBRACKET      # ExactListPattern
+    | LBRACKET pattern BAR pattern RBRACKET           # ConsListPattern
+    ;
+
+recordPatField
+    : ident COLON pattern                             // field with sub-pattern
+    | LOWER_IDENT                                     // shorthand: `{ name }` = `{ name: name }`
     ;
 
 // The channel position accepts a full expr, but in practice channels are always
@@ -85,15 +107,20 @@ appExpr
     | appExpr primary                                    # Application
     ;
 
-// ──── Primary expressions ────
-primary
-    : DOT ident                                          # Accessor
-    | INTEGER_LITERAL                                    # IntegerLiteral
+// ──── Literals ────
+literal
+    : INTEGER_LITERAL                                    # IntegerLiteral
     | DECIMAL_LITERAL                                    # DecimalLiteral
     | QUOTED_STRING                                      # StringLiteral
     | TRUE                                               # TrueLiteral
     | FALSE                                              # FalseLiteral
     | NULL                                               # NullLiteral
+    ;
+
+// ──── Primary expressions ────
+primary
+    : DOT ident                                          # Accessor
+    | literal                                            # LiteralExpr
     | ident                                              # Variable
     | LPAREN expr COLON type RPAREN                      # Ascription
     | LPAREN expr RPAREN                                 # ParenExpr

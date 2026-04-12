@@ -11,7 +11,7 @@ Type system aspirations beyond F-omega-lite: typeclasses for ad-hoc polymorphism
 - subsumes: [[typeclasses.types]]
 - subsumes: [[adts.types]]
 - subsumes: [[pattern-matching.hub]]
-- subsumes: [[recursion.language]]
+- subsumes: [[recursion.hub]]
 - subsumes: [[qtt-linearity.types]]
 - subsumes: [[session-types.types]]
 - subsumes: [[algebraic-effects.types]]

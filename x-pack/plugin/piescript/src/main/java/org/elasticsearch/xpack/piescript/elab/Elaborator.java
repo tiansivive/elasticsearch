@@ -172,6 +172,7 @@ public final class Elaborator {
             case PiescriptAntlrParser.LambdaExprContext lam -> Lambda.check(this, lam, expected.body(), ctx);
             case PiescriptAntlrParser.RecordLiteralContext r -> Records.check(this, r, expected.body(), ctx);
             case PiescriptAntlrParser.LetExprContext let -> Let.checkLet(this, let, expected.body(), ctx);
+            case PiescriptAntlrParser.MatchExprContext m -> Matches.checkMatch(m, expected.body(), ctx, this);
             case PiescriptAntlrParser.BlockExprContext b -> check(b.block(), expected, ctx, src);
             case PiescriptAntlrParser.BlockContext b -> Blocks.checkBlock(this, b, expected.body(), ctx);
             default -> {
@@ -244,19 +245,7 @@ public final class Elaborator {
             case PiescriptAntlrParser.ApplicationContext p -> Applications.application(this, p, ctx);
 
             case PiescriptAntlrParser.VariableContext v -> elaborateVar(v, ctx);
-            case PiescriptAntlrParser.IntegerLiteralContext lit -> elaborateIntegerLiteral(lit);
-            case PiescriptAntlrParser.DecimalLiteralContext lit -> {
-                var value = Double.parseDouble(lit.DECIMAL_LITERAL().getText());
-                yield new CoreLit(source(lit).source, new LitVal.DoubleLit(value), DOUBLE);
-            }
-            case PiescriptAntlrParser.StringLiteralContext lit -> {
-                var raw = lit.QUOTED_STRING().getText();
-                var unescaped = unescapeString(raw.substring(1, raw.length() - 1));
-                yield new CoreLit(source(lit).source, new LitVal.KeywordLit(new BytesRef(unescaped)), KEYWORD);
-            }
-            case PiescriptAntlrParser.TrueLiteralContext t -> new CoreLit(source(t).source, new LitVal.BooleanLit(true), BOOLEAN);
-            case PiescriptAntlrParser.FalseLiteralContext f -> new CoreLit(source(f).source, new LitVal.BooleanLit(false), BOOLEAN);
-            case PiescriptAntlrParser.NullLiteralContext n -> new CoreLit(source(n).source, new LitVal.NullLit(), NULL_TYPE);
+            case PiescriptAntlrParser.LiteralExprContext l -> elaborateLiteral(l.literal());
             case PiescriptAntlrParser.ParenExprContext p -> elaborate(p.expr(), ctx);
             case PiescriptAntlrParser.AscriptionContext a -> {
                 var scheme = TypeAnnotations.toTypeScheme(this, ctx, a.type());
@@ -290,7 +279,8 @@ public final class Elaborator {
             case PiescriptAntlrParser.BlockExprContext b -> elaborate(b.block(), ctx);
             case PiescriptAntlrParser.BlockContext b -> Blocks.block(this, b, ctx);
 
-            case PiescriptAntlrParser.IfExprContext e -> throw error(source(e), "if/then/else is not yet supported (Phase 1e)");
+            case PiescriptAntlrParser.IfExprContext e -> Matches.desugarIf(e, ctx, this);
+            case PiescriptAntlrParser.MatchExprContext m -> Matches.match(m, ctx, this);
             case PiescriptAntlrParser.QueryExprContext q -> {
                 var src = source(q);
                 var inner = elaborate(q.expr(), ctx);
@@ -344,7 +334,26 @@ public final class Elaborator {
         throw error(src, "unbound variable: " + name);
     }
 
-    // ──── Integer literal ────
+    // ──── Literal ────
+
+    CoreExpr elaborateLiteral(PiescriptAntlrParser.LiteralContext lit) {
+        return switch (lit) {
+            case PiescriptAntlrParser.IntegerLiteralContext i -> elaborateIntegerLiteral(i);
+            case PiescriptAntlrParser.DecimalLiteralContext d -> {
+                var value = Double.parseDouble(d.DECIMAL_LITERAL().getText());
+                yield new CoreLit(source(d).source, new LitVal.DoubleLit(value), DOUBLE);
+            }
+            case PiescriptAntlrParser.StringLiteralContext s -> {
+                var raw = s.QUOTED_STRING().getText();
+                var unescaped = unescapeString(raw.substring(1, raw.length() - 1));
+                yield new CoreLit(source(s).source, new LitVal.KeywordLit(new BytesRef(unescaped)), KEYWORD);
+            }
+            case PiescriptAntlrParser.TrueLiteralContext t -> new CoreLit(source(t).source, new LitVal.BooleanLit(true), BOOLEAN);
+            case PiescriptAntlrParser.FalseLiteralContext f -> new CoreLit(source(f).source, new LitVal.BooleanLit(false), BOOLEAN);
+            case PiescriptAntlrParser.NullLiteralContext n -> new CoreLit(source(n).source, new LitVal.NullLit(), NULL_TYPE);
+            default -> throw new IllegalArgumentException("Unknown literal type: " + lit.getClass());
+        };
+    }
 
     private CoreExpr elaborateIntegerLiteral(PiescriptAntlrParser.IntegerLiteralContext lit) {
         var src = source(lit);

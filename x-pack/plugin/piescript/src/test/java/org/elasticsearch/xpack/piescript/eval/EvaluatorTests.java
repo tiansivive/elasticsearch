@@ -398,6 +398,71 @@ public class EvaluatorTests extends ESTestCase {
         assertThat(evaluate("{ let x = 10; let y = 20; x + y }"), is(new Value.DoubleVal(30.0)));
     }
 
+    // ──── Pattern Matching ────
+
+    public void testMatchLiteral() {
+        var result = evaluate("match 42 | 42 -> true | _ -> false");
+        assertThat(result, instanceOf(Value.BooleanVal.class));
+        assertTrue(((Value.BooleanVal) result).value());
+    }
+
+    public void testMatchVariable() {
+        var result = evaluate("match 42 | x -> x");
+        assertThat(result, instanceOf(Value.DoubleVal.class));
+        assertEquals(42.0, ((Value.DoubleVal) result).value(), 0.0);
+    }
+
+    public void testMatchWildcardFallback() {
+        var result = evaluate("match 42 | 1 -> false | _ -> true");
+        assertThat(result, instanceOf(Value.BooleanVal.class));
+        assertTrue(((Value.BooleanVal) result).value());
+    }
+
+    public void testMatchRecordDestructuring() {
+        var result = evaluate("match { a: 1, b: 2 } | { a: x } -> x");
+        assertThat(result, instanceOf(Value.DoubleVal.class));
+        assertEquals(1.0, ((Value.DoubleVal) result).value(), 0.0);
+    }
+
+    public void testMatchRecordTail() {
+        var result = evaluate("match { a: 1, b: 2 } | { a: x | rest } -> rest.b");
+        assertThat(result, instanceOf(Value.DoubleVal.class));
+        assertEquals(2.0, ((Value.DoubleVal) result).value(), 0.0);
+    }
+
+    public void testMatchListDestructuring() {
+        var result = evaluate("match [1, 2] | [x, y] -> y");
+        assertThat(result, instanceOf(Value.DoubleVal.class));
+        assertEquals(2.0, ((Value.DoubleVal) result).value(), 0.0);
+    }
+
+    public void testMatchConsList() {
+        var result = evaluate("match [1, 2] | [h | t] -> h");
+        assertThat(result, instanceOf(Value.DoubleVal.class));
+        assertEquals(1.0, ((Value.DoubleVal) result).value(), 0.0);
+    }
+
+    public void testMatchConsListTail() {
+        var result = evaluate("match [1, 2] | [h | t] -> List.head t");
+        assertThat(result, instanceOf(Value.DoubleVal.class));
+        assertEquals(2.0, ((Value.DoubleVal) result).value(), 0.0);
+    }
+
+    public void testMatchNoMatch() {
+        var e = expectThrows(EvaluationException.class, () -> evaluate("match 42 | 1 -> true"));
+        assertThat(e.getMessage(), containsString("No match for value"));
+    }
+
+    public void testIfElseEvaluation() {
+        var result = evaluate("if true then 1 else 2");
+        assertThat(result, instanceOf(Value.DoubleVal.class));
+        assertEquals(1.0, ((Value.DoubleVal) result).value(), 0.0);
+
+        var result2 = evaluate("if false then 1 else 2");
+        assertThat(result2, instanceOf(Value.DoubleVal.class));
+        assertEquals(2.0, ((Value.DoubleVal) result2).value(), 0.0);
+    }
+
     // ──── Stream built-ins (Phase 2.8) ────
     //
     // These tests construct Core IR directly and inject a ListVal into the

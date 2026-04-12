@@ -719,6 +719,52 @@ public class PiescriptIT extends ESRestTestCase {
         }
     }
 
+    // ──── Pattern Matching ────
+
+    public void testMatchLiteral() throws IOException {
+        String program = """
+            match 42 | 42 -> "yes" | _ -> "no"
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        assertThat(body.get("result"), equalTo("yes"));
+    }
+
+    public void testIfElse() throws IOException {
+        String program = """
+            if true then 1 else 2
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        assertThat(body.get("result"), equalTo(1.0));
+    }
+
+    public void testMatchRecordDestructuring() throws IOException {
+        String program = """
+            use "piescript-typed" as idx;
+            let queryResult = query ESQL.from idx |> ESQL.limit 1 ; ;
+            match List.head queryResult | { name: n } -> n
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        assertThat(body.get("result"), instanceOf(String.class));
+    }
+
+    public void testMatchListDecomposition() throws IOException {
+        String program = """
+            match [1, 2, 3]
+                | [] -> 0
+                | [h | t] -> h + List.head t
+            """;
+        Request request = piescriptRequest(program);
+        Response response = client().performRequest(request);
+        var body = entityAsMap(response);
+        assertThat(((Number) body.get("result")).doubleValue(), equalTo(3.0));
+    }
+
     private static Request piescriptRequest(String program) {
         Request request = new Request("POST", "/_piescript/eval");
         String escaped = program.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");

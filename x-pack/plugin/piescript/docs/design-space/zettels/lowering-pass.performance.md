@@ -1,5 +1,5 @@
 ---
-tags: [performance, theoretical]
+tags: [performance, theoretical, lowering]
 refs:
   - doc:architecture.md
   - session:80f0b64a-5e21-4b2e-acda-fabde482cc87

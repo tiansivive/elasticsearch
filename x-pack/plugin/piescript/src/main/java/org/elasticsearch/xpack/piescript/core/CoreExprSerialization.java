@@ -50,6 +50,7 @@ public final class CoreExprSerialization {
     private static final byte TAG_SEND = 15;
     private static final byte TAG_LIST = 16;
     private static final byte TAG_QUERY_EXEC = 17;
+    private static final byte TAG_MATCH = 18;
 
     public static void writeCoreExpr(StreamOutput out, CoreExpr expr) throws IOException {
         switch (expr) {
@@ -163,6 +164,17 @@ public final class CoreExprSerialization {
                 writeCoreExpr(out, qe.plan());
                 TypeSerialization.writeMonoType(out, qe.type());
             }
+            case CoreMatch match -> {
+                out.writeByte(TAG_MATCH);
+                writeCoreExpr(out, match.scrutinee());
+                var arms = match.arms();
+                out.writeVInt(arms.size());
+                for (var arm : arms) {
+                    writePattern(out, arm.pattern());
+                    writeCoreExpr(out, arm.body());
+                }
+                TypeSerialization.writeMonoType(out, match.type());
+            }
         }
     }
 
@@ -264,7 +276,73 @@ public final class CoreExprSerialization {
                 var type = TypeSerialization.readMonoType(in);
                 yield new CoreQueryExec(WIRE_SOURCE, plan, type);
             }
+            case TAG_MATCH -> {
+                var scrutinee = readCoreExpr(in);
+                int armCount = in.readVInt();
+                var arms = new ArrayList<Alternative>(armCount);
+                for (int i = 0; i < armCount; i++) {
+                    var pat = readPattern(in);
+                    var body = readCoreExpr(in);
+                    arms.add(new Alternative(pat, body));
+                }
+                var type = TypeSerialization.readMonoType(in);
+                yield new CoreMatch(WIRE_SOURCE, scrutinee, arms, type);
+            }
             default -> throw new IOException("unknown CoreExpr tag: " + tag);
+        };
+    }
+
+    private static final byte PAT_LIT = 0;
+    private static final byte PAT_VAR = 1;
+    private static final byte PAT_WILDCARD = 2;
+    private static final byte PAT_RECORD = 3;
+    private static final byte PAT_LIST = 4;
+    private static final byte PAT_CONS = 5;
+
+    public static void writePattern(StreamOutput out, Pattern pattern) throws IOException {
+        switch (pattern) {
+            case Pattern.LitPat lit -> {
+                out.writeByte(PAT_LIT);
+                TypeSerialization.writeLitVal(out, lit.value());
+            }
+            case Pattern.VarPat var -> {
+                out.writeByte(PAT_VAR);
+                out.writeOptionalString(var.debugName());
+                TypeSerialization.writeMonoType(out, var.type());
+            }
+            case Pattern.WildcardPat w -> out.writeByte(PAT_WILDCARD);
+            case Pattern.RecordPat rec -> {
+                out.writeByte(PAT_RECORD);
+                out.writeMap(rec.fields(), StreamOutput::writeString, CoreExprSerialization::writePattern);
+                out.writeBoolean(rec.hasTail());
+                out.writeOptionalString(rec.tailName());
+            }
+            case Pattern.ListPat list -> {
+                out.writeByte(PAT_LIST);
+                out.writeCollection(list.elements(), CoreExprSerialization::writePattern);
+            }
+            case Pattern.ConsListPat cons -> {
+                out.writeByte(PAT_CONS);
+                writePattern(out, cons.head());
+                writePattern(out, cons.tail());
+            }
+        }
+    }
+
+    public static Pattern readPattern(StreamInput in) throws IOException {
+        byte tag = in.readByte();
+        return switch (tag) {
+            case PAT_LIT -> new Pattern.LitPat(TypeSerialization.readLitVal(in));
+            case PAT_VAR -> new Pattern.VarPat(in.readOptionalString(), TypeSerialization.readMonoType(in));
+            case PAT_WILDCARD -> new Pattern.WildcardPat();
+            case PAT_RECORD -> new Pattern.RecordPat(
+                in.readMap(StreamInput::readString, CoreExprSerialization::readPattern),
+                in.readBoolean(),
+                in.readOptionalString()
+            );
+            case PAT_LIST -> new Pattern.ListPat(in.readCollectionAsList(CoreExprSerialization::readPattern));
+            case PAT_CONS -> new Pattern.ConsListPat(readPattern(in), readPattern(in));
+            default -> throw new IOException("unknown Pattern tag: " + tag);
         };
     }
 }

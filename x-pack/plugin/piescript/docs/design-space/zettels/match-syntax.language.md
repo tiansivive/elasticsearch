@@ -1,5 +1,5 @@
 ---
-tags: [language, syntax, feature, needs-design, now]
+tags: [language, syntax, feature, implemented]
 refs:
   - adr:D-010
   - thread:language-expressiveness

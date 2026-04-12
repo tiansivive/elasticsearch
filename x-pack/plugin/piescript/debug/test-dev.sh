@@ -137,3 +137,15 @@ echo "=== Shard.consume exhausted ==="
 curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
   -d '{"program": "use \"piescript-test\" as idx; let shards = Index.shards idx; let shard = List.head shards; let ch = Shard.open idx shard { match_all: true }; when (ch searcher) -> let first = Shard.consume 100.0 searcher; let second = Shard.consume 100.0 searcher; { first_count: List.length first, second_count: List.length second }"}' | jq
+
+echo ""
+echo "=== pattern matching (match) ==="
+curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "match { a: 1, b: 2 } | { a: x } -> x"}' | jq
+
+echo ""
+echo "=== pattern matching (if/else sugar) ==="
+curl -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "if true then 42 else 0"}' | jq

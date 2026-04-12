@@ -13,3 +13,5 @@ Consistency As Logical Monotonicity: monotone computations (map, filter) distrib
 **Connections**:
 - inspired-by: [[dedalus.coordination]] — Alvaro et al. (CIDR 2011); Dedalus/Bloom is the language where CALM was developed
 - complements: [[bird-meertens.types]] — both provide formal criteria for safe parallelization; BMF focuses on algebraic structure, CALM on monotonicity
+- complements: [[datalog-fixpoint.search]] — Datalog computes the monotone fragment that CALM identifies as coordination-free
+- complements: [[join-calculus.coordination]] — JC handles the non-monotone fragment that CALM identifies as requiring coordination

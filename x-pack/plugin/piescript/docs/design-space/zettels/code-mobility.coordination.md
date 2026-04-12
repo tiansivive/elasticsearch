@@ -23,3 +23,4 @@ Lambdas and closures are "traveling code" — they can be serialized and shipped
 - implements: [[data-locality.distributed]] — code mobility is the mechanism that enables data locality (ship closures to data nodes)
 - inspired-by: [[nomadic-pict.coordination]] — Nomadic Pict provides the theoretical basis for typed code mobility with location tracking
 - related: [[zero-copy-linear-transfer.performance]] — linear closures enable zero-copy remote transfer
+- cites: [[sangiorgi-agent-passing.paper]]

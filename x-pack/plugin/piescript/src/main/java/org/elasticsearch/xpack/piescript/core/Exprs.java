@@ -252,4 +252,17 @@ public final class Exprs {
     public static CoreWhen when(List<CoreWhen.WhenBinding> bindings, CoreExpr body) {
         return new CoreWhen(SRC, bindings, body, body.type());
     }
+
+    // ──── Pattern Matching ────
+
+    public static CoreMatch match(CoreExpr scrutinee, Alternative... arms) {
+        if (arms.length == 0) {
+            throw new IllegalArgumentException("match must have at least one arm");
+        }
+        return new CoreMatch(SRC, scrutinee, List.of(arms), arms[0].body().type());
+    }
+
+    public static Alternative arm(Pattern pat, CoreExpr body) {
+        return new Alternative(pat, body);
+    }
 }

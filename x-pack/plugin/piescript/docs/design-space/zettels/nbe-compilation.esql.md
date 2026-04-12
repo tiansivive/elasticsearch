@@ -23,3 +23,4 @@ NbE-style approach: `Value.Symbol(String esql)` carries compiled ESQL fragments 
 - complements: [[esql-combinators.esql]] — combinators use NbE-compiled Symbols
 - uses: [[symbol-partial-evaluation.esql]] — Symbol is the concrete carrier for partial evaluation fragments
 - implements: [[t-linq.esql]] — T-LINQ is the theoretical foundation for NbE query compilation
+- replaces: [[esqlplan-compiler.rejected]] — NbE Symbol-based compilation replaced the EsqlPlan/EsqlCompiler design

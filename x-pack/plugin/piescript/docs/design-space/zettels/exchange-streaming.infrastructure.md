@@ -25,3 +25,4 @@ refs:
 - constrains: [[column-name-derivation.types]] — column name mismatch between Exchange and Page is a known gap (runtime check only)
 - uses: [[serialization.infrastructure]] — exchange descriptors are serializable for cross-node setup
 - uses: [[topology.infrastructure]] — remote exchanges require topology knowledge to connect nodes
+- tension-with: [[stream-a.language]] — Exchange is explicit plumbing; the original Stream a design was abstract codata. Reconciliation between these abstraction levels is an open question.

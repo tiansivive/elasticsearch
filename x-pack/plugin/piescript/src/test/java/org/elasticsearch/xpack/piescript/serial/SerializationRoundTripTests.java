@@ -18,6 +18,7 @@ import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
+import org.elasticsearch.xpack.piescript.core.CoreMatch;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreQueryExec;
@@ -387,7 +388,7 @@ public class SerializationRoundTripTests extends ESTestCase {
     }
 
     public void testValueExchangeSerializable() throws IOException {
-        var exchange = new Value.ExchangeVal("test-id-123", java.util.List.of("name", "age"), 32);
+        var exchange = new Value.ExchangeVal("node-1", "test-id-123", java.util.List.of("name", "age"), 32);
         var out = new BytesStreamOutput();
         ValueSerialization.writeValue(out, exchange);
         var in = out.bytes().streamInput();
@@ -540,6 +541,15 @@ public class SerializationRoundTripTests extends ESTestCase {
             case CoreQueryExec e -> {
                 var a = (CoreQueryExec) actual;
                 assertCoreExprEquals(e.plan(), a.plan());
+            }
+            case CoreMatch e -> {
+                var a = (CoreMatch) actual;
+                assertCoreExprEquals(e.scrutinee(), a.scrutinee());
+                assertEquals(e.arms().size(), a.arms().size());
+                for (int i = 0; i < e.arms().size(); i++) {
+                    assertEquals(e.arms().get(i).pattern(), a.arms().get(i).pattern());
+                    assertCoreExprEquals(e.arms().get(i).body(), a.arms().get(i).body());
+                }
             }
         }
     }

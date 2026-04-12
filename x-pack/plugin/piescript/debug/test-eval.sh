@@ -206,3 +206,15 @@ curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/dev' \
   -H 'Content-Type: application/json' \
   -d '{"program": "Page.count"}' | jq '.type'
+
+echo ""
+echo "=== pattern matching (match list decomposition) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "match [1, 2, 3] | [] -> 0 | [h | t] -> h"}' | jq
+
+echo ""
+echo "=== pattern matching (if/else sugar) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "if true then 42 else 0"}' | jq

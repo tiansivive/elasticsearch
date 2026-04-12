@@ -22,3 +22,4 @@ Type-checked communication protocols on [[channels.infrastructure|channels]].
 - related: [[qtt-linearity.types]] — requires linearity (channel endpoints used exactly once per protocol step); Phase 6
 - enables: [[replication-protocol.infrastructure]] — session types encode the replication protocol
 - motivates: [[primary-shard-write.data]] — write->replicate protocol could be enforced via session types
+- cites: [[wadler-propositions-as-sessions.paper]], [[honda-session-types.paper]], [[honda-multiparty-sessions.paper]]

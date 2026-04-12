@@ -211,6 +211,57 @@ public final class CorePrinter {
                 }
                 sb.append(']');
             }
+            case CoreMatch match -> {
+                sb.append("(match ");
+                writeExpr(match.scrutinee(), state, sb);
+                for (var arm : match.arms()) {
+                    sb.append(" | ");
+                    writePattern(arm.pattern(), sb);
+                    sb.append(" -> ");
+                    writeExpr(arm.body(), state, sb);
+                }
+                sb.append(')');
+            }
+        }
+    }
+
+    private static void writePattern(Pattern pat, StringBuilder sb) {
+        switch (pat) {
+            case Pattern.LitPat lit -> writeLit(lit.value(), sb);
+            case Pattern.VarPat var -> sb.append(var.debugName() != null ? var.debugName() : "_");
+            case Pattern.WildcardPat w -> sb.append("_");
+            case Pattern.RecordPat rec -> {
+                sb.append("{ ");
+                boolean first = true;
+                for (var entry : rec.fields().entrySet()) {
+                    if (!first) sb.append(", ");
+                    sb.append(entry.getKey()).append(": ");
+                    writePattern(entry.getValue(), sb);
+                    first = false;
+                }
+                if (rec.hasTail()) {
+                    if (!first) sb.append(" | ");
+                    sb.append(rec.tailName() != null ? rec.tailName() : "_");
+                }
+                sb.append(" }");
+            }
+            case Pattern.ListPat list -> {
+                sb.append('[');
+                boolean first = true;
+                for (var el : list.elements()) {
+                    if (!first) sb.append(", ");
+                    writePattern(el, sb);
+                    first = false;
+                }
+                sb.append(']');
+            }
+            case Pattern.ConsListPat cons -> {
+                sb.append('[');
+                writePattern(cons.head(), sb);
+                sb.append(" | ");
+                writePattern(cons.tail(), sb);
+                sb.append(']');
+            }
         }
     }
 

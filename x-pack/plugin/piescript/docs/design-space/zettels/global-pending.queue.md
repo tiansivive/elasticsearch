@@ -24,7 +24,7 @@ See [[error-handling.thread]], [[language-expressiveness.thread]],
 
 ## Resolved items
 
-- [x] [[recursion.language]] — extracted to [[language-expressiveness.thread]]
+- [x] [[recursion.hub]] — extracted to [[language-expressiveness.thread]]
 - [x] [[pattern-matching.hub]] — extracted to [[error-handling.thread]] + [[language-expressiveness.thread]]
 - [x] [[recursive-types.types]] — extracted to [[type-foundations.thread]]
 - [x] [[runtime-dispatch.types]] — extracted to [[type-foundations.thread]]

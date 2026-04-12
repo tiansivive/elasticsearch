@@ -10,7 +10,7 @@ Sum types for error handling:
 
 - `Result`/`Either` for [[send.coordination|send]] delivery errors (D-047 future).
 - `Option`/`Maybe` for nullable values (D-007 fix).
-- Requires [[adts.types|ADTs]] and [[pattern-matching.language|pattern matching]].
+- Requires [[adts.types|ADTs]] and [[pattern-matching.hub|pattern matching]].
 - Would replace the current unsound [[null-as-bottom.types|null-as-bottom]].
 
 **Depends on**: [[adts.types]], [[pattern-matching.hub]]

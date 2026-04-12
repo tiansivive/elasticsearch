@@ -25,3 +25,4 @@ QTT-style multiplicities (0, 1, omega) on bindings.
 - solves: [[non-serializable-types.types]] — linear types could enforce resource safety at compile time instead of runtime
 - enables: [[zero-copy-linear-transfer.performance]] — linear closures can be moved not cloned
 - contrasts-with: [[stream-fan-out.language]] — linearity for channels, not for streams/lists
+- cites: [[linear-haskell.paper]], [[granule-graded-modal.paper]]

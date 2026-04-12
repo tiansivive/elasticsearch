@@ -17,3 +17,4 @@ Bidirectional checking mode partially implemented. The [[elaboration-architectur
 - extends: [[elaboration-architecture.types]] — adds checking mode alongside existing synthesis mode in the elaborator
 - uses: [[type-annotations.types]] — annotations provide the expected types that feed checking mode
 - extends: [[deferred-constraints.types]] — current approach is synthesis-only (Algorithm J with deferred solving)
+- cites: [[dunfield-krishnaswami.paper]]

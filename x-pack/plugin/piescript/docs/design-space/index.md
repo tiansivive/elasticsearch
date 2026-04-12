@@ -168,6 +168,11 @@ Actions are verbs describing what the edge does. Common ones:
 | `enhances` | Adds capability to the linked item (the linked item works without it, but is better with it) |
 | `analogous-to` | Same pattern in a different domain |
 | `includes` | This collection/thread contains the linked item |
+| `cites` | This concept zettel cites the linked paper/resource for its theoretical basis |
+| `formalizes` | This paper/theory provides the formal foundation for the linked concept |
+| `constrained-by` | This concept is constrained or limited by the linked decision/obstacle |
+| `resolved-by` | This tension/question was resolved by the linked decision |
+| `compiles-to` | This concept compiles/lowers to the linked representation or technique |
 | `related` | General relationship (use sparingly — prefer a specific verb) |
 
 **Convention:** active voice — "this zettel [verb] that zettel." If you need the
@@ -292,6 +297,27 @@ table for vocabulary consistency.
 | `ready` | All prerequisites met, can start |
 | `blocked` | Waiting on a specific dependency |
 | `needs-design` | Requires a design discussion before implementation |
+| `continuation` | Continuation-based control flow, CPS, delimited continuations, shift/reset |
+| `abstract-machine` | Abstract machine models (CEK, ZAM, SECD, interaction nets) |
+| `search` | Logic programming search, backtracking, unification at term level |
+| `technique` | Implementation technique — not a feature, not pure theory |
+| `obstacle` | Known difficulty or unsolved problem blocking progress |
+| `decided` | Design decision made, recorded for posterity |
+| `rejected` | Considered and explicitly rejected (with rationale preserved) |
+| `recursion` | Recursion, self-reference, fixed points, iterative algorithms |
+| `iteration` | Looping, iteration, accumulation patterns |
+| `fixpoint` | Fixed-point computation — Datalog, convergence, `fix` combinator |
+| `coroutine` | Coroutines, generators, suspendable computations |
+| `graph-rewriting` | Graph-based computation models, interaction nets, optimal reduction |
+| `codata` | Coinductive types, lazy/infinite data, observation-based (dual of ADTs) |
+| `lowering` | Lowering passes, IR transformations, compilation pipeline stages |
+| `paper` | Academic paper reference — zettel summarizes the paper's piescript-relevant contributions |
+| `pipeline` | Compilation/execution pipeline stages and architecture |
+| `operator` | Operators, precedence, overloading, infix syntax |
+| `call-by-value` | Call-by-value evaluation strategy — arguments evaluated before function body. Piescript's evaluation order for expressions. |
+| `invariant` | Safety invariant or correctness property — a guarantee the system maintains |
+| `pattern-matching` | Pattern matching, destructuring, match expressions |
+| `session-types` | Session types for typed communication protocols on channels |
 
 ## Tag aliases
 
@@ -308,6 +334,10 @@ When searching or filtering, treat aliased tags as interchangeable.
 | `gc` | `mem-management` |
 | `memory` | `mem-management` |
 | `cat-theory` | `category-theory` |
+| `strict` | `call-by-value` |
+| `eager` | `call-by-value` |
+| `cbv` | `call-by-value` |
+| `reference` | `paper` |
 | `writes` | `write-path` |
 | `es-compute` | `compute-engine` |
 | `es-transport` | `transport-layer` |
@@ -324,12 +354,14 @@ tags that describe the group's purpose. A tag can appear in multiple groups or n
 |-------|---------|------|------|
 | Concern | What area of the project does this touch? | universal | `language`, `types`, `esql`, `data`, `infrastructure`, `lifecycle`, `external`, `tooling`, `performance`, `security`, `es-internals` |
 | Maturity | How baked is this concept? | universal | `implemented`, `designed`, `open`, `theoretical`, `tech-debt`, `superseded`, `archived`, `obsolete` |
-| Foundations | What theory or technique underpins this? | topic | `pi-calculus`, `nbe`, `polymorphism`, `unification`, `inference`, `effects` |
+| Foundations | What theory or technique underpins this? | topic | `pi-calculus`, `nbe`, `polymorphism`, `unification`, `inference`, `effects`, `continuation`, `search`, `category-theory`, `graph-rewriting`, `codata`, `call-by-value` |
 | Distribution | How do things move and coordinate across nodes? | topic | `distributed`, `coordination`, `mobility`, `orchestration`, `serialization`, `channels`, `async`, `concurrency`, `transport-layer` |
 | Data path | How does data flow from storage to piescript values? | topic | `lucene`, `columnar`, `compute-engine`, `materialization`, `streaming`, `aggregation`, `push-down`, `data-processing` |
-| Purpose | What kind of artifact is this? | topic | `task`, `concept`, `decision`, `principle`, `example`, `diagram`, `documentation`, `report` |
+| Purpose | What kind of artifact is this? | topic | `task`, `concept`, `decision`, `principle`, `example`, `diagram`, `documentation`, `report`, `invariant`, `obstacle`, `rejected` |
 | Workflow | Function in the work process? | workflow | `prior-art`, `motivation`, `exploration`, `pattern`, `fix`, `feature`, `epic`, `bug`, `known-issue`, `workaround`, `question`, `problem`, `solution`, `interface`, `protocol`, `capability`, `blocker`, `deferred`, `migration` |
-| Structure | What organizational role does this zettel play? | structural | `thread`, `queue`, `hub`, `paper-trail`, `note` |
+| Structure | What organizational role does this zettel play? | structural | `thread`, `queue`, `hub`, `paper-trail`, `note`, `paper` |
+| Compilation | How does piescript code get compiled or lowered? | topic | `compilation`, `lowering`, `pipeline`, `abstract-machine`, `technique` |
+| Control | How does control flow work? | topic | `control-flow`, `recursion`, `iteration`, `continuation`, `pattern-matching`, `coroutine` |
 | Priority | When should this be worked on? How ready is it? | planning | `now`, `next`, `later`, `someday`, `ready`, `blocked`, `needs-design` |
 
 `universal` — expected on most zettels. 
