@@ -198,7 +198,7 @@ final class Records {
             paramFields.put(upd.ident().getText(), elab.state.freshType(ctx.bindingLevel()));
         }
         var paramType = new MonoType.RecordType(RowType.open(paramFields, rowTail));
-        var innerCtx = ctx.bind("$upd", TypeScheme.mono(paramType));
+        var innerCtx = ctx.enterLambda().bind("$upd", TypeScheme.mono(paramType));
 
         var baseVar = new CoreVar(s.source(), 0, "$upd", paramType);
         var labels = new ArrayList<String>();

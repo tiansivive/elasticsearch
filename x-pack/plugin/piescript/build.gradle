@@ -26,6 +26,16 @@ tasks.named('javaRestTest') {
     usesDefaultDistribution("piescript requires default distribution with x-pack")
 }
 
+tasks.named('checkstyleMain') {
+    source = sourceSets.main.allJava.matching {
+        exclude 'org/elasticsearch/xpack/piescript/parser/**'
+    }
+}
+
+tasks.named('licenseHeaders') {
+    excludes += ['src/main/java/org/elasticsearch/xpack/piescript/parser/**']
+}
+
 // ──── ANTLR code generation ────
 configurations {
     regenerate

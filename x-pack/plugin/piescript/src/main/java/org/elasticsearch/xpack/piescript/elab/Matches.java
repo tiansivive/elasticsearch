@@ -15,6 +15,7 @@ import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
 import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.MonoType;
 import org.elasticsearch.xpack.piescript.types.RowType;
+import org.elasticsearch.xpack.piescript.types.TypeScheme;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -103,7 +104,8 @@ final class Matches {
             }
 
             // Check the body against the expected result type
-            var body = elab.check(armCtx.expr(), new org.elasticsearch.xpack.piescript.types.TypeScheme(Map.of(), expectedResultType), armEnv, src);
+            var expectedScheme = new TypeScheme(Map.of(), expectedResultType);
+            var body = elab.check(armCtx.expr(), expectedScheme, armEnv, src);
             arms.add(new Alternative(patResult.pat, body));
         }
         return arms;
@@ -112,7 +114,7 @@ final class Matches {
     record PatternResult(Pattern pat, MonoType patType, List<Binding> bindings) {}
     record Binding(String name, MonoType type) {}
 
-    private static PatternResult inferPattern(
+    static PatternResult inferPattern(
         PiescriptAntlrParser.PatternContext ctx,
         int bindingLevel,
         ElaborationState state,

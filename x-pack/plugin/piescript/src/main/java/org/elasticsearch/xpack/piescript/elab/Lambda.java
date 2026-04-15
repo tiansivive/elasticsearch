@@ -61,7 +61,7 @@ final class Lambda {
             default -> throw Elaborator.error(Elaborator.source(param), "unexpected parameter form");
         }
 
-        var innerCtx = ctx.bind(name, TypeScheme.mono(paramType));
+        var innerCtx = ctx.enterLambda().bind(name, TypeScheme.mono(paramType));
         var body = inferParams(elab, params, index + 1, bodyExpr, innerCtx, lamSource);
         var arrowType = new MonoType.Arrow(paramType, body.type());
         var nodeSrc = index == 0 ? lamSource : Elaborator.source(param);
@@ -107,7 +107,7 @@ final class Lambda {
             default -> throw Elaborator.error(Elaborator.source(param), "unexpected parameter form");
         }
 
-        var innerCtx = ctx.bind(name, TypeScheme.mono(paramType));
+        var innerCtx = ctx.enterLambda().bind(name, TypeScheme.mono(paramType));
         var codomain = expectedArrow.result();
 
         CoreExpr body;

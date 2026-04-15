@@ -31,6 +31,8 @@ expr
     | SEND primary expr                                  # SendExpr
     | WHEN whenBinding (AMP whenBinding)* ARROW expr     # WhenExpr
     | MATCH expr alternative+                            # MatchExpr
+    | LOOP expr alternative+                             # LoopExpr
+    | REPEAT expr                                        # RepeatExpr
     | pipeExpr                                           # ExprPipe
     ;
 

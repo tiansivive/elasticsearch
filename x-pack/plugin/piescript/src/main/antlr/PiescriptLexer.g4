@@ -18,6 +18,8 @@ TRUE      : 'true';
 FALSE     : 'false';
 NULL      : 'null';
 MATCH     : 'match';
+LOOP      : 'loop';
+REPEAT    : 'repeat';
 QUERY     : 'query';
 SPAWN_BANG: 'spawn!';
 SPAWN     : 'spawn';

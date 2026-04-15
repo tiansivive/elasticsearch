@@ -10,8 +10,9 @@ Overview of the recursion design space in piescript.
 
 All bindings are implicitly recursive (Haskell-style) — no `rec` keyword. The elaborator
 extends the de Bruijn environment before evaluating the RHS, and the evaluator uses
-tying-the-knot (mutable slot + backpatch) to handle self-reference. A recursion sentinel
-catches accesses to uninitialized slots at runtime.
+tying-the-knot (mutable slot + backpatch) to handle self-reference. Recursion safety is
+enforced statically via guarded recursion; the runtime recursion sentinel remains
+a documented fallback design and is currently deferred.
 
 For structured iteration, a fused loop-match construct provides guaranteed stack safety
 (evaluator implements as while-loop). The fix combinator was rejected as surface syntax
@@ -23,7 +24,7 @@ For structured iteration, a fused loop-match construct provides guaranteed stack
 without async points is unsafe without a trampoline. The fused loop-match solves this for
 structured iteration. General trampoline deferred pending the execution model question.
 
-**Includes**: [[implicit-recursion.design]], [[tying-the-knot.technique]], [[fix-combinator.theory]], [[let-rec-syntax.language]], [[fused-loop-match.language]], [[recursion-sentinel.evaluation]], [[guarded-recursion.technique]], [[no-corecursion.decision]]
+**Includes**: [[implicit-recursion.design]], [[tying-the-knot.technique]], [[fix-combinator.theory]], [[let-rec-syntax.language]], [[fused-loop-match.language]], [[recursion-sentinel.evaluation]], [[guarded-recursion.technique]], [[no-corecursion.decision]], [[repeat-tcon.types]], [[repeat-design-exploration.note]], [[mixed-type-branches.obstacle]]
 
 **Depends on**: [[pattern-matching.hub]], [[evaluator.language]]
 **Enables**: [[composite-paging.data]]
@@ -34,8 +35,12 @@ structured iteration. General trampoline deferred pending the execution model qu
 - uses: [[cps-evaluation.language]] — async interleaving provides natural stack safety
 - uses: [[trampolining.technique]] — proper stack safety for pure recursion (deferred pending execution model question)
 - specializes: [[delimited-continuations.hub]] — continuations subsume recursion; recursion is a restricted form
-- uses: [[guarded-recursion.technique]] — static check that self-references are under lambdas; primary enforcement (sentinel is fallback)
+- uses: [[guarded-recursion.technique]] — static check that self-references are under lambdas; primary enforcement (runtime sentinel deferred)
 - informs: [[codata.types]] — codata relaxes guarded recursion; `let x = x + 1` is valid for coinductive types
 - informs: [[anamorphisms.types]] — fused loop-match is an anamorphism with early termination
 - constrained-by: [[no-corecursion.decision]] — user-defined corecursion explicitly rejected; streams come from infrastructure only
+- uses: [[repeat-tcon.types]] — Repeat a TCon for type-level enforcement of loop/repeat
+- tension-with: [[mixed-type-branches.obstacle]] — Repeat a creates limitation on mixed-type branches
+- enhanced-by: [[pattern-guards.language]] — future: guards solve conditional repeat
+- enhanced-by: [[variant-arm-typing.language]] — future: variants enable mixed-type arms
 - supersedes: recursion.language (deleted) — this hub replaced the original monolithic zettel

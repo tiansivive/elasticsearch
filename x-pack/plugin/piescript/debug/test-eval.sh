@@ -218,3 +218,33 @@ echo "=== pattern matching (if/else sugar) ==="
 curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
   -H 'Content-Type: application/json' \
   -d '{"program": "if true then 42 else 0"}' | jq
+
+echo ""
+echo "=== recursion (factorial) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let f = fn x -> match x | 0 -> 1 | n -> n * f (n - 1) in f 5"}' | jq
+
+echo ""
+echo "=== recursion (fibonacci) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let fib = fn n -> if n < 2 then n else fib (n - 1) + fib (n - 2) in fib 8"}' | jq
+
+echo ""
+echo "=== recursion guard (expect error) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "let x = x + 1 in x"}' | jq
+
+echo ""
+echo "=== loop/repeat (counter) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "loop 0 | 10 -> \"done\" | n -> repeat (n + 1)"}' | jq
+
+echo ""
+echo "=== loop/repeat (accumulator) ==="
+curl -s -u elastic-admin:elastic-password -X POST 'localhost:9200/_piescript/eval' \
+  -H 'Content-Type: application/json' \
+  -d '{"program": "loop { acc: 0, n: 5 } | { acc, n: 0 } -> acc | { acc, n } -> repeat { acc: acc + n, n: n - 1 }"}' | jq

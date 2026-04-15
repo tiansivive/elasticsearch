@@ -222,6 +222,22 @@ public final class CorePrinter {
                 }
                 sb.append(')');
             }
+            case CoreLoop loop -> {
+                sb.append("(loop ");
+                writeExpr(loop.init(), state, sb);
+                for (var arm : loop.arms()) {
+                    sb.append(" | ");
+                    writePattern(arm.pattern(), sb);
+                    sb.append(" -> ");
+                    writeExpr(arm.body(), state, sb);
+                }
+                sb.append(')');
+            }
+            case CoreRepeat repeat -> {
+                sb.append("(repeat ");
+                writeExpr(repeat.expr(), state, sb);
+                sb.append(')');
+            }
         }
     }
 

@@ -268,3 +268,222 @@ RESOLVED [[match-type-checking.language]] — unification-based inference implem
 RESOLVED [[if-as-match-sugar.language]] — desugaring implemented
 
 ---
+
+## session:recursion-design-exploration — 2026-04-10 through 2026-04-12 [language-expressiveness, recursion, design-space, meta]
+
+Extended design discussion on recursion, starting from "what should be next" and expanding
+into a deep exploration of the design space around iteration, control flow, abstract machines,
+logic programming, and compilation.
+
+### Recursion mechanism design
+
+Explored: `fix` combinator, `let rec` syntax, tying the knot, fused loop-match with `repeat`,
+trampolining, CEK machine, Clojure loop/recur, Scheme named let, APL power operator, SQL
+recursive CTEs, Flix first-class Datalog fixpoint, generators, shift/reset, interaction nets.
+
+Decided: implicit recursion (all bindings recursive, Haskell-style, no `rec` keyword) + fused
+loop-match for structured iteration. `fix` and `let rec` rejected for surface syntax.
+Guarded recursion check (static: self-references must be under lambdas) as primary safety
+mechanism. Trampoline deferred pending execution model question.
+
+[[recursion.hub]] -- includes -> [[implicit-recursion.design]], [[tying-the-knot.technique]], [[fix-combinator.theory]], [[let-rec-syntax.language]], [[fused-loop-match.language]], [[recursion-sentinel.evaluation]], [[guarded-recursion.technique]], [[no-corecursion.decision]]
+[[pattern-matching.hub]] -- enables -> [[recursion.hub]]
+[[fused-loop-match.language]] -- compiles-to -> [[state-machine-loop.compilation]]
+[[fused-loop-match.language]] -- uses -> [[one-shot-continuations.control]]
+
+### Pattern matching hub restructure
+
+Discovered false dependency: pattern matching was listed as depending on ADTs (wrong).
+Basic pattern matching (Boolean, literals, wildcards, records, lists) is independent of ADTs.
+Split monolithic pattern-matching.language into hub + 6 sub-zettels. Deleted old zettel.
+Pattern matching priority bumped to `now` — implemented in session 5f90891b.
+
+[[pattern-matching.hub]] -- complements -> [[adts.types]] (neither blocks the other)
+[[pattern-matching.hub]] -- specializes -> [[curry-narrowing.language]], [[cham-patterns.coordination]]
+
+Key design points: `|` for record/list tails (consistent with row type syntax), `...`
+reserved for record spread in expressions, record tail binds a **record** not a row (rows
+are type-level only), nested patterns not special (Pattern hierarchy is recursive by
+definition), Pattern infrastructure reusable across match/lambda/when/let.
+
+SPAWN [[pattern-matching.hub]] — hub with 6 sub-zettels (match-syntax, pattern-types, match-type-checking, pattern-reuse, type-level-matching, core-match)
+SPAWN [[record-spread.language]] — `...` spread operator
+SPAWN [[guarded-recursion.technique]] — static self-reference detection
+SPAWN [[codata.types]] — coinductive types, dual of ADTs
+SPAWN [[anamorphisms.types]] — unfolds, dual of catamorphisms
+SPAWN [[lazy-stream.types]] — future Stream type reserved by D-043
+SPAWN [[stream-a.language]] — reconciliation problem: original abstract codata Stream vs current Exchange
+
+### Codata recovery from early sessions
+
+Found codata discussion in original scripting language design plan (§2.10 "No User-Defined
+Corecursion", §6.1 "Streams as Abstract Codata"). This was trapped in the plan file and
+never surfaced as zettels. Key insight: streams ARE codata operationally (observation-based,
+pull-based) but the language doesn't expose coinductive types. Current Exchange streaming
+and original Stream a are fundamentally different abstractions (explicit plumbing vs abstract
+codata) — reconciliation is an open question.
+
+### Design space gap analysis
+
+Ran systematic gap analysis across all plans (scripting_language_design, block_a through
+block_f, f-omega, phase1, phase2, phase1d) and references.md. Found ~60 untracked concepts.
+
+### Zettelkasten expansion (~110 new zettels)
+
+Created zettels across 12 clusters:
+
+**Recursion cluster** (7 + hub): implicit-recursion, tying-the-knot, fix-combinator,
+let-rec-syntax, fused-loop-match, recursion-sentinel, guarded-recursion, no-corecursion
+
+**Evaluation architecture** (4): trampolining, cek-machine, zam, execution-model
+
+**Delimited continuations** (12 + hub): shift-reset, call-cc, one-shot-continuations,
+multi-shot-continuations, answer-type-polymorphism, cps-transform, state-machine-loop,
+block-params-ir, distributed-continuations, stackless-coroutines, stackful-continuations
+
+**Logic programming** (6 + hub): backtracking, logic-unification, logic-variables,
+datalog-fixpoint, stratified-negation
+
+**Interaction nets + compilation** (4): interaction-nets, hvm, closure-conversion,
+monomorphization
+
+**TRS** (4): term-rewriting, knuth-bendix, church-rosser, termination-analysis
+
+**Codata / streams** (5): codata, anamorphisms, lazy-stream, stream-a, guarded-recursion
+
+**Papers** (16 + hub): wadler-propositions-as-sessions, dunfield-krishnaswami,
+sangiorgi-agent-passing, linear-haskell, wadler-comprehending-monads, fruhwirth-chr,
+outsidein-x, flumejava, materialization-strategies, milner-pi-calculus,
+honda-session-types, honda-multiparty-sessions, wu-schrijvers-fusion,
+plotkin-pretnar-handlers, fegaras-maier-monoid-comprehensions, granule-graded-modal
+
+**Decisions / rejected** (14): strict-evaluation, no-corecursion, no-monads-for-effects,
+env-sharing-safety, posix-read-semantics, monomorphism-restriction, agg-stripag,
+esqlplan-compiler, closure-vs-string-columns, join-keyword-rejection, numeric-widening,
+top-level-channel, error-accumulation, two-type-var-schema
+
+**Techniques / obstacles** (16 + hub): async-prepass, datatype-tcon-mapping,
+union-find-propagation, exhaustiveness-checking, error-channels,
+searcher-statefulness, shard-refresh-ordering, mapping-update-failure,
+indexing-pressure-bypass, spawn-at-node, lambda-lifting, defunctionalization,
+write-context, list-map-traverse-tension, join-automaton, compilation-pipeline
+
+**Syntax / typeclass / strategy** (16 + hub): syntax, primops, precedence, shadowing,
+where-clauses, dictionary-passing, functor-on-records, materialize-typeclass,
+mv-type-constructor, nondeterministic-mv, type-aliases, target-users,
+value-proposition, vertical-slice-testing, singleton-types, liftable-kind
+
+### Index vocabulary updates
+
+New tags: `call-by-value`, `paper`, `pipeline`, `operator`, `invariant`,
+`pattern-matching`, `session-types`, `continuation`, `abstract-machine`, `search`,
+`technique`, `obstacle`, `decided`, `rejected`, `recursion`, `iteration`, `fixpoint`,
+`coroutine`, `graph-rewriting`, `codata`, `lowering`
+
+New tag aliases: `strict`→`call-by-value`, `eager`→`call-by-value`, `cbv`→`call-by-value`,
+`reference`→`paper`
+
+New tag groups: Compilation, Control, expanded Foundations, expanded Purpose, expanded Structure
+
+New edge labels: `cites`, `formalizes`, `constrained-by`, `resolved-by`, `compiles-to`
+
+### Meta workflow
+
+Created [[design-to-implementation.meta]] documenting the pipeline: discussion → zettels →
+hub → plan → queue → ADR → update. Key principle: hubs outlive plans.
+
+Updated CLAUDE.md, AGENTS.md, /load skill to instruct agents to read meta zettels at
+session start.
+
+Total zettelkasten: 491 zettels (up from ~380 at session start).
+
+---
+
+## session:a4c44992 (continued) — 2026-04-12 through 2026-04-13 [language-expressiveness, recursion, design]
+
+Continued recursion design. Focused on the `repeat` typing problem: how to statically
+enforce that repeat values aren't consumed by non-tail expressions.
+
+### Repeat typing exploration
+
+Explored five approaches for static enforcement of repeat:
+
+1. **Tail-position tracking** — rejected: per-case flag threading in elaborator, every
+   expression form must know about the flag.
+2. **ATP / answer-type polymorphism** — studied yap compiler (`~/Workspace/panlogion/yap`)
+   as reference. The mechanism (delimitation stack, answer type swap at shift) prevents
+   non-tail shift when types mismatch. But repeat doesn't change the answer type like
+   shift does — the mapping isn't direct. Promising but not fully solved.
+3. **Grammar restriction** — fallback option. `repeat` as arm-body form, not expression.
+   Simple but rejects valid programs (eta-expansion).
+4. **RepeatSignal/onFailure** — evaluation-only via ActionListener failure channel. Clean
+   jump mechanism but zero static enforcement.
+5. **`Repeat a` builtin TCon** — chosen. Opaque type, doesn't unify with consuming types.
+   Loop classifies arms post-hoc. Known limitation: mixed-type branches fail.
+
+[[repeat-tcon.types]] -- implements -> [[fused-loop-match.language]]
+[[repeat-tcon.types]] -- tension-with -> [[mixed-type-branches.obstacle]]
+[[pattern-guards.language]] -- solves -> [[mixed-type-branches.obstacle]]
+[[variant-arm-typing.language]] -- solves -> [[mixed-type-branches.obstacle]]
+[[answer-type-polymorphism.types]] -- explored-for -> [[fused-loop-match.language]]
+
+### Future solutions for mixed-type branches
+
+Identified three paths (ordered by priority):
+1. Pattern guards — `| pat when cond -> body`. No type system changes.
+2. Variant-based arm typing — internal `#return`/`#repeat` tags. CoreLoop desugars to
+   CoreMatch. Needs row-based Variants.
+3. ATP dual-type tracking — parked exploration.
+
+### Plan created
+
+Created `recursion_phase1.plan.md` covering implicit recursion + fused loop-match.
+Milestones: zettels → implicit recursion → grammar → IR → elaboration → evaluation →
+serialization → verification → close-out.
+
+SPAWN [[repeat-tcon.types]] — Repeat a builtin TCon decision
+SPAWN [[repeat-design-exploration.note]] — full exploration paper trail
+SPAWN [[mixed-type-branches.obstacle]] — known limitation from Repeat a approach
+SPAWN [[pattern-guards.language]] — future solution for conditional repeat
+SPAWN [[variant-arm-typing.language]] — future solution via internal variant tags
+SPAWN [[recursion-phase1.implementation]] — implementation zettel
+SPAWN [[recursion-phase1.queue]] — queue zettel
+
+---
+
+## session:recursion-closeout — 2026-04-13 [language-expressiveness, recursion, close-out]
+
+Closed out `recursion_phase1.plan.md` after reconciling shipped code/tests/docs with the
+zettelkasten artifacts.
+
+Implemented-and-verified coverage now includes:
+- implicit recursion via CoreLet backpatching (tying-the-knot)
+- guarded recursion rejection outside function bodies
+- `loop` / `repeat` grammar, IR, elaboration, evaluation, and serialization guards
+- javaRest integration tests for recursion + loop/repeat behavior and rejection cases
+
+Paper-trail reconciliation updates:
+- plan todos marked complete in `.cursor/plans/recursion_phase1.plan.md`
+- queue checklist synced in `[[recursion-phase1.queue]]`
+- current-state documentation updated to include Recursion Phase 1 capabilities
+- debug scripts extended with recursion/loop examples for `/dev` and `/eval`
+- multi-node debug script now includes explicit remote recursion capture coverage
+
+Confirmed and created new zettels from implementation discussion:
+- `[[recursive-closure-shipping.coordination]]`
+- `[[cross-node-testing-layers.principle]]`
+- `[[recursion-closeout.session]]`
+
+[[recursion-phase1.implementation]] -- verified-by -> `PiescriptIT` recursion + loop/repeat javaRest tests
+[[recursion-phase1.queue]] -- synchronized-with -> `recursion_phase1.plan.md` todos
+[[current-state.md]] -- updated-for -> [[recursion.hub]]
+[[recursive-closure-shipping.coordination]] -- validates -> [[recursion.hub]]
+[[cross-node-testing-layers.principle]] -- refines -> [[vertical-slice-testing.principle]]
+
+SPAWN [[recursive-closure-shipping.coordination]] — cross-node recursion capture seam for shipped closures
+SPAWN [[cross-node-testing-layers.principle]] — layered test rule for distributed features
+SPAWN [[recursion-closeout.session]] — implementation closeout summary session note
+
+RESOLVED [[recursion-phase1.queue]] — all checklist items complete and synced with plan
+RESOLVED `recursion_phase1.plan.md` close-out — docs, thread, debug scripts, and verification reconciled
+RESOLVED new-zettels confirmation — user approved and zettels created for recursion closeout learnings
