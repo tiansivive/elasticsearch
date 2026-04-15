@@ -349,6 +349,16 @@ public class EvaluatorTests extends ESTestCase {
         assertThat(result, is(new Value.DoubleVal(60.0)));
     }
 
+    public void testRecursiveFactorial() {
+        var result = evaluate("let f = fn n -> match n | 0 -> 1 | n -> n * f (n - 1) in f 5");
+        assertThat(result, is(new Value.DoubleVal(120.0)));
+    }
+
+    public void testRecursiveFibonacci() {
+        var result = evaluate("let fib = fn n -> match n | 0 -> 0 | 1 -> 1 | n -> fib (n - 1) + fib (n - 2) in fib 10");
+        assertThat(result, is(new Value.DoubleVal(55.0)));
+    }
+
     public void testNestedRecordProjection() {
         assertThat(evaluate("{ inner: { x: 42 } }.inner.x"), is(new Value.DoubleVal(42.0)));
     }
@@ -451,6 +461,23 @@ public class EvaluatorTests extends ESTestCase {
     public void testMatchNoMatch() {
         var e = expectThrows(EvaluationException.class, () -> evaluate("match 42 | 1 -> true"));
         assertThat(e.getMessage(), containsString("No match for value"));
+    }
+
+    // ──── Loop / Repeat ────
+
+    public void testLoopSimpleCounter() {
+        var result = evaluate("loop 0 | 10 -> \"done\" | n -> repeat (n + 1)");
+        assertThat(result, is(new Value.KeywordVal("done")));
+    }
+
+    public void testLoopAccumulator() {
+        var result = evaluate("loop { acc: 0, n: 5 } | { acc, n: 0 } -> acc | { acc, n } -> repeat { acc: acc + n, n: n - 1 }");
+        assertThat(result, is(new Value.DoubleVal(15.0)));
+    }
+
+    public void testLoopImmediateReturn() {
+        var result = evaluate("loop 41 | n -> n + 1");
+        assertThat(result, is(new Value.DoubleVal(42.0)));
     }
 
     public void testIfElseEvaluation() {

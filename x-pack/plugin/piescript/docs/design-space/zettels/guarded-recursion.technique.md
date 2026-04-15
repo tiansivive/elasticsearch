@@ -23,8 +23,8 @@ under a lambda or constructor). The formal name is the guarded recursion check o
 syntactic-value restriction for recursive bindings.
 
 **Strictly better than runtime sentinel:** catches errors at elaboration time (zero runtime
-cost, better error messages). The [[recursion-sentinel.evaluation]] remains as a safety net
-but guarded recursion is the primary enforcement.
+cost, better error messages). Guarded recursion is the enforcement mechanism;
+the [[recursion-sentinel.evaluation]] remains a fallback design and is deferred.
 
 **Codata changes the picture:** with coinductive types ([[codata.types]]), `let x = x + 1`
 WOULD be valid — it defines an observation-based infinite value. Guarded recursion would
@@ -35,7 +35,7 @@ need to be relaxed for codata bindings.
 **Connections**:
 - part-of: [[recursion.hub]]
 - implements: [[implicit-recursion.design]] — the static safety check that makes implicit recursion sound
-- supersedes: [[recursion-sentinel.evaluation]] — static check is primary; sentinel is fallback safety net
+- supersedes: [[recursion-sentinel.evaluation]] — static check is primary; runtime sentinel is deferred fallback
 - uses: [[de-bruijn-indices.language]] — detection relies on index 0 being the current let binding
 - uses: [[elaboration-architecture.types]] — check runs during elaboration, not evaluation
 - tension-with: [[codata.types]] — codata would relax guarded recursion for coinductive bindings

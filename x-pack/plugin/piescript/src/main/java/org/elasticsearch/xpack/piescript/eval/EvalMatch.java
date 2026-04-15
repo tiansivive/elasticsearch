@@ -36,19 +36,26 @@ final class EvalMatch {
      */
     static void evaluateMatch(CoreMatch match, Value[] env, Evaluator eval, ActionListener<Value> listener) {
         eval.evaluate(match.scrutinee(), env, ActionListener.wrap(
-            scrutineeVal -> match.arms().stream()
-                .map(arm -> tryMatch(arm.pattern(), scrutineeVal).map(bindings -> Map.entry(arm, bindings)))
-                .flatMap(Optional::stream)
-                .findFirst()
-                .ifPresentOrElse(
-                    matchResult -> {
-                        Value[] newEnv = extendEnv(env, matchResult.getValue());
-                        eval.evaluate(matchResult.getKey().body(), newEnv, listener);
-                    },
-                    () -> listener.onFailure(new EvaluationException("No match for value: " + scrutineeVal))
-                ),
+            scrutineeVal -> matchArms(eval, match.arms(), env, scrutineeVal, listener),
             listener::onFailure
         ));
+    }
+
+    /**
+     * Match a scrutinee value against arms and evaluate the first matching arm body.
+     */
+    static void matchArms(Evaluator eval, List<Alternative> arms, Value[] env, Value scrutineeVal, ActionListener<Value> listener) {
+        arms.stream()
+            .map(arm -> tryMatch(arm.pattern(), scrutineeVal).map(bindings -> Map.entry(arm, bindings)))
+            .flatMap(Optional::stream)
+            .findFirst()
+            .ifPresentOrElse(
+                matchResult -> {
+                    Value[] newEnv = extendEnv(env, matchResult.getValue());
+                    eval.evaluate(matchResult.getKey().body(), newEnv, listener);
+                },
+                () -> listener.onFailure(new EvaluationException("No match for value: " + scrutineeVal))
+            );
     }
 
     /**

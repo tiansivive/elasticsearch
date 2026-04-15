@@ -183,6 +183,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.KeywordVal v -> builder.field(fieldName, v.value());
             case Value.BooleanVal v -> builder.field(fieldName, v.value());
             case Value.NullVal ignored -> builder.nullField(fieldName);
+            case Value.RepeatVal ignored -> builder.field(fieldName, "<repeat>");
             case Value.RecordVal v -> {
                 builder.startObject(fieldName);
                 for (Map.Entry<String, Value> entry : v.fields().entrySet()) {
@@ -220,6 +221,7 @@ public class PiescriptResponse extends ActionResponse implements ChunkedToXConte
             case Value.KeywordVal v -> builder.value(v.value());
             case Value.BooleanVal v -> builder.value(v.value());
             case Value.NullVal ignored -> builder.nullValue();
+            case Value.RepeatVal ignored -> builder.value("<repeat>");
             case Value.RecordVal v -> {
                 builder.startObject();
                 for (Map.Entry<String, Value> entry : v.fields().entrySet()) {

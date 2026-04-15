@@ -124,6 +124,7 @@ public final class Prelude {
         entry("CartesianShape", Types.TYPE),
         entry("Unsupported", Types.TYPE),
         entry("List", new MonoType.Arrow(Types.TYPE, Types.TYPE)),
+        entry("Repeat", new MonoType.Arrow(Types.TYPE, Types.TYPE)),
         entry("Channel", new MonoType.Arrow(Types.TYPE, Types.TYPE)),
         entry("Index", new MonoType.Arrow(Types.ROW, Types.TYPE)),
         entry("Searcher", new MonoType.Arrow(Types.ROW, Types.TYPE)),

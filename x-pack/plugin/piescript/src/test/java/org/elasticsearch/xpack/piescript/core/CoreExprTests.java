@@ -270,4 +270,30 @@ public class CoreExprTests extends ESTestCase {
         assertThat(field.label(), is("x"));
         assertThat(field.value(), sameInstance(val));
     }
+
+    // ──── CoreLoop / CoreRepeat ────
+
+    public void testLoopConstruction() {
+        var init = new CoreLit(SRC, new LitVal.IntegerLit(0), INT);
+        var body1 = new CoreLit(SRC, new LitVal.KeywordLit(new BytesRef("done")), KW);
+        var repeatType = new MonoType.AppType(new MonoType.TCon("Repeat"), INT);
+        var body2 = new CoreRepeat(SRC, new CoreLit(SRC, new LitVal.IntegerLit(1), INT), repeatType);
+        var arm1 = new Alternative(new Pattern.LitPat(new LitVal.IntegerLit(10)), body1);
+        var arm2 = new Alternative(new Pattern.WildcardPat(), body2);
+
+        var loop = new CoreLoop(SRC, init, List.of(arm1, arm2), KW);
+        assertThat(loop.init(), sameInstance(init));
+        assertThat(loop.arms(), hasSize(2));
+        assertThat(loop.type(), is(KW));
+        assertThat(loop.children(), hasSize(3));
+    }
+
+    public void testRepeatConstruction() {
+        var expr = new CoreVar(SRC, 0, "n", INT);
+        var repeatType = new MonoType.AppType(new MonoType.TCon("Repeat"), INT);
+        var repeat = new CoreRepeat(SRC, expr, repeatType);
+        assertThat(repeat.expr(), sameInstance(expr));
+        assertThat(repeat.type(), is(repeatType));
+        assertThat(repeat.children(), hasSize(1));
+    }
 }

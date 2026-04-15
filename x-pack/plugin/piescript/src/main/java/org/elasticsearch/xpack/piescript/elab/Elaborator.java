@@ -60,6 +60,7 @@ public final class Elaborator {
     static final MonoType NULL_TYPE = new MonoType.TCon("Null");
 
     static final MonoType LIST = new MonoType.TCon("List");
+    static final MonoType REPEAT = new MonoType.TCon("Repeat");
     static final MonoType CHANNEL = new MonoType.TCon("Channel");
     static final MonoType INDEX = new MonoType.TCon("Index");
     static final MonoType SEARCHER = new MonoType.TCon("Searcher");
@@ -99,6 +100,7 @@ public final class Elaborator {
         Map.entry("CartesianShape", CARTESIAN_SHAPE),
         Map.entry("Unsupported", UNSUPPORTED),
         Map.entry("List", LIST),
+        Map.entry("Repeat", REPEAT),
         Map.entry("Channel", CHANNEL),
         Map.entry("Index", INDEX),
         Map.entry("Searcher", SEARCHER),
@@ -281,6 +283,8 @@ public final class Elaborator {
 
             case PiescriptAntlrParser.IfExprContext e -> Matches.desugarIf(e, ctx, this);
             case PiescriptAntlrParser.MatchExprContext m -> Matches.match(m, ctx, this);
+            case PiescriptAntlrParser.LoopExprContext loop -> Loops.loop(loop, ctx, this);
+            case PiescriptAntlrParser.RepeatExprContext repeat -> Loops.repeat(repeat, ctx, this);
             case PiescriptAntlrParser.QueryExprContext q -> {
                 var src = source(q);
                 var inner = elaborate(q.expr(), ctx);
@@ -309,6 +313,9 @@ public final class Elaborator {
         var localLookup = ctx.lookup(name);
         if (localLookup.isPresent()) {
             var lookup = localLookup.get();
+            if (lookup.underConstruction() && ctx.underLambda() == false) {
+                throw error(src, "binding '" + name + "' cannot reference itself outside a function body");
+            }
             var scheme = lookup.scheme();
             if (scheme.quantified().isEmpty()) {
                 return new CoreVar(src.source, lookup.index(), name, scheme.body());

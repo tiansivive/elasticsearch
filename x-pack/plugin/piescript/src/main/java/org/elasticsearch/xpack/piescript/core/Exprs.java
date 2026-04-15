@@ -265,4 +265,17 @@ public final class Exprs {
     public static Alternative arm(Pattern pat, CoreExpr body) {
         return new Alternative(pat, body);
     }
+
+    // ──── Loop / Repeat ────
+
+    public static CoreLoop loop(CoreExpr init, Alternative... arms) {
+        if (arms.length == 0) {
+            throw new IllegalArgumentException("loop must have at least one arm");
+        }
+        return new CoreLoop(SRC, init, List.of(arms), arms[0].body().type());
+    }
+
+    public static CoreRepeat repeat(CoreExpr expr) {
+        return new CoreRepeat(SRC, expr, Types.repeat(expr.type()));
+    }
 }

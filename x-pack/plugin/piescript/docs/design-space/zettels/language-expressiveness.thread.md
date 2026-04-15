@@ -17,8 +17,8 @@ mechanisms, and reusable definitions.
    Unblocks recursion. See hub for sub-zettels.
    _Shared with: error-handling_
 
-2. **Recursion** [[recursion.hub]] — needs-design (after pattern matching)
-   `loop` builtin or `let rec`. Blocked by pattern matching (needs branching).
+2. **Recursion** [[recursion.hub]] — ready
+   Implicit recursion and fused `loop`/`repeat` are implemented.
    Enables pagination loops, iterative algorithms.
 
 3. **String/list concat** [[string-concat.language]] — ready

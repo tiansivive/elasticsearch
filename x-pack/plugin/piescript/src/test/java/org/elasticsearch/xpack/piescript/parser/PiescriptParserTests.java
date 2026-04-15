@@ -413,6 +413,16 @@ public class PiescriptParserTests extends ESTestCase {
         assertParses("let ch = spawn 42 in when (ch val) -> val + 1");
     }
 
+    // ──── loop / repeat (Recursion Phase 1) ────
+
+    public void testLoopExpr() {
+        assertParses("loop 0 | 10 -> \"done\" | n -> repeat (n + 1)");
+    }
+
+    public void testRepeatExpr() {
+        assertParses("let f = fn x -> repeat x in f 1");
+    }
+
     // ──── spawn! / send (Block C) ────
 
     public void testSpawnBang() {

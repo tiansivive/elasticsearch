@@ -61,23 +61,29 @@ import java.util.stream.IntStream;
 public final class ElaborationContext {
 
     /** Empty context at binding level 0 with no module bindings. */
-    public static final ElaborationContext EMPTY = new ElaborationContext(List.of(), Map.of(), Map.of(), 0);
+    public static final ElaborationContext EMPTY = new ElaborationContext(List.of(), Map.of(), Map.of(), 0, 0, null);
 
     private final List<NamedScheme> bindings;
     private final Map<String, TypeScheme> module;
     private final Map<String, MonoType> kindModule;
     private final int bindingLevel;
+    private final int lambdaDepth;
+    private final MonoType loopStateType;
 
     private ElaborationContext(
         List<NamedScheme> bindings,
         Map<String, TypeScheme> module,
         Map<String, MonoType> kindModule,
-        int bindingLevel
+        int bindingLevel,
+        int lambdaDepth,
+        MonoType loopStateType
     ) {
         this.bindings = bindings;
         this.module = module;
         this.kindModule = kindModule;
         this.bindingLevel = bindingLevel;
+        this.lambdaDepth = lambdaDepth;
+        this.loopStateType = loopStateType;
     }
 
     /**
@@ -85,14 +91,14 @@ public final class ElaborationContext {
      * imports, etc.) and a kind context for type constructors.
      */
     public static ElaborationContext withModule(Map<String, TypeScheme> module, Map<String, MonoType> kindModule) {
-        return new ElaborationContext(List.of(), module, kindModule, 0);
+        return new ElaborationContext(List.of(), module, kindModule, 0, 0, null);
     }
 
     /** A binding in the context: surface name paired with its type scheme. */
-    public record NamedScheme(String name, TypeScheme scheme) {}
+    public record NamedScheme(String name, TypeScheme scheme, boolean underConstruction) {}
 
     /** Result of a variable lookup: de Bruijn index + type scheme. */
-    public record LookupResult(int index, TypeScheme scheme) {}
+    public record LookupResult(int index, TypeScheme scheme, boolean underConstruction) {}
 
     /**
      * Return a new context with an additional binding at de Bruijn index 0.
@@ -100,10 +106,19 @@ public final class ElaborationContext {
      * are preserved.
      */
     public ElaborationContext bind(String name, TypeScheme scheme) {
+        return bind(name, scheme, false);
+    }
+
+    /**
+     * Return a new context with an additional binding at de Bruijn index 0.
+     *
+     * @param underConstruction true when the binding's RHS is currently being elaborated
+     */
+    public ElaborationContext bind(String name, TypeScheme scheme, boolean underConstruction) {
         var extended = new ArrayList<NamedScheme>(1 + bindings.size());
-        extended.add(new NamedScheme(name, scheme));
+        extended.add(new NamedScheme(name, scheme, underConstruction));
         extended.addAll(bindings);
-        return new ElaborationContext(Collections.unmodifiableList(extended), module, kindModule, bindingLevel);
+        return new ElaborationContext(Collections.unmodifiableList(extended), module, kindModule, bindingLevel, lambdaDepth, loopStateType);
     }
 
     /**
@@ -115,7 +130,10 @@ public final class ElaborationContext {
     public Optional<LookupResult> lookup(String name) {
         return IntStream.range(0, bindings.size())
             .filter(i -> bindings.get(i).name().equals(name))
-            .mapToObj(i -> new LookupResult(i, bindings.get(i).scheme()))
+            .mapToObj(i -> {
+                var binding = bindings.get(i);
+                return new LookupResult(i, binding.scheme(), binding.underConstruction());
+            })
             .findFirst();
     }
 
@@ -131,12 +149,22 @@ public final class ElaborationContext {
 
     /** Return a new context with binding level incremented (entering a let-RHS). */
     public ElaborationContext enterBindingLevel() {
-        return new ElaborationContext(bindings, module, kindModule, bindingLevel + 1);
+        return new ElaborationContext(bindings, module, kindModule, bindingLevel + 1, lambdaDepth, loopStateType);
     }
 
     /** Return a new context with binding level decremented (exiting a let-RHS). */
     public ElaborationContext exitBindingLevel() {
-        return new ElaborationContext(bindings, module, kindModule, bindingLevel - 1);
+        return new ElaborationContext(bindings, module, kindModule, bindingLevel - 1, lambdaDepth, loopStateType);
+    }
+
+    /** Return a new context for elaborating inside a lambda body. */
+    public ElaborationContext enterLambda() {
+        return new ElaborationContext(bindings, module, kindModule, bindingLevel, lambdaDepth + 1, loopStateType);
+    }
+
+    /** Return a new context for elaborating inside a loop body. */
+    public ElaborationContext enterLoop(MonoType stateType) {
+        return new ElaborationContext(bindings, module, kindModule, bindingLevel, lambdaDepth, stateType);
     }
 
     /**
@@ -151,6 +179,21 @@ public final class ElaborationContext {
     /** Current binding level (let-nesting depth). */
     public int bindingLevel() {
         return bindingLevel;
+    }
+
+    /** Number of enclosing lambdas currently being elaborated. */
+    public int lambdaDepth() {
+        return lambdaDepth;
+    }
+
+    /** True when elaboration is currently inside at least one lambda body. */
+    public boolean underLambda() {
+        return lambdaDepth > 0;
+    }
+
+    /** State type of the nearest enclosing loop, if any. */
+    public Optional<MonoType> loopStateType() {
+        return Optional.ofNullable(loopStateType);
     }
 
     /** Number of bindings in the context. */

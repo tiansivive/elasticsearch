@@ -59,7 +59,16 @@ post '{"program": "let topo = Cluster.topology \"cluster\" in let remote = List.
 # Each remote node sends back its name; we collect results.
 echo ""
 echo "=== 5. Fan-out: send closure to each remote node ==="
-.
+PROG5='let topo = Cluster.topology "cluster"
+in let remotes = List.filter (fn n -> n.id != topo.local.id) topo.nodes
+in let ch1 = spawn!
+in let ch2 = spawn!
+in let u1 = send (List.head remotes).inbox (fn info -> send ch1 info.name)
+in let rest = List.tail remotes
+in let u2 = send (List.head rest).inbox (fn info -> send ch2 info.name)
+in when (ch1 name1) & (ch2 name2) -> { ran_on_1: name1, ran_on_2: name2 }'
+post "$(jq -n --arg p "$PROG5" '{"program": $p}')"
+
 # ── 6. Remote computation — send arithmetic to a remote node ──
 echo ""
 echo "=== 6. Remote computation (1 + 2 + 3 on remote node) ==="
@@ -75,7 +84,18 @@ echo ""
 echo "=== 8. Prove remote execution (local id != remote execution id) ==="
 post '{"program": "let topo = Cluster.topology \"cluster\" in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes) in let ch = spawn! in let u = send remote.inbox (fn info -> send ch info.id) in when (ch remote_id) -> { local: topo.local.id, remote: remote_id, same_node: topo.local.id == remote_id }"}'
 
-# ── 9. Triangle coordination: A orchestrates B↔C direct communication ──
+# ── 9. Ship closure with captured recursive env to remote inbox ──
+echo ""
+echo "=== 9. Remote recursion capture (closure ships recursive env) ==="
+PROG9='let topo = Cluster.topology "cluster"
+in let remote = List.head (List.filter (fn n -> n.id != topo.local.id) topo.nodes)
+in let fact = fn n -> if n < 2 then 1 else n * fact (n - 1)
+in let ch = spawn!
+in let u = send remote.inbox (fn info -> send ch { node: info.name, factorial_6: fact 6 })
+in when (ch result) -> result'
+post "$(jq -n --arg p "$PROG9" '{"program": $p}')"
+
+# ── 10. Triangle coordination: A orchestrates B↔C direct communication ──
 # A sends identical closures (abstracted via let-binding) to B and C.
 # Each creates local channels, sends refs back to A.
 # A cross-forwards the refs so B and C can message each other directly.
@@ -83,8 +103,8 @@ post '{"program": "let topo = Cluster.topology \"cluster\" in let remote = List.
 # Exercises: name-passing (channels-in-channels), closure capture, multi-phase
 # coordination, direct B↔C communication, higher-order function abstraction.
 echo ""
-echo "=== 9. Triangle: A orchestrates B↔C direct communication ==="
-PROG9='let topo = Cluster.topology "cluster"
+echo "=== 10. Triangle: A orchestrates B↔C direct communication ==="
+PROG10='let topo = Cluster.topology "cluster"
 in let remotes = List.filter (fn n -> n.id != topo.local.id) topo.nodes
 in let nodeB = List.head remotes
 in let nodeC = List.head (List.tail remotes)
@@ -115,16 +135,16 @@ in when (refsFromB bRefs) & (refsFromC cRefs) ->
       b_heard_from: rb.peer_node, b_peer_role: rb.peer_role,
       c_ran_on: rc.node, c_role: rc.role,
       c_heard_from: rc.peer_node, c_peer_role: rc.peer_role }'
-post "$(jq -n --arg p "$PROG9" '{"program": $p}')"
+post "$(jq -n --arg p "$PROG10" '{"program": $p}')"
 
-# ── 10. Block D: use declaration + local shard data access ──
+# ── 11. Block D: use declaration + local shard data access ──
 echo ""
-echo "=== 10. use declaration + Index.shards ==="
+echo "=== 11. use declaration + Index.shards ==="
 post '{"program": "use \"piescript-test\" as idx; Index.shards idx"}'
 
 echo ""
-echo "=== 11. Shard.open fan-out to ALL shards (tagged with node info) ==="
-PROG11='use "piescript-test" as idx;
+echo "=== 12. Shard.open fan-out to ALL shards (tagged with node info) ==="
+PROG12='use "piescript-test" as idx;
 let shards = Index.shards idx
 in let s0 = List.at 0 shards
 in let s1 = List.at 1 shards
@@ -157,12 +177,12 @@ in let u2 = send s2.node.inbox (fn info ->
 )
 in when (ch0 r0) & (ch1 r1) & (ch2 r2) ->
   { shard_0: r0, shard_1: r1, shard_2: r2 }'
-post "$(jq -n --arg p "$PROG11" '{"program": $p}')"
+post "$(jq -n --arg p "$PROG12" '{"program": $p}')"
 
-# ── 12. Block E: Remote shard write via shipped closure ──
+# ── 13. Block E: Remote shard write via shipped closure ──
 echo ""
-echo "=== 12. Remote Shard.writer + Shard.write (primary write on data node) ==="
-PROG12='use "piescript-test" as idx;
+echo "=== 13. Remote Shard.writer + Shard.write (primary write on data node) ==="
+PROG13='use "piescript-test" as idx;
 let shards = Index.shards idx
 in let primary = List.head (List.filter (fn s -> s.primary) shards)
 in let ch = spawn!
@@ -173,17 +193,17 @@ in let u = send primary.node.inbox (fn info ->
     in send ch { node: info.name, seq_no: r.seq_no, version: r.version, result: r.result }
 )
 in when (ch result) -> result'
-post "$(jq -n --arg p "$PROG12" '{"program": $p}')"
+post "$(jq -n --arg p "$PROG13" '{"program": $p}')"
 
-# ── 13. Block E: Index.bulk from coordinator ──
+# ── 14. Block E: Index.bulk from coordinator ──
 echo ""
-echo "=== 13. Index.bulk (high-level Bulk API write) ==="
+echo "=== 14. Index.bulk (high-level Bulk API write) ==="
 post '{"program": "let ch = Index.bulk \"piescript-mn-bulk\" [{ name: \"mn-alice\", score: 90 }, { name: \"mn-bob\", score: 80 }]; when (ch result) -> result"}'
 
-# ── 14. Block E: Shard.globalCheckpoint (shipped to data node) ──
+# ── 15. Block E: Shard.globalCheckpoint (shipped to data node) ──
 echo ""
-echo "=== 14. Shard.globalCheckpoint ==="
-PROG14='use "piescript-test" as idx;
+echo "=== 15. Shard.globalCheckpoint ==="
+PROG15='use "piescript-test" as idx;
 let shards = Index.shards idx
 in let shard = List.head shards
 in let ch = spawn!
@@ -191,43 +211,43 @@ in let u = send shard.node.inbox (fn info ->
   send ch { node: info.name, checkpoint: Shard.globalCheckpoint idx shard }
 )
 in when (ch result) -> result'
-post "$(jq -n --arg p "$PROG14" '{"program": $p}')"
+post "$(jq -n --arg p "$PROG15" '{"program": $p}')"
 
-# ── 15. Block F: ESQL query compilation ──
+# ── 16. Block F: ESQL query compilation ──
 echo ""
-echo "=== 15. ESQL.from + ESQL.where + ESQL.limit ==="
+echo "=== 16. ESQL.from + ESQL.where + ESQL.limit ==="
 post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.where (fn r -> r.active == true) |> ESQL.limit 10;"}'
 
 echo ""
-echo "=== 16. ESQL.explain (compiled ESQL string) ==="
+echo "=== 17. ESQL.explain (compiled ESQL string) ==="
 post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.where (fn r -> r.age > 30) |> ESQL.keep (fn r -> { name: r.name, age: r.age }) |> ESQL.limit 5)"}'
 
 echo ""
-echo "=== 17. ESQL.where with captured variable ==="
+echo "=== 18. ESQL.where with captured variable ==="
 post '{"program": "use \"piescript-test\" as idx; let threshold = 25; query ESQL.from idx |> ESQL.where (fn r -> r.age > threshold) |> ESQL.limit 10;"}'
 
 echo ""
-echo "=== 18. ESQL.sort ascending ==="
+echo "=== 19. ESQL.sort ascending ==="
 post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.sort (fn r -> r.age) |> ESQL.limit 10;"}'
 
 echo ""
-echo "=== 19. ESQL.keep with closure syntax ==="
+echo "=== 20. ESQL.keep with closure syntax ==="
 post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.keep (fn r -> { name: r.name, age: r.age }))"}'
 
 echo ""
-echo "=== 20. ESQL.drop with closure syntax ==="
+echo "=== 21. ESQL.drop with closure syntax ==="
 post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.drop (fn r -> { score: r.score }))"}'
 
 echo ""
-echo "=== 21. ESQL.stats — global count ==="
+echo "=== 22. ESQL.stats — global count ==="
 post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.stats (fn r -> { count: ESQL.count \"*\" }))"}'
 
 echo ""
-echo "=== 22. ESQL.statsBy — count + avg grouped by active ==="
+echo "=== 23. ESQL.statsBy — count + avg grouped by active ==="
 post '{"program": "use \"piescript-test\" as idx; ESQL.explain (ESQL.from idx |> ESQL.statsBy (fn r -> { count: ESQL.count \"*\", avg_age: ESQL.avg (fn r2 -> r2.age) }) (fn r -> { active: r.active }))"}'
 
 echo ""
-echo "=== 23. ESQL.stats — end-to-end query execution ==="
+echo "=== 24. ESQL.stats — end-to-end query execution ==="
 post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.stats (fn r -> { count: ESQL.count \"*\" });"}'
 
 # ──────────────────────────────────────────
@@ -235,8 +255,8 @@ post '{"program": "use \"piescript-test\" as idx; query ESQL.from idx |> ESQL.st
 # ──────────────────────────────────────────
 
 echo ""
-echo "=== 24. Shard.stream + Page.count — batch docs into a Page ==="
-PROG24='use "piescript-test" as idx;
+echo "=== 25. Shard.stream + Page.count — batch docs into a Page ==="
+PROG25='use "piescript-test" as idx;
 let shards = Index.shards idx
 in let shard = List.head shards
 in let node = shard.node
@@ -248,11 +268,11 @@ in let u = send node.inbox (fn info ->
     in let page = Shard.stream searcher docs
     in send result_ch (Page.count page))
 in when (result_ch count) -> count'
-post "{\"program\": $(echo "$PROG24" | jq -Rs .)}"
+  post "{\"program\": $(echo "$PROG25" | jq -Rs .)}"
 
 echo ""
-echo "=== 25. Shard.stream + Page.toList — materialize Page to records ==="
-PROG25='use "piescript-test" as idx;
+  echo "=== 26. Shard.stream + Page.toList — materialize Page to records ==="
+  PROG26='use "piescript-test" as idx;
 let shards = Index.shards idx
 in let shard = List.head shards
 in let node = shard.node
@@ -264,11 +284,11 @@ in let u = send node.inbox (fn info ->
     in let page = Shard.stream searcher docs
     in send result_ch (Page.toList page))
 in when (result_ch rows) -> rows'
-post "{\"program\": $(echo "$PROG25" | jq -Rs .)}"
+  post "{\"program\": $(echo "$PROG26" | jq -Rs .)}"
 
 echo ""
-echo "=== 26. Shard.stream + Page.toList — compare with Shard.read ==="
-PROG26='use "piescript-test" as idx;
+  echo "=== 27. Shard.stream + Page.toList — compare with Shard.read ==="
+  PROG27='use "piescript-test" as idx;
 let shards = Index.shards idx
 in let shard = List.head shards
 in let node = shard.node
@@ -282,11 +302,11 @@ in let u = send node.inbox (fn info ->
     in let read_rows = List.map (fn d -> Shard.read d) docs
     in send result_ch { page_count: List.length page_rows, read_count: List.length read_rows })
 in when (result_ch counts) -> counts'
-post "{\"program\": $(echo "$PROG26" | jq -Rs .)}"
+  post "{\"program\": $(echo "$PROG27" | jq -Rs .)}"
 
 echo ""
-echo "=== 27. Exchange.open + Exchange.sink + Exchange.connect + addPage + poll ==="
-PROG27='use "piescript-test" as idx;
+  echo "=== 28. Exchange.open + Exchange.sink + Exchange.connect + addPage + poll ==="
+  PROG28='use "piescript-test" as idx;
 let shards = Index.shards idx
 in let shard = List.head shards
 in let node = shard.node
@@ -306,28 +326,28 @@ in let u = send node.inbox (fn info ->
     in when (poll_ch done) & (collect_ch count) ->
       send result_ch count)
 in when (result_ch count) -> count'
-post "{\"program\": $(echo "$PROG27" | jq -Rs .)}"
+post "{\"program\": $(echo "$PROG28" | jq -Rs .)}"
 
 echo ""
-echo "=== 28. ESQL.statsBy with ESQL.top — MV aggregate returns List ==="
-PROG28='use "piescript-test" as idx;
+echo "=== 29. ESQL.statsBy with ESQL.top — MV aggregate returns List ==="
+PROG29='use "piescript-test" as idx;
 query ESQL.from idx
   |> ESQL.statsBy
        (fn r -> { top_ages: ESQL.top r.age 3 "desc" })
        (fn r -> { active: r.active })
   |> ESQL.limit 10;'
-post "{\"program\": $(echo "$PROG28" | jq -Rs .)}"
-
-echo ""
-echo "=== 29. ESQL.values — unique values as List ==="
-PROG29='use "piescript-test" as idx;
-query ESQL.from idx
-  |> ESQL.stats (fn r -> { names: ESQL.values r.name });'
 post "{\"program\": $(echo "$PROG29" | jq -Rs .)}"
 
 echo ""
-echo "=== 30. ESQL.top + List.reduce — user-defined aggregate over MV result ==="
+echo "=== 30. ESQL.values — unique values as List ==="
 PROG30='use "piescript-test" as idx;
+query ESQL.from idx
+  |> ESQL.stats (fn r -> { names: ESQL.values r.name });'
+post "{\"program\": $(echo "$PROG30" | jq -Rs .)}"
+
+echo ""
+echo "=== 31. ESQL.top + List.reduce — user-defined aggregate over MV result ==="
+PROG31='use "piescript-test" as idx;
 let raw = query ESQL.from idx
   |> ESQL.statsBy
        (fn r -> { top_scores: ESQL.top r.score 5 "desc" })
@@ -337,22 +357,22 @@ in List.map (fn row -> {
   top_scores: row.top_scores,
   total: List.reduce (fn acc v -> acc + v) 0 row.top_scores
 }) raw'
-post "{\"program\": $(echo "$PROG30" | jq -Rs .)}"
-
-echo ""
-echo "=== 31. Pattern matching (match) ==="
-PROG31='match { a: 1, b: 2 } | { a: x } -> x'
 post "{\"program\": $(echo "$PROG31" | jq -Rs .)}"
 
 echo ""
-echo "=== 32. Pattern matching (if/else sugar) ==="
-PROG32='if true then 42 else 0'
+echo "=== 32. Pattern matching (match) ==="
+PROG32='match { a: 1, b: 2 } | { a: x } -> x'
 post "{\"program\": $(echo "$PROG32" | jq -Rs .)}"
 
 echo ""
-echo "=== 33. Pattern matching (list decomposition) ==="
-PROG33='match [1, 2, 3] | [] -> 0 | [h | t] -> h'
+echo "=== 33. Pattern matching (if/else sugar) ==="
+PROG33='if true then 42 else 0'
 post "{\"program\": $(echo "$PROG33" | jq -Rs .)}"
+
+echo ""
+echo "=== 34. Pattern matching (list decomposition) ==="
+PROG34='match [1, 2, 3] | [] -> 0 | [h | t] -> h'
+post "{\"program\": $(echo "$PROG34" | jq -Rs .)}"
 
 echo ""
 echo "========================================"

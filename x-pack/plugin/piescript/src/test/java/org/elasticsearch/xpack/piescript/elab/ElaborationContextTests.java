@@ -136,4 +136,43 @@ public class ElaborationContextTests extends ESTestCase {
         ctx = ctx.bind("b", TypeScheme.mono(new MonoType.TCon("Boolean")));
         assertThat(ctx.depth(), is(2));
     }
+
+    // ──── Guarded recursion metadata ────
+
+    public void testUnderConstructionBindingMetadata() {
+        var scheme = TypeScheme.mono(new MonoType.TCon("Double"));
+        var ctx = ElaborationContext.EMPTY.bind("x", scheme, true);
+
+        var result = ctx.lookup("x");
+        assertTrue(result.isPresent());
+        assertThat(result.get().underConstruction(), is(true));
+    }
+
+    // ──── Lambda depth ────
+
+    public void testEnterLambdaTracksDepth() {
+        var ctx = ElaborationContext.EMPTY;
+        assertThat(ctx.lambdaDepth(), is(0));
+        assertThat(ctx.underLambda(), is(false));
+
+        var inner = ctx.enterLambda();
+        assertThat(inner.lambdaDepth(), is(1));
+        assertThat(inner.underLambda(), is(true));
+
+        var deeper = inner.enterLambda();
+        assertThat(deeper.lambdaDepth(), is(2));
+        assertThat(deeper.underLambda(), is(true));
+    }
+
+    // ──── Loop state ────
+
+    public void testEnterLoopTracksStateType() {
+        var ctx = ElaborationContext.EMPTY;
+        assertTrue(ctx.loopStateType().isEmpty());
+
+        var stateType = new MonoType.TCon("Double");
+        var loopCtx = ctx.enterLoop(stateType);
+        assertTrue(loopCtx.loopStateType().isPresent());
+        assertThat(loopCtx.loopStateType().get(), is(stateType));
+    }
 }

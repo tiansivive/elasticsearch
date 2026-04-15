@@ -17,7 +17,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 
 /**
- * Wire serialization for the {@link CoreExpr} sealed hierarchy (16 variants).
+ * Wire serialization for the {@link CoreExpr} sealed hierarchy (21 variants).
  * Used to ship closure bodies across nodes as part of {@code ClosureVal} serialization.
  *
  * <p>Each variant is identified by a stable byte tag. Source location is not serialized;
@@ -51,6 +51,8 @@ public final class CoreExprSerialization {
     private static final byte TAG_LIST = 16;
     private static final byte TAG_QUERY_EXEC = 17;
     private static final byte TAG_MATCH = 18;
+    private static final byte TAG_LOOP = 19;
+    private static final byte TAG_REPEAT = 20;
 
     public static void writeCoreExpr(StreamOutput out, CoreExpr expr) throws IOException {
         switch (expr) {
@@ -175,6 +177,22 @@ public final class CoreExprSerialization {
                 }
                 TypeSerialization.writeMonoType(out, match.type());
             }
+            case CoreLoop loop -> {
+                out.writeByte(TAG_LOOP);
+                writeCoreExpr(out, loop.init());
+                var arms = loop.arms();
+                out.writeVInt(arms.size());
+                for (var arm : arms) {
+                    writePattern(out, arm.pattern());
+                    writeCoreExpr(out, arm.body());
+                }
+                TypeSerialization.writeMonoType(out, loop.type());
+            }
+            case CoreRepeat repeat -> {
+                out.writeByte(TAG_REPEAT);
+                writeCoreExpr(out, repeat.expr());
+                TypeSerialization.writeMonoType(out, repeat.type());
+            }
         }
     }
 
@@ -287,6 +305,23 @@ public final class CoreExprSerialization {
                 }
                 var type = TypeSerialization.readMonoType(in);
                 yield new CoreMatch(WIRE_SOURCE, scrutinee, arms, type);
+            }
+            case TAG_LOOP -> {
+                var init = readCoreExpr(in);
+                int armCount = in.readVInt();
+                var arms = new ArrayList<Alternative>(armCount);
+                for (int i = 0; i < armCount; i++) {
+                    var pat = readPattern(in);
+                    var body = readCoreExpr(in);
+                    arms.add(new Alternative(pat, body));
+                }
+                var type = TypeSerialization.readMonoType(in);
+                yield new CoreLoop(WIRE_SOURCE, init, arms, type);
+            }
+            case TAG_REPEAT -> {
+                var expr = readCoreExpr(in);
+                var type = TypeSerialization.readMonoType(in);
+                yield new CoreRepeat(WIRE_SOURCE, expr, type);
             }
             default -> throw new IOException("unknown CoreExpr tag: " + tag);
         };

@@ -12,7 +12,6 @@ import com.carrotsearch.randomizedtesting.annotations.ThreadLeakFilters;
 import org.elasticsearch.client.Request;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.Response;
-import org.elasticsearch.client.ResponseException;
 import org.elasticsearch.test.TestClustersThreadFilter;
 import org.elasticsearch.test.cluster.ElasticsearchCluster;
 import org.elasticsearch.test.cluster.local.distribution.DistributionType;
@@ -258,8 +257,10 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
                 + ") "
                 + "in when (ch w) -> w"
         );
-        var e = expectThrows(ResponseException.class, () -> client().performRequest(request));
-        assertThat(e.getResponse().getStatusLine().getStatusCode(), greaterThanOrEqualTo(400));
+        Response response = client().performRequest(request);
+        assertOK(response);
+        Map<String, Object> responseMap = entityAsMap(response);
+        assertThat(responseMap.get("result"), equalTo("<writer>"));
     }
 
     // ──── Block G: Exchange streaming (D-054) ────

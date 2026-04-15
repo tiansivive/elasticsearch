@@ -7,7 +7,6 @@
 
 package org.elasticsearch.xpack.piescript.elab;
 
-import org.elasticsearch.xpack.esql.core.type.DataType;
 import org.elasticsearch.xpack.esql.core.type.EsField;
 import org.elasticsearch.xpack.esql.core.type.InvalidMappedField;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
@@ -77,7 +76,8 @@ final class Let {
             ? TypeAnnotations.toTypeScheme(elab, ctx, binding.type())
             : TypeScheme.mono(elab.state.freshType(letCtx.bindingLevel()));
 
-        CoreExpr rhs = elab.check(binding.expr(), expectedScheme, letCtx, src);
+        var rhsCtx = letCtx.bind(name, expectedScheme, true);
+        CoreExpr rhs = elab.check(binding.expr(), expectedScheme, rhsCtx, src);
 
         TypeScheme scheme;
         CoreExpr wrappedRhs;
@@ -162,7 +162,8 @@ final class Let {
             ? TypeAnnotations.toTypeScheme(elab, ctx, let.type())
             : TypeScheme.mono(elab.state.freshType(letCtx.bindingLevel()));
 
-        CoreExpr rhs = elab.check(let.expr(0), expectedScheme, letCtx, src);
+        var rhsCtx = letCtx.bind(name, expectedScheme, true);
+        CoreExpr rhs = elab.check(let.expr(0), expectedScheme, rhsCtx, src);
 
         TypeScheme scheme;
         CoreExpr wrappedRhs;
