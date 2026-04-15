@@ -19,3 +19,4 @@ laziness.
 - implements: [[implicit-recursion.design]] — the safety net for strict evaluation
 - uses: [[tying-the-knot.technique]] — the sentinel is the initial value of the backpatch slot
 - contrasts-with: Haskell (laziness avoids this need entirely)
+- deferred: currently not implemented — [[guarded-recursion.technique]] catches invalid self-references statically, making the runtime sentinel unnecessary for now. May be added later as a safety net if gaps in the static check are discovered.

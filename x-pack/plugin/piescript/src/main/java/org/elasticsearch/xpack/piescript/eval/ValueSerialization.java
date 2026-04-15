@@ -12,6 +12,8 @@ import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.xpack.piescript.core.CoreExprSerialization;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 
 /**
  * Full-fidelity wire serialization for the {@link Value} sealed hierarchy (11 variants).
@@ -41,7 +43,20 @@ public final class ValueSerialization {
     private static final byte TAG_INDEX = 11;
     private static final byte TAG_EXCHANGE = 12;
 
+    private static final class WriteContext {
+        private final IdentityHashMap<Value.ClosureVal, Integer> closureIds = new IdentityHashMap<>();
+        private int nextClosureId = 0;
+    }
+
+    private static final class ReadContext {
+        private final HashMap<Integer, Value.ClosureVal> closures = new HashMap<>();
+    }
+
     public static void writeValue(StreamOutput out, Value value) throws IOException {
+        writeValue(out, value, new WriteContext());
+    }
+
+    private static void writeValue(StreamOutput out, Value value, WriteContext ctx) throws IOException {
         switch (value) {
             case Value.IntegerVal v -> {
                 out.writeByte(TAG_INTEGER);
@@ -64,27 +79,38 @@ public final class ValueSerialization {
                 out.writeBoolean(v.value());
             }
             case Value.NullVal ignored -> out.writeByte(TAG_NULL);
+            case Value.RepeatVal ignored -> throw new IOException("RepeatVal is not serializable (loop-local control value)");
             case Value.RecordVal v -> {
                 out.writeByte(TAG_RECORD);
-                out.writeMap(v.fields(), (o, val) -> writeValue(o, val));
+                out.writeMap(v.fields(), (o, val) -> writeValue(o, val, ctx));
             }
             case Value.ClosureVal v -> {
                 out.writeByte(TAG_CLOSURE);
-                CoreExprSerialization.writeCoreExpr(out, v.body());
-                out.writeVInt(v.env().length);
-                for (Value envVal : v.env()) {
-                    writeValue(out, envVal);
+                Integer existingId = ctx.closureIds.get(v);
+                if (existingId != null) {
+                    out.writeBoolean(false);
+                    out.writeVInt(existingId);
+                } else {
+                    int id = ctx.nextClosureId++;
+                    ctx.closureIds.put(v, id);
+                    out.writeBoolean(true);
+                    out.writeVInt(id);
+                    CoreExprSerialization.writeCoreExpr(out, v.body());
+                    out.writeVInt(v.env().length);
+                    for (Value envVal : v.env()) {
+                        writeValue(out, envVal, ctx);
+                    }
                 }
             }
             case Value.BuiltinVal v -> {
                 out.writeByte(TAG_BUILTIN);
                 out.writeString(v.name());
                 out.writeVInt(v.arity());
-                out.writeCollection(v.partialArgs(), (o, arg) -> writeValue(o, arg));
+                out.writeCollection(v.partialArgs(), (o, arg) -> writeValue(o, arg, ctx));
             }
             case Value.ListVal v -> {
                 out.writeByte(TAG_LIST);
-                out.writeCollection(v.elements(), (o, elem) -> writeValue(o, elem));
+                out.writeCollection(v.elements(), (o, elem) -> writeValue(o, elem, ctx));
             }
             case Value.ChannelVal v -> {
                 out.writeByte(TAG_CHANNEL);
@@ -115,6 +141,10 @@ public final class ValueSerialization {
     }
 
     public static Value readValue(StreamInput in) throws IOException {
+        return readValue(in, new ReadContext());
+    }
+
+    private static Value readValue(StreamInput in, ReadContext ctx) throws IOException {
         byte tag = in.readByte();
         return switch (tag) {
             case TAG_INTEGER -> new Value.IntegerVal(in.readInt());
@@ -123,23 +153,38 @@ public final class ValueSerialization {
             case TAG_KEYWORD -> new Value.KeywordVal(in.readString());
             case TAG_BOOLEAN -> new Value.BooleanVal(in.readBoolean());
             case TAG_NULL -> new Value.NullVal();
-            case TAG_RECORD -> new Value.RecordVal(in.readMap(ValueSerialization::readValue));
+            case TAG_RECORD -> new Value.RecordVal(in.readMap(stream -> readValue(stream, ctx)));
             case TAG_CLOSURE -> {
+                boolean isDefinition = in.readBoolean();
+                int id = in.readVInt();
+                if (isDefinition == false) {
+                    var existing = ctx.closures.get(id);
+                    if (existing == null) {
+                        throw new IOException("unknown closure reference id: " + id);
+                    }
+                    yield existing;
+                }
+
                 var body = CoreExprSerialization.readCoreExpr(in);
                 int envLen = in.readVInt();
                 var env = new Value[envLen];
-                for (int i = 0; i < envLen; i++) {
-                    env[i] = readValue(in);
+                var closure = new Value.ClosureVal(body, env);
+                var previous = ctx.closures.put(id, closure);
+                if (previous != null) {
+                    throw new IOException("duplicate closure definition id: " + id);
                 }
-                yield new Value.ClosureVal(body, env);
+                for (int i = 0; i < envLen; i++) {
+                    env[i] = readValue(in, ctx);
+                }
+                yield closure;
             }
             case TAG_BUILTIN -> {
                 var name = in.readString();
                 var arity = in.readVInt();
-                var partialArgs = in.readCollectionAsList(ValueSerialization::readValue);
+                var partialArgs = in.readCollectionAsList(stream -> readValue(stream, ctx));
                 yield new Value.BuiltinVal(name, arity, partialArgs);
             }
-            case TAG_LIST -> new Value.ListVal(in.readCollectionAsList(ValueSerialization::readValue));
+            case TAG_LIST -> new Value.ListVal(in.readCollectionAsList(stream -> readValue(stream, ctx)));
             case TAG_CHANNEL -> new Value.ChannelVal(in.readString(), in.readString());
             case TAG_INDEX -> {
                 var name = in.readString();

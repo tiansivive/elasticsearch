@@ -18,11 +18,13 @@ import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
+import org.elasticsearch.xpack.piescript.core.CoreLoop;
 import org.elasticsearch.xpack.piescript.core.CoreMatch;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreQueryExec;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
+import org.elasticsearch.xpack.piescript.core.CoreRepeat;
 import org.elasticsearch.xpack.piescript.core.CoreSend;
 import org.elasticsearch.xpack.piescript.core.CoreSpawn;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
@@ -30,6 +32,7 @@ import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
 import org.elasticsearch.xpack.piescript.core.CoreUpdate;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.core.CoreWhen;
+import org.elasticsearch.xpack.piescript.core.Pattern;
 import org.elasticsearch.xpack.piescript.eval.Value;
 import org.elasticsearch.xpack.piescript.eval.ValueSerialization;
 import org.elasticsearch.xpack.piescript.types.LitVal;
@@ -39,10 +42,12 @@ import org.elasticsearch.xpack.piescript.types.TypeSerialization;
 import org.elasticsearch.xpack.piescript.types.Types;
 
 import java.io.IOException;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.elasticsearch.xpack.piescript.core.Exprs.add;
+import static org.elasticsearch.xpack.piescript.core.Exprs.arm;
 import static org.elasticsearch.xpack.piescript.core.Exprs.app;
 import static org.elasticsearch.xpack.piescript.core.Exprs.binding;
 import static org.elasticsearch.xpack.piescript.core.Exprs.field;
@@ -50,8 +55,10 @@ import static org.elasticsearch.xpack.piescript.core.Exprs.free;
 import static org.elasticsearch.xpack.piescript.core.Exprs.lam;
 import static org.elasticsearch.xpack.piescript.core.Exprs.let;
 import static org.elasticsearch.xpack.piescript.core.Exprs.lit;
+import static org.elasticsearch.xpack.piescript.core.Exprs.loop;
 import static org.elasticsearch.xpack.piescript.core.Exprs.proj;
 import static org.elasticsearch.xpack.piescript.core.Exprs.rec;
+import static org.elasticsearch.xpack.piescript.core.Exprs.repeat;
 import static org.elasticsearch.xpack.piescript.core.Exprs.send;
 import static org.elasticsearch.xpack.piescript.core.Exprs.spawn;
 import static org.elasticsearch.xpack.piescript.core.Exprs.spawnBang;
@@ -251,6 +258,20 @@ public class SerializationRoundTripTests extends ESTestCase {
         assertCoreExprRoundTrip(let("x", inner, var(0, "x", INTEGER)));
     }
 
+    public void testCoreLoop() throws IOException {
+        var step = repeat(add(var(0, "n", Types.DOUBLE), lit(1)));
+        var expr = loop(
+            lit(0),
+            arm(new Pattern.LitPat(new LitVal.DoubleLit(10)), lit("done")),
+            arm(new Pattern.VarPat("n", Types.DOUBLE), step)
+        );
+        assertCoreExprRoundTrip(expr);
+    }
+
+    public void testCoreRepeat() throws IOException {
+        assertCoreExprRoundTrip(repeat(lit(1)));
+    }
+
     // ──── Value ────
 
     public void testValueInteger() throws IOException {
@@ -275,6 +296,14 @@ public class SerializationRoundTripTests extends ESTestCase {
 
     public void testValueNull() throws IOException {
         assertValueRoundTrip(nullVal());
+    }
+
+    public void testValueRepeatNotSerializable() {
+        var ex = expectThrows(IOException.class, () -> {
+            var out = new BytesStreamOutput();
+            ValueSerialization.writeValue(out, new Value.RepeatVal(intVal(1)));
+        });
+        assertThat(ex.getMessage(), containsString("not serializable"));
     }
 
     public void testValueRecord() throws IOException {
@@ -329,6 +358,41 @@ public class SerializationRoundTripTests extends ESTestCase {
         var innerClosure = closure(var(0, "y", INTEGER), intVal(1));
         var outerBody = app(var(0, "f", arrow(INTEGER, INTEGER)), var(1, "x", INTEGER));
         assertValueRoundTrip(closure(outerBody, innerClosure, intVal(2)));
+    }
+
+    public void testValueClosureSelfCycleRoundTrip() throws IOException {
+        var env = new Value[1];
+        var cyclic = new Value.ClosureVal(lit(1), env);
+        env[0] = cyclic;
+
+        var out = new BytesStreamOutput();
+        ValueSerialization.writeValue(out, cyclic);
+        var in = out.bytes().streamInput();
+        var result = ValueSerialization.readValue(in);
+
+        assertTrue(result instanceof Value.ClosureVal);
+        var closure = (Value.ClosureVal) result;
+        assertSame(closure, closure.env()[0]);
+    }
+
+    public void testValueClosureMutualCycleRoundTrip() throws IOException {
+        var envA = new Value[1];
+        var envB = new Value[1];
+        var a = new Value.ClosureVal(lit(1), envA);
+        var b = new Value.ClosureVal(lit(2), envB);
+        envA[0] = b;
+        envB[0] = a;
+
+        var out = new BytesStreamOutput();
+        ValueSerialization.writeValue(out, a);
+        var in = out.bytes().streamInput();
+        var result = ValueSerialization.readValue(in);
+
+        assertTrue(result instanceof Value.ClosureVal);
+        var a2 = (Value.ClosureVal) result;
+        assertTrue(a2.env()[0] instanceof Value.ClosureVal);
+        var b2 = (Value.ClosureVal) a2.env()[0];
+        assertSame(a2, b2.env()[0]);
     }
 
     public void testValueChannelInClosureEnv() throws IOException {
@@ -551,6 +615,19 @@ public class SerializationRoundTripTests extends ESTestCase {
                     assertCoreExprEquals(e.arms().get(i).body(), a.arms().get(i).body());
                 }
             }
+            case CoreLoop e -> {
+                var a = (CoreLoop) actual;
+                assertCoreExprEquals(e.init(), a.init());
+                assertEquals(e.arms().size(), a.arms().size());
+                for (int i = 0; i < e.arms().size(); i++) {
+                    assertEquals(e.arms().get(i).pattern(), a.arms().get(i).pattern());
+                    assertCoreExprEquals(e.arms().get(i).body(), a.arms().get(i).body());
+                }
+            }
+            case CoreRepeat e -> {
+                var a = (CoreRepeat) actual;
+                assertCoreExprEquals(e.expr(), a.expr());
+            }
         }
     }
 
@@ -559,6 +636,29 @@ public class SerializationRoundTripTests extends ESTestCase {
      * structurally and env element-by-element.
      */
     private void assertValueEquals(Value expected, Value actual) {
+        assertValueEquals(expected, actual, new IdentityHashMap<>(), new IdentityHashMap<>());
+    }
+
+    private void assertValueEquals(
+        Value expected,
+        Value actual,
+        IdentityHashMap<Value, Value> expectedToActual,
+        IdentityHashMap<Value, Value> actualToExpected
+    ) {
+        var knownActual = expectedToActual.get(expected);
+        if (knownActual != null) {
+            assertSame(knownActual, actual);
+            return;
+        }
+        var knownExpected = actualToExpected.get(actual);
+        if (knownExpected != null) {
+            assertSame(knownExpected, expected);
+            return;
+        }
+
+        expectedToActual.put(expected, actual);
+        actualToExpected.put(actual, expected);
+
         assertEquals(expected.getClass(), actual.getClass());
         switch (expected) {
             case Value.IntegerVal e -> assertEquals(e.value(), ((Value.IntegerVal) actual).value());
@@ -568,18 +668,19 @@ public class SerializationRoundTripTests extends ESTestCase {
             case Value.BooleanVal e -> assertEquals(e.value(), ((Value.BooleanVal) actual).value());
             case Value.NullVal ignored -> {
             }
+            case Value.RepeatVal ignored -> fail("RepeatVal should not be serialized");
             case Value.RecordVal e -> {
                 var a = (Value.RecordVal) actual;
                 assertEquals(e.fields().keySet(), a.fields().keySet());
                 for (var key : e.fields().keySet()) {
-                    assertValueEquals(e.fields().get(key), a.fields().get(key));
+                    assertValueEquals(e.fields().get(key), a.fields().get(key), expectedToActual, actualToExpected);
                 }
             }
             case Value.ListVal e -> {
                 var a = (Value.ListVal) actual;
                 assertEquals(e.elements().size(), a.elements().size());
                 for (int i = 0; i < e.elements().size(); i++) {
-                    assertValueEquals(e.elements().get(i), a.elements().get(i));
+                    assertValueEquals(e.elements().get(i), a.elements().get(i), expectedToActual, actualToExpected);
                 }
             }
             case Value.ClosureVal e -> {
@@ -587,7 +688,7 @@ public class SerializationRoundTripTests extends ESTestCase {
                 assertCoreExprEquals(e.body(), a.body());
                 assertEquals(e.env().length, a.env().length);
                 for (int i = 0; i < e.env().length; i++) {
-                    assertValueEquals(e.env()[i], a.env()[i]);
+                    assertValueEquals(e.env()[i], a.env()[i], expectedToActual, actualToExpected);
                 }
             }
             case Value.BuiltinVal e -> {
@@ -596,7 +697,7 @@ public class SerializationRoundTripTests extends ESTestCase {
                 assertEquals(e.arity(), a.arity());
                 assertEquals(e.partialArgs().size(), a.partialArgs().size());
                 for (int i = 0; i < e.partialArgs().size(); i++) {
-                    assertValueEquals(e.partialArgs().get(i), a.partialArgs().get(i));
+                    assertValueEquals(e.partialArgs().get(i), a.partialArgs().get(i), expectedToActual, actualToExpected);
                 }
             }
             case Value.ChannelVal e -> {

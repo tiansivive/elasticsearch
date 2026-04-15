@@ -18,8 +18,10 @@ import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreMatch;
+import org.elasticsearch.xpack.piescript.core.CoreLoop;
 import org.elasticsearch.xpack.piescript.core.Pattern;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
+import org.elasticsearch.xpack.piescript.core.CoreRepeat;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
@@ -164,6 +166,50 @@ public class ElaboratorTests extends ESTestCase {
     public void testLetShadowing() {
         var result = elaborate("let x = 1 in let x = true in x");
         assertThat(resolveType(result), is(BOOLEAN));
+    }
+
+    public void testRecursiveLetFunction() {
+        var result = elaborate("let f = fn n -> match n | 0 -> 1 | n -> n * f (n - 1) in f");
+        assertThat(resolveType(result), is(new MonoType.Arrow(DOUBLE, DOUBLE)));
+    }
+
+    public void testUnguardedRecursiveLetRejected() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("let x = x + 1 in x"));
+        assertThat(ex.getMessage(), containsString("cannot reference itself outside a function body"));
+    }
+
+    // ──── Loop / Repeat (Recursion Phase 1) ────
+
+    public void testLoopElaboratesToCoreLoop() {
+        var result = elaborate("loop 0 | 10 -> \"done\" | n -> repeat (n + 1)");
+        assertThat(result, instanceOf(CoreLoop.class));
+        assertThat(resolveType(result), is(KEYWORD));
+
+        var loop = (CoreLoop) result;
+        assertThat(loop.arms().get(1).body(), instanceOf(CoreRepeat.class));
+    }
+
+    public void testRepeatOutsideLoopRejected() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("repeat 1"));
+        assertThat(ex.getMessage(), containsString("inside a loop"));
+    }
+
+    public void testLoopRepeatStateTypeMismatchRejected() {
+        var ex = expectThrows(ElaborationException.class, () -> elaborate("loop 0 | n -> repeat true"));
+        assertThat(ex.getMessage(), containsString("type mismatch"));
+    }
+
+    public void testLoopRecordAccumulatorType() {
+        var result = elaborate("loop { acc: 0, n: 5 } | { acc, n: 0 } -> acc | { acc, n } -> repeat { acc: acc + n, n: n - 1 }");
+        assertThat(resolveType(result), is(DOUBLE));
+    }
+
+    public void testLoopNestedMatchMixedTypeBranchesRejected() {
+        var ex = expectThrows(
+            ElaborationException.class,
+            () -> elaborate("loop 0 | n -> match (n > 10) | true -> \"done\" | false -> repeat (n + 1)")
+        );
+        assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
     // ──── Top-level bindings ────

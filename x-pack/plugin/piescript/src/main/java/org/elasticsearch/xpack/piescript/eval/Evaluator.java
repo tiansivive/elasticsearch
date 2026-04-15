@@ -25,11 +25,13 @@ import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreList;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
+import org.elasticsearch.xpack.piescript.core.CoreLoop;
 import org.elasticsearch.xpack.piescript.core.CoreMatch;
 import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
 import org.elasticsearch.xpack.piescript.core.CoreQueryExec;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
+import org.elasticsearch.xpack.piescript.core.CoreRepeat;
 import org.elasticsearch.xpack.piescript.core.CoreSend;
 import org.elasticsearch.xpack.piescript.core.CoreSpawn;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
@@ -37,6 +39,7 @@ import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
 import org.elasticsearch.xpack.piescript.core.CoreUpdate;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.core.CoreWhen;
+import org.elasticsearch.xpack.piescript.core.Alternative;
 import org.elasticsearch.xpack.piescript.elab.Prelude;
 import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.MonoType;
@@ -53,8 +56,8 @@ import java.util.List;
  *
  * <p>Uses a de Bruijn environment machine: the environment is a {@code Value[]}
  * indexed by de Bruijn index, with position 0 being the most recently bound
- * variable (D-024). Environment arrays are immutable by convention — {@code prepend}
- * always allocates a new array.
+ * variable (D-024). {@code prepend} always allocates a new array; recursive
+ * let evaluation mutates only slot 0 of a freshly prepended array to tie the knot.
  *
  * <p>The evaluator trusts the type checker (D-025): where a specific
  * {@link Value} variant is required (closure for application, record for
@@ -95,7 +98,7 @@ public final class Evaluator {
                 listener.onResponse(new Value.BuiltinVal(free.name(), arity, List.of()));
             }
 
-            case CoreLam lam -> listener.onResponse(new Value.ClosureVal(lam.body(), env.clone()));
+            case CoreLam lam -> listener.onResponse(new Value.ClosureVal(lam.body(), env));
 
             case CoreApp app -> evaluate(
                 app.fn(),
@@ -105,11 +108,17 @@ public final class Evaluator {
                 )
             );
 
-            case CoreLet let -> evaluate(
-                let.rhs(),
-                env,
-                listener.delegateFailureAndWrap((l, rhsVal) -> evaluate(let.body(), prepend(rhsVal, env), l))
-            );
+            case CoreLet let -> {
+                var recEnv = prepend(new Value.NullVal(), env);
+                evaluate(
+                    let.rhs(),
+                    recEnv,
+                    listener.delegateFailureAndWrap((l, rhsVal) -> {
+                        recEnv[0] = rhsVal;
+                        evaluate(let.body(), recEnv, l);
+                    })
+                );
+            }
 
             case CoreRecord rec -> evaluateRecord(rec, env, listener);
 
@@ -177,6 +186,18 @@ public final class Evaluator {
             case CoreWhen when -> EvalCoordination.evaluateWhen(this, when, env, listener);
 
             case CoreMatch match -> EvalMatch.evaluateMatch(match, env, this, listener);
+
+            case CoreLoop loop -> evaluate(
+                loop.init(),
+                env,
+                listener.delegateFailureAndWrap((l, initVal) -> evaluateLoop(loop.arms(), env, initVal, l))
+            );
+
+            case CoreRepeat repeat -> evaluate(
+                repeat.expr(),
+                env,
+                listener.delegateFailureAndWrap((l, newState) -> l.onResponse(new Value.RepeatVal(newState)))
+            );
 
             case CoreQueryExec qe -> evaluate(qe.plan(), env, listener.delegateFailureAndWrap((l, result) -> {
                 if (result instanceof Value.Symbol sym) {
@@ -293,6 +314,17 @@ public final class Evaluator {
             fields.put(field.label(), val);
             evaluateUpdateFields(updates, index + 1, env, fields, l);
         }));
+    }
+
+    private void evaluateLoop(List<Alternative> arms, Value[] outerEnv, Value state, ActionListener<Value> listener) {
+        EvalMatch.matchArms(this, arms, outerEnv, state, ActionListener.wrap(result -> {
+            if (result instanceof Value.RepeatVal repeat) {
+                // Schedule the next iteration on the executor for stack safety.
+                deps.executor().execute(() -> evaluateLoop(arms, outerEnv, repeat.newState(), listener));
+            } else {
+                listener.onResponse(result);
+            }
+        }, listener::onFailure));
     }
 
     // ──── Literals ────

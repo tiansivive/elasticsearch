@@ -37,6 +37,13 @@ public sealed interface Value {
 
     record NullVal() implements Value {}
 
+    /**
+     * Loop step marker produced by evaluating {@code repeat expr}.
+     * Only loop evaluation should consume this value; reaching any other
+     * consumer indicates a type-checking bug.
+     */
+    record RepeatVal(Value newState) implements Value {}
+
     record RecordVal(Map<String, Value> fields) implements Value {}
 
     /**

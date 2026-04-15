@@ -43,6 +43,7 @@ public final class Types {
     public static final MonoType BOOLEAN = new MonoType.TCon("Boolean");
     public static final MonoType NULL = new MonoType.TCon("Null");
     public static final MonoType LIST = new MonoType.TCon("List");
+    public static final MonoType REPEAT = new MonoType.TCon("Repeat");
     public static final MonoType CHANNEL = new MonoType.TCon("Channel");
     public static final MonoType DATETIME = new MonoType.TCon("DateTime");
     public static final MonoType UNSIGNED_LONG = new MonoType.TCon("UnsignedLong");
@@ -74,6 +75,11 @@ public final class Types {
     /** Type application: {@code Channel τ}. */
     public static MonoType.AppType channel(MonoType element) {
         return new MonoType.AppType(CHANNEL, element);
+    }
+
+    /** Type application: {@code Repeat τ}. */
+    public static MonoType.AppType repeat(MonoType element) {
+        return new MonoType.AppType(REPEAT, element);
     }
 
     /** Unsolved type metavariable with kind {@code Type}. */
