@@ -9,12 +9,12 @@ and follow any links they contain recursively until you have a complete picture 
 2. **[docs/current-state.md](docs/current-state.md)** — what's implemented now, known limitations
 3. **[docs/architecture.md](docs/architecture.md)** — system design, Core IR, async evaluator, channels
 4. **[docs/decisions.md](docs/decisions.md)** — architectural decisions and rationale (55 ADRs — check before suggesting alternatives)
-5. **Meta zettels** — read ALL zettels tagged `meta` (workflow, conventions, tag vocabulary). These define how the design space works. Run `./scripts/catalog.py meta` to find them.
-6. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
-7. **[docs/design-space/index.md](docs/design-space/index.md)** — tagged knowledge base of the full design landscape
-8. **Design space catalog** — run `./scripts/catalog.py --compact` to scan all 200+ tracked design topics
+5. **Meta zettels** — read ALL zettels tagged `meta` (workflow, conventions, tag vocabulary). These define how the design space works. Run `python3 docs/design-space/scripts/catalog.py meta` to find them.
+6. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 docs/design-space/scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
+7. **[docs/design-space/index.md](docs/design-space/index.md)** — tagged knowledge base of the full design landscape (~491 zettels)
+8. **Design space catalog** — run `python3 docs/design-space/scripts/catalog.py --compact` to scan all tracked design topics
 9. **Thread** — read `docs/design-space/thread.md` for the paper trail of prior work
-10. **Queue** — run `./scripts/queue.py` for all pending items, or check `docs/design-space/zettels/global-pending.queue.md` directly
+10. **Queue** — run `python3 docs/design-space/scripts/queue.py` for all pending items, or check `docs/design-space/zettels/global-pending.queue.md` directly
 11. **Implementation plan workflow** — read [[implementation-plan-workflow.meta]] before creating or executing work from `.cursor/plans/`. Copy `_TEMPLATE.plan.md` for new plans ([[cursor-plan-template.meta]]). Cursor: use the skill `.cursor/skills/create-plan/SKILL.md` (symlink to `.claude/skills/create-plan/SKILL.md`) for the imperative checklist (zettels, queue, thread, session zettel, debug scripts, docs, review stops). At plan end: **reconcile** zettelkasten to shipped code/docs and **confirm** any new zettels with the user before creating them.
 
 If any of these files link to other documents (vision, data-access, references, plans, etc.),
@@ -67,6 +67,9 @@ Detailed step-by-step plans live in [.cursor/plans/](.cursor/plans/). **Workflow
 | `block_f_linq_query_e7171607` | Block F: T-LINQ ESQL query compilation (NbE Symbol-based) |
 | `f-omega_type_system_09acfb27` | F-omega type system: kinds-as-types, `force` normalizer, `&`/`Pick`/`Omit`, `ESQL.stats` |
 | `compute_engine_streaming_f5db78f2` | Block G: compute engine streaming (Pages, Exchange, materialization) |
+| `compute_engine_zettels_8b517c82` | Block G follow-up zettels |
+| `pattern_matching_phase_1_6fd754ed` | Pattern matching Phase 1 (literals, vars, wildcards, records, lists) |
+| `recursion_phase1` | Implicit recursion + fused `loop`/`repeat` |
 
 ## Build & Test
 

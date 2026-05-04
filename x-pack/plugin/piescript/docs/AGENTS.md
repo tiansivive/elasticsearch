@@ -18,7 +18,7 @@ as closures — safe because the language is pure and referentially transparent.
 | Doc | What it covers |
 |-----|---------------|
 | [vision.md](vision.md) | Long-term goals, Join Calculus coordination model, design philosophy, non-goals |
-| [design-space/thread.md](design-space/thread.md) | Forward-looking roadmap via thread hub zettels (tagged `thread`); run `python3 ../scripts/roadmap_status.py` to see all threads |
+| [design-space/thread.md](design-space/thread.md) | Forward-looking roadmap via thread hub zettels (tagged `thread`); run `python3 design-space/scripts/roadmap_status.py` to see all threads |
 | [current-state.md](current-state.md) | What works **right now**, known limitations, immediate next steps |
 | [architecture.md](architecture.md) | System design, Core IR, async evaluator, channel-based coordination |
 | [archive/data-access.pre-threads.md](archive/data-access.pre-threads.md) | `Query a` typeclass, levels of control (ESQL/ShardPlan/LuceneM), use cases, comparable systems (archived — see [[data-access-architecture.roadmap]]) |
@@ -37,8 +37,8 @@ as closures — safe because the language is pure and referentially transparent.
    reference the existing decision and explain why.
 
 3. **Check thread hub zettels for phase boundaries.** Work should align with active threads
-   (run `python3 scripts/roadmap_status.py`). If a feature belongs to a future thread, flag it
-   as out-of-scope rather than implementing it.
+   (run `python3 docs/design-space/scripts/roadmap_status.py`). If a feature belongs to a future
+   thread, flag it as out-of-scope rather than implementing it.
 
 4. **Keep these docs updated.** When you implement something, update `current-state.md` and
    the relevant thread hub zettels. When you make a non-trivial design decision, add it to
@@ -196,6 +196,9 @@ driving plan creation or execution.
 | `block_f_linq_query_e7171607` | Block F: T-LINQ ESQL query compilation (NbE Symbol-based) |
 | `f-omega_type_system_09acfb27` | F-omega type system: kinds-as-types, `force` normalizer, `&`/`Pick`/`Omit`, `ESQL.stats` |
 | `compute_engine_streaming_f5db78f2` | Block G: compute engine streaming (Pages, Exchange, materialization) |
+| `compute_engine_zettels_8b517c82` | Block G follow-up zettels |
+| `pattern_matching_phase_1_6fd754ed` | Pattern matching Phase 1 (literals, vars, wildcards, records, lists) |
+| `recursion_phase1` | Implicit recursion + fused `loop`/`repeat` |
 
 ## Chat History Reference
 
@@ -267,25 +270,29 @@ landscape. See [design-space/index.md](design-space/index.md) for the format spe
 **Catalog script** — run to get a scannable overview of all tracked design topics:
 
 ```bash
-./scripts/catalog.py --compact    # one line per zettel: title, file, tags
-./scripts/catalog.py              # full: frontmatter + description + connections
-./scripts/catalog.py types        # filter by tag or keyword
+python3 docs/design-space/scripts/catalog.py --compact    # one line per zettel: title, file, tags
+python3 docs/design-space/scripts/catalog.py              # full: frontmatter + description + connections
+python3 docs/design-space/scripts/catalog.py types        # filter by tag or keyword
 ```
+
+Pre-built outputs of the catalog/queue/roadmap/ADR-index scripts are checked into
+`docs/design-space/dist/` (regenerated on every push).
 
 When creating or editing zettels, follow the format specification and naming conventions
 established in [design-space/index.md](design-space/index.md).
 
 **Agent responsibilities — on session start:**
 
-1. **Read all meta zettels** (`./scripts/catalog.py meta`). These define how the design space
-   works: workflow conventions, tag vocabulary, the design-to-implementation pipeline. See
-   [[design-to-implementation.meta]] for the full workflow.
+1. **Read all meta zettels** (`python3 docs/design-space/scripts/catalog.py meta`). These define
+   how the design space works: workflow conventions, tag vocabulary, the design-to-implementation
+   pipeline. See [[design-to-implementation.meta]] for the full workflow.
 
 **Agent responsibilities — lookup workflow:**
 
 Before doing any design work, implementation, or proposing changes:
 
-1. **Scan the catalog** (`./scripts/catalog.py --compact`) to see what's tracked.
+1. **Scan the catalog** (`python3 docs/design-space/scripts/catalog.py --compact`) to see what's
+   tracked.
 2. **Read relevant zettels** — open the specific `.md` files for topics related to your work.
 3. **Follow connections** — each zettel has `Depends on`, `Enables`, and `Connections` edges
    linking to other zettels via `[[name]]`. Read linked zettels to understand the full context
