@@ -108,6 +108,7 @@ public final class IndexResolutionPrePass {
             false,
             false,
             false,
+            false,
             indicesExpressionGrouper,
             listener.delegateFailureAndWrap((l, versioned) -> {
                 var resolution = versioned.inner();
@@ -116,7 +117,7 @@ public final class IndexResolutionPrePass {
                     return;
                 }
                 var esIndex = resolution.get();
-                l.onResponse(new ResolvedMapping(indexPattern, esIndex.mapping(), esIndex.partiallyUnmappedFields()));
+                l.onResponse(new ResolvedMapping(indexPattern, esIndex.mapping(), esIndex.fieldToUnmappedIndices().keySet()));
             })
         );
     }
