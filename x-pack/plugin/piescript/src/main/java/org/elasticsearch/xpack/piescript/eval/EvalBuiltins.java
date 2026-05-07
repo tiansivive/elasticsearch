@@ -73,6 +73,14 @@ final class EvalBuiltins {
                     listener.onResponse(elems.get(idx));
                 }
             }
+            case "List.concat" -> {
+                var left = requireList(args.get(0), name).elements();
+                var right = requireList(args.get(1), name).elements();
+                var merged = new java.util.ArrayList<Value>(left.size() + right.size());
+                merged.addAll(left);
+                merged.addAll(right);
+                listener.onResponse(new Value.ListVal(merged));
+            }
             case "Math.abs" -> listener.onResponse(new Value.DoubleVal(Math.abs(requireDouble(args.get(0), name))));
             case "Math.floor" -> listener.onResponse(new Value.DoubleVal(Math.floor(requireDouble(args.get(0), name))));
             case "Math.ceil" -> listener.onResponse(new Value.DoubleVal(Math.ceil(requireDouble(args.get(0), name))));

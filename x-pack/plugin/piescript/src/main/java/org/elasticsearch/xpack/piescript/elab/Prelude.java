@@ -39,6 +39,7 @@ import static java.util.Map.entry;
  *   List.length   : ∀a. List a → Double
  *   List.isEmpty  : ∀a. List a → Boolean
  *   List.at       : ∀a. Double → List a → a
+ *   List.concat   : ∀a. List a → List a → List a
  *   Math.abs      : Double → Double
  *   Math.floor    : Double → Double
  *   Math.ceil     : Double → Double
@@ -150,6 +151,7 @@ public final class Prelude {
         entry("List.length", 1),
         entry("List.isEmpty", 1),
         entry("List.at", 2),
+        entry("List.concat", 2),
         entry("Math.abs", 1),
         entry("Math.floor", 1),
         entry("Math.ceil", 1),
@@ -214,6 +216,7 @@ public final class Prelude {
         module.put("List.length", listToDouble());     // ∀a. List a → Double
         module.put("List.isEmpty", listToBool());     // ∀a. List a → Boolean
         module.put("List.at", listAtScheme());        // ∀a. Double → List a → a
+        module.put("List.concat", listConcatScheme()); // ∀a. List a → List a → List a
         module.put("Math.abs", dblToDbl());
         module.put("Math.floor", dblToDbl());
         module.put("Math.ceil", dblToDbl());
@@ -412,6 +415,13 @@ public final class Prelude {
         var quantified = new LinkedHashMap<Integer, MonoType>();
         quantified.put(A0.id(), Types.TYPE);
         return new TypeScheme(quantified, new MonoType.Arrow(DBL, new MonoType.Arrow(list(A0), A0)));
+    }
+
+    // concat : ∀a. List a → List a → List a (left ++ right)
+    private static TypeScheme listConcatScheme() {
+        var quantified = new LinkedHashMap<Integer, MonoType>();
+        quantified.put(A0.id(), Types.TYPE);
+        return new TypeScheme(quantified, new MonoType.Arrow(list(A0), new MonoType.Arrow(list(A0), list(A0))));
     }
 
     // Shard.open : ∀(r:Row). Index r → ShardRecord → { match_all: Boolean } → Channel (Searcher r)
