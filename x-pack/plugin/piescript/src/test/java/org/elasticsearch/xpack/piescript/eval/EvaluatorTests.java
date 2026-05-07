@@ -894,6 +894,39 @@ public class EvaluatorTests extends ESTestCase {
         assertThat(result, is(new Value.BooleanVal(true)));
     }
 
+    public void testConcatJoinsTwoLists() {
+        var result = evaluate("List.concat [1, 2] [3, 4]");
+        assertThat(result, instanceOf(Value.ListVal.class));
+        var elements = ((Value.ListVal) result).elements();
+        assertThat(elements.size(), is(4));
+        assertThat(elements.get(0), is(new Value.DoubleVal(1)));
+        assertThat(elements.get(1), is(new Value.DoubleVal(2)));
+        assertThat(elements.get(2), is(new Value.DoubleVal(3)));
+        assertThat(elements.get(3), is(new Value.DoubleVal(4)));
+    }
+
+    public void testConcatWithEmptyLeft() {
+        var result = evaluate("List.concat [] [1, 2]");
+        assertThat(result, instanceOf(Value.ListVal.class));
+        var elements = ((Value.ListVal) result).elements();
+        assertThat(elements.size(), is(2));
+        assertThat(elements.get(0), is(new Value.DoubleVal(1)));
+    }
+
+    public void testConcatWithEmptyRight() {
+        var result = evaluate("List.concat [1, 2] []");
+        assertThat(result, instanceOf(Value.ListVal.class));
+        var elements = ((Value.ListVal) result).elements();
+        assertThat(elements.size(), is(2));
+        assertThat(elements.get(1), is(new Value.DoubleVal(2)));
+    }
+
+    public void testConcatBothEmpty() {
+        var result = evaluate("List.concat [] []");
+        assertThat(result, instanceOf(Value.ListVal.class));
+        assertThat(((Value.ListVal) result).elements().size(), is(0));
+    }
+
     public void testTopologyWithoutClusterServiceThrows() {
         var topologyFree = new CoreFree(SRC, "Cluster.topology", DBL);
         var fullExpr = new CoreApp(SRC, topologyFree, new CoreVar(SRC, 0, "arg", DBL), DBL);
