@@ -271,7 +271,7 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
             let shards = Index.shards idx;
             let shard = List.head shards;
             let topo = Cluster.topology "cluster";
-            
+
             let ch = spawn!;
             let u = send shard.node.inbox (fn info ->
               let exch = Exchange.open ["name", "score"] 1024.0 in
@@ -285,7 +285,7 @@ public class PiescriptMultiNodeIT extends ESRestTestCase {
                 send ch { node: info.name, exch: exch }
               in true
             );
-            
+
             when (ch producerResult) ->
               let source = Exchange.connect producerResult.exch in
               let countCh = spawn! in

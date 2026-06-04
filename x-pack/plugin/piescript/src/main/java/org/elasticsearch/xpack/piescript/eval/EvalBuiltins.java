@@ -142,12 +142,7 @@ final class EvalBuiltins {
                 requirePageVal(args.get(1), name),
                 listener
             );
-            case "Exchange.poll" -> EvalExchange.poll(
-                eval,
-                requireExchangeSourceVal(args.get(0), name),
-                args.get(1),
-                listener
-            );
+            case "Exchange.poll" -> EvalExchange.poll(eval, requireExchangeSourceVal(args.get(0), name), args.get(1), listener);
             case "Exchange.finish" -> EvalExchange.finish(requireExchangeSinkVal(args.get(0), name), listener);
             case "Shard.writer" -> EvalWrite.writer(eval, requireIndexVal(args.get(0), name), requireRecord(args.get(1), name), listener);
             case "Shard.write" -> {

@@ -10,7 +10,6 @@ package org.elasticsearch.xpack.piescript.elab;
 import org.elasticsearch.xpack.esql.core.type.EsField;
 
 import java.util.Map;
-import java.util.Set;
 
 /**
  * A resolved index mapping produced by the index resolution pre-pass.
@@ -26,7 +25,5 @@ import java.util.Set;
  * @param fieldMap merged field mapping from {@code EsIndex.mapping()};
  *                 keys are top-level field names, values contain type info
  *                 and nested properties
- * @param partiallyUnmappedFields fields that exist in some but not all concrete
- *                                indices matching the pattern
  */
-public record ResolvedMapping(String indexPattern, Map<String, EsField> fieldMap, Set<String> partiallyUnmappedFields) {}
+public record ResolvedMapping(String indexPattern, Map<String, EsField> fieldMap) {}

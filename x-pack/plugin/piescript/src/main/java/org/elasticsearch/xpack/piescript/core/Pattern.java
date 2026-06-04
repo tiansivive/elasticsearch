@@ -20,9 +20,8 @@ import java.util.Map;
  * <p>Phase 1 implements basic patterns (literals, variables, wildcards, records, lists).
  * Constructor patterns (for ADTs) are deferred to a future phase.
  */
-public sealed interface Pattern permits
-    Pattern.LitPat, Pattern.VarPat, Pattern.WildcardPat,
-    Pattern.RecordPat, Pattern.ListPat, Pattern.ConsListPat {
+public sealed interface Pattern permits Pattern.LitPat, Pattern.VarPat, Pattern.WildcardPat, Pattern.RecordPat, Pattern.ListPat,
+    Pattern.ConsListPat {
 
     /** Matches a specific literal value (e.g., {@code 42}, {@code "hello"}, {@code true}). */
     record LitPat(LitVal value) implements Pattern {}

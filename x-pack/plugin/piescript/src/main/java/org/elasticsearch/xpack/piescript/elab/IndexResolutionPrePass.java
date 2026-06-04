@@ -117,7 +117,7 @@ public final class IndexResolutionPrePass {
                     return;
                 }
                 var esIndex = resolution.get();
-                l.onResponse(new ResolvedMapping(indexPattern, esIndex.mapping(), esIndex.fieldToUnmappedIndices().keySet()));
+                l.onResponse(new ResolvedMapping(indexPattern, esIndex.mapping()));
             })
         );
     }

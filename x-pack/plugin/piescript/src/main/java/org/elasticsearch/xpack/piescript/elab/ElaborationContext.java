@@ -128,13 +128,10 @@ public final class ElaborationContext {
      * @return the lookup result, or empty if the name is not bound
      */
     public Optional<LookupResult> lookup(String name) {
-        return IntStream.range(0, bindings.size())
-            .filter(i -> bindings.get(i).name().equals(name))
-            .mapToObj(i -> {
-                var binding = bindings.get(i);
-                return new LookupResult(i, binding.scheme(), binding.underConstruction());
-            })
-            .findFirst();
+        return IntStream.range(0, bindings.size()).filter(i -> bindings.get(i).name().equals(name)).mapToObj(i -> {
+            var binding = bindings.get(i);
+            return new LookupResult(i, binding.scheme(), binding.underConstruction());
+        }).findFirst();
     }
 
     /**

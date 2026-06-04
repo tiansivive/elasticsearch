@@ -47,8 +47,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.elasticsearch.xpack.piescript.core.Exprs.add;
-import static org.elasticsearch.xpack.piescript.core.Exprs.arm;
 import static org.elasticsearch.xpack.piescript.core.Exprs.app;
+import static org.elasticsearch.xpack.piescript.core.Exprs.arm;
 import static org.elasticsearch.xpack.piescript.core.Exprs.binding;
 import static org.elasticsearch.xpack.piescript.core.Exprs.field;
 import static org.elasticsearch.xpack.piescript.core.Exprs.free;
