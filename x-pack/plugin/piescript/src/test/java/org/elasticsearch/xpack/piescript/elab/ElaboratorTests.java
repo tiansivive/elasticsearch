@@ -16,17 +16,17 @@ import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreLam;
 import org.elasticsearch.xpack.piescript.core.CoreLet;
 import org.elasticsearch.xpack.piescript.core.CoreLit;
-import org.elasticsearch.xpack.piescript.core.CorePrimOp;
-import org.elasticsearch.xpack.piescript.core.CoreMatch;
 import org.elasticsearch.xpack.piescript.core.CoreLoop;
-import org.elasticsearch.xpack.piescript.core.Pattern;
+import org.elasticsearch.xpack.piescript.core.CoreMatch;
+import org.elasticsearch.xpack.piescript.core.CorePrimOp;
 import org.elasticsearch.xpack.piescript.core.CoreProject;
-import org.elasticsearch.xpack.piescript.core.CoreRepeat;
 import org.elasticsearch.xpack.piescript.core.CoreRecord;
+import org.elasticsearch.xpack.piescript.core.CoreRepeat;
 import org.elasticsearch.xpack.piescript.core.CoreTypeAbs;
 import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
 import org.elasticsearch.xpack.piescript.core.CoreUpdate;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
+import org.elasticsearch.xpack.piescript.core.Pattern;
 import org.elasticsearch.xpack.piescript.parser.PiescriptParser;
 import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.MonoType;
@@ -34,7 +34,6 @@ import org.elasticsearch.xpack.piescript.types.Op;
 import org.elasticsearch.xpack.piescript.types.RowType;
 
 import java.util.Map;
-import java.util.Set;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
@@ -612,7 +611,6 @@ public class ElaboratorTests extends ESTestCase {
         assertThat(ex.getMessage(), containsString("type mismatch"));
     }
 
-
     public void testUpdateOnNonRecord() {
         var ex = expectThrows(ElaborationException.class, () -> elaborate("{ 42 | x = 1 }"));
         assertThat(ex.getMessage(), containsString("type mismatch"));
@@ -940,11 +938,7 @@ public class ElaboratorTests extends ESTestCase {
     // ──── use declarations and Block D types (D-050) ────
 
     public void testUseDeclarationProducesCoreLetWithIndexLit() {
-        var mapping = new ResolvedMapping(
-            "logs-test",
-            Map.of("status", field(DataType.INTEGER), "message", field(DataType.KEYWORD)),
-            Set.of()
-        );
+        var mapping = new ResolvedMapping("logs-test", Map.of("status", field(DataType.INTEGER), "message", field(DataType.KEYWORD)));
         var result = elaborateWithMappings("use \"logs-test\" as idx; idx", Map.of("logs-test", mapping));
         assertThat(result, instanceOf(CoreLet.class));
         var let = (CoreLet) result;
@@ -957,7 +951,7 @@ public class ElaboratorTests extends ESTestCase {
     }
 
     public void testUseDeclarationTypeIsIndexR() {
-        var mapping = new ResolvedMapping("logs-test", Map.of("user_name", field(DataType.KEYWORD), "age", field(DataType.LONG)), Set.of());
+        var mapping = new ResolvedMapping("logs-test", Map.of("user_name", field(DataType.KEYWORD), "age", field(DataType.LONG)));
         var result = elaborateWithMappings("use \"logs-test\" as idx; idx", Map.of("logs-test", mapping));
         var type = resolveType(result);
         assertThat(type, instanceOf(MonoType.AppType.class));
@@ -975,7 +969,7 @@ public class ElaboratorTests extends ESTestCase {
     }
 
     public void testUseDeclarationSkipsMetaFields() {
-        var mapping = new ResolvedMapping("test", Map.of("status", field(DataType.INTEGER), "_id", field(DataType.KEYWORD)), Set.of());
+        var mapping = new ResolvedMapping("test", Map.of("status", field(DataType.INTEGER), "_id", field(DataType.KEYWORD)));
         var result = elaborateWithMappings("use \"test\" as idx; idx", Map.of("test", mapping));
         var type = resolveType(result);
         var appType = (MonoType.AppType) type;

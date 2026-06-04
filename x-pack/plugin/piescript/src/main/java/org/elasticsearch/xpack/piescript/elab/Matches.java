@@ -69,12 +69,7 @@ final class Matches {
     /**
      * Elaborates a {@code match} expression in checking mode.
      */
-    static CoreExpr checkMatch(
-        PiescriptAntlrParser.MatchExprContext ctx,
-        MonoType expectedType,
-        ElaborationContext ectx,
-        Elaborator elab
-    ) {
+    static CoreExpr checkMatch(PiescriptAntlrParser.MatchExprContext ctx, MonoType expectedType, ElaborationContext ectx, Elaborator elab) {
         var src = Elaborator.source(ctx);
         var scrutinee = elab.elaborate(ctx.expr(), ectx);
 
@@ -93,7 +88,7 @@ final class Matches {
         for (var armCtx : armCtxs) {
             var src = Elaborator.source(armCtx);
             var patResult = inferPattern(armCtx.pattern(), ectx.bindingLevel(), elab.state, elab);
-            
+
             // The pattern type must unify with the scrutinee type
             elab.emitConstraint(scrutineeType, patResult.patType, src);
 
@@ -112,14 +107,10 @@ final class Matches {
     }
 
     record PatternResult(Pattern pat, MonoType patType, List<Binding> bindings) {}
+
     record Binding(String name, MonoType type) {}
 
-    static PatternResult inferPattern(
-        PiescriptAntlrParser.PatternContext ctx,
-        int bindingLevel,
-        ElaborationState state,
-        Elaborator elab
-    ) {
+    static PatternResult inferPattern(PiescriptAntlrParser.PatternContext ctx, int bindingLevel, ElaborationState state, Elaborator elab) {
         var bindings = new ArrayList<Binding>();
         var result = inferPatternRecursive(ctx, bindingLevel, state, elab, bindings);
         return new PatternResult(result.pat, result.type, bindings);
@@ -172,7 +163,7 @@ final class Matches {
                 for (var entry : sortedFields.entrySet()) {
                     String name = entry.getKey();
                     var fieldCtx = entry.getValue();
-                    
+
                     if (fieldCtx.LOWER_IDENT() != null) {
                         // Shorthand: `{ name }`
                         var meta = state.freshType(bindingLevel);

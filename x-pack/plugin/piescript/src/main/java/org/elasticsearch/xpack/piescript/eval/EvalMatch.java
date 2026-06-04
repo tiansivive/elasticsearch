@@ -35,10 +35,11 @@ final class EvalMatch {
      * variables in the environment and evaluates its body.
      */
     static void evaluateMatch(CoreMatch match, Value[] env, Evaluator eval, ActionListener<Value> listener) {
-        eval.evaluate(match.scrutinee(), env, ActionListener.wrap(
-            scrutineeVal -> matchArms(eval, match.arms(), env, scrutineeVal, listener),
-            listener::onFailure
-        ));
+        eval.evaluate(
+            match.scrutinee(),
+            env,
+            ActionListener.wrap(scrutineeVal -> matchArms(eval, match.arms(), env, scrutineeVal, listener), listener::onFailure)
+        );
     }
 
     /**
@@ -49,13 +50,10 @@ final class EvalMatch {
             .map(arm -> tryMatch(arm.pattern(), scrutineeVal).map(bindings -> Map.entry(arm, bindings)))
             .flatMap(Optional::stream)
             .findFirst()
-            .ifPresentOrElse(
-                matchResult -> {
-                    Value[] newEnv = extendEnv(env, matchResult.getValue());
-                    eval.evaluate(matchResult.getKey().body(), newEnv, listener);
-                },
-                () -> listener.onFailure(new EvaluationException("No match for value: " + scrutineeVal))
-            );
+            .ifPresentOrElse(matchResult -> {
+                Value[] newEnv = extendEnv(env, matchResult.getValue());
+                eval.evaluate(matchResult.getKey().body(), newEnv, listener);
+            }, () -> listener.onFailure(new EvaluationException("No match for value: " + scrutineeVal)));
     }
 
     /**
@@ -72,70 +70,70 @@ final class EvalMatch {
     private static boolean matchRecursive(Pattern pattern, Value value, List<Value> bindings) {
         return switch (pattern) {
             case Pattern.LitPat litPat -> matchLiteral(litPat, value);
-            
+
             case Pattern.VarPat varPat -> {
                 bindings.add(value);
                 yield true;
             }
-            
+
             case Pattern.WildcardPat wildcardPat -> true;
-            
+
             case Pattern.RecordPat recordPat -> {
                 if (!(value instanceof Value.RecordVal recordVal)) {
                     yield false;
                 }
-                
+
                 var recordFields = recordVal.fields();
-                
+
                 // Record patterns bind fields in alphabetical order of field names
                 var sortedFields = new TreeMap<>(recordPat.fields());
-                
+
                 boolean allMatch = sortedFields.entrySet().stream().allMatch(entry -> {
                     Value fieldValue = recordFields.get(entry.getKey());
                     return fieldValue != null && matchRecursive(entry.getValue(), fieldValue, bindings);
                 });
-                
+
                 if (!allMatch) {
                     yield false;
                 }
-                
+
                 if (recordPat.hasTail()) {
                     // Extract the remaining fields into a new RecordVal
-                    var tailFields = recordFields.entrySet().stream()
+                    var tailFields = recordFields.entrySet()
+                        .stream()
                         .filter(e -> !recordPat.fields().containsKey(e.getKey()))
                         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (a, b) -> a, LinkedHashMap::new));
                     bindings.add(new Value.RecordVal(tailFields));
                 }
-                
+
                 yield true;
             }
-            
+
             case Pattern.ListPat listPat -> {
                 if (!(value instanceof Value.ListVal listVal)) {
                     yield false;
                 }
-                
+
                 var elements = listVal.elements();
                 var patElements = listPat.elements();
-                
+
                 if (elements.size() != patElements.size()) {
                     yield false;
                 }
-                
-                yield IntStream.range(0, elements.size())
-                    .allMatch(i -> matchRecursive(patElements.get(i), elements.get(i), bindings));
+
+                yield IntStream.range(0, elements.size()).allMatch(i -> matchRecursive(patElements.get(i), elements.get(i), bindings));
             }
-            
+
             case Pattern.ConsListPat consPat -> {
                 if (!(value instanceof Value.ListVal listVal) || listVal.elements().isEmpty()) {
                     yield false;
                 }
-                
+
                 var elements = listVal.elements();
                 if (!matchRecursive(consPat.head(), elements.get(0), bindings)) {
                     yield false;
                 }
-                
+
                 var tailVal = new Value.ListVal(elements.subList(1, elements.size()));
                 yield matchRecursive(consPat.tail(), tailVal, bindings);
             }

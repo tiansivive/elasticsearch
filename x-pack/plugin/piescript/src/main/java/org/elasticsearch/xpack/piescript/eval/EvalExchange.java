@@ -55,10 +55,7 @@ final class EvalExchange {
      */
     static void sink(ExchangeService exchangeService, Value.ExchangeVal exchangeVal, ActionListener<Value> listener) {
         try {
-            var sinkHandler = exchangeService.getOrCreateSinkHandler(
-                exchangeVal.exchangeId(),
-                exchangeVal.bufferSize()
-            );
+            var sinkHandler = exchangeService.getOrCreateSinkHandler(exchangeVal.exchangeId(), exchangeVal.bufferSize());
             var sinkHandle = sinkHandler.createExchangeSink(() -> {});
             listener.onResponse(new Value.ExchangeSinkVal(sinkHandle, exchangeVal.columnNames()));
         } catch (Exception e) {
@@ -76,17 +73,12 @@ final class EvalExchange {
             var deps = eval.deps;
             var exchangeService = deps.exchangeService();
             var sourceHandler = new ExchangeSourceHandler(exchangeVal.bufferSize(), deps.executor());
-            
+
             var connection = exchangeVal.nodeId().equals(deps.localNodeId())
                 ? deps.transportService().getLocalNodeConnection()
                 : deps.transportService().getConnection(deps.clusterService().state().nodes().get(exchangeVal.nodeId()));
 
-            var remoteSink = exchangeService.newRemoteSink(
-                deps.task(),
-                exchangeVal.exchangeId(),
-                deps.transportService(),
-                connection
-            );
+            var remoteSink = exchangeService.newRemoteSink(deps.task(), exchangeVal.exchangeId(), deps.transportService(), connection);
             sourceHandler.addRemoteSink(remoteSink, true, () -> {}, 1, ActionListener.noop());
             var sourceHandle = sourceHandler.createExchangeSource();
             listener.onResponse(new Value.ExchangeSourceVal(sourceHandle, exchangeVal.columnNames()));
@@ -104,10 +96,14 @@ final class EvalExchange {
             // Runtime safety check: verify column names match (order-independent)
             if (pageVal.columnNames().size() != sinkVal.columnNames().size()
                 || new java.util.HashSet<>(pageVal.columnNames()).equals(new java.util.HashSet<>(sinkVal.columnNames())) == false) {
-                listener.onFailure(new EvaluationException(
-                    "Exchange.addPage: column name mismatch — page has " + pageVal.columnNames()
-                        + " but exchange expects " + sinkVal.columnNames()
-                ));
+                listener.onFailure(
+                    new EvaluationException(
+                        "Exchange.addPage: column name mismatch — page has "
+                            + pageVal.columnNames()
+                            + " but exchange expects "
+                            + sinkVal.columnNames()
+                    )
+                );
                 return;
             }
             sinkVal.sink().addPage(pageVal.page());
@@ -125,21 +121,14 @@ final class EvalExchange {
      * <p>Uses {@code ExchangeSource.waitForReading()} for backpressure: when no pages
      * are available, waits asynchronously until a page is added or the source finishes.
      */
-    static void poll(
-        Evaluator eval,
-        Value.ExchangeSourceVal sourceVal,
-        Value callback,
-        ActionListener<Value> listener
-    ) {
+    static void poll(Evaluator eval, Value.ExchangeSourceVal sourceVal, Value callback, ActionListener<Value> listener) {
         var deps = eval.deps;
         var channelId = deps.channelRegistry().nextChannelId();
         var channelListener = new SubscribableListener<Value>();
         deps.channelRegistry().register(channelId, channelListener);
 
         // Start the async poll loop on the executor
-        deps.executor().execute(
-            () -> pollLoop(eval, sourceVal.source(), sourceVal.columnNames(), callback, channelListener)
-        );
+        deps.executor().execute(() -> pollLoop(eval, sourceVal.source(), sourceVal.columnNames(), callback, channelListener));
 
         listener.onResponse(new Value.ChannelVal(deps.localNodeId(), channelId));
     }
@@ -169,11 +158,12 @@ final class EvalExchange {
                 } else {
                     // No page available — wait asynchronously for data or completion
                     var blocked = source.waitForReading();
-                    blocked.listener().addListener(ActionListener.running(
-                        () -> eval.deps.executor().execute(
-                            () -> pollLoop(eval, source, columnNames, callback, channelListener)
-                        )
-                    ));
+                    blocked.listener()
+                        .addListener(
+                            ActionListener.running(
+                                () -> eval.deps.executor().execute(() -> pollLoop(eval, source, columnNames, callback, channelListener))
+                            )
+                        );
                     return;
                 }
             }

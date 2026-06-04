@@ -639,24 +639,24 @@ public class PiescriptIT extends ESRestTestCase {
             let shards = Index.shards idx;
             let shard = List.head shards;
             let exch = Exchange.open ["name", "age", "active"] 1024.0;
-            
+
             let sink = Exchange.sink exch;
             let sch = Shard.open idx shard { match_all: true };
             let ch = spawn!;
-            
+
             let u3 = when (sch searcher) ->
               let docs = Shard.consume 100.0 searcher in
               let page = Shard.stream searcher docs in
               let u1 = Exchange.addPage sink page in
               let u2 = Exchange.finish sink in
               send ch "sent";
-            
+
             let source = Exchange.connect exch;
             let countCh = spawn!;
             let p = Exchange.poll source (fn page ->
               send countCh (Page.count page)
             );
-            
+
             when (ch producerStatus) & (p done) & (countCh count) ->
               { producer: producerStatus, count: count }
             """;

@@ -17,6 +17,7 @@ import org.elasticsearch.xpack.esql.action.EsqlQueryAction;
 import org.elasticsearch.xpack.esql.action.EsqlQueryRequest;
 import org.elasticsearch.xpack.piescript.PiescriptSendAction;
 import org.elasticsearch.xpack.piescript.PiescriptSendRequest;
+import org.elasticsearch.xpack.piescript.core.Alternative;
 import org.elasticsearch.xpack.piescript.core.CoreApp;
 import org.elasticsearch.xpack.piescript.core.CoreExpr;
 import org.elasticsearch.xpack.piescript.core.CoreField;
@@ -39,7 +40,6 @@ import org.elasticsearch.xpack.piescript.core.CoreTypeApp;
 import org.elasticsearch.xpack.piescript.core.CoreUpdate;
 import org.elasticsearch.xpack.piescript.core.CoreVar;
 import org.elasticsearch.xpack.piescript.core.CoreWhen;
-import org.elasticsearch.xpack.piescript.core.Alternative;
 import org.elasticsearch.xpack.piescript.elab.Prelude;
 import org.elasticsearch.xpack.piescript.types.LitVal;
 import org.elasticsearch.xpack.piescript.types.MonoType;
@@ -110,14 +110,10 @@ public final class Evaluator {
 
             case CoreLet let -> {
                 var recEnv = prepend(new Value.NullVal(), env);
-                evaluate(
-                    let.rhs(),
-                    recEnv,
-                    listener.delegateFailureAndWrap((l, rhsVal) -> {
-                        recEnv[0] = rhsVal;
-                        evaluate(let.body(), recEnv, l);
-                    })
-                );
+                evaluate(let.rhs(), recEnv, listener.delegateFailureAndWrap((l, rhsVal) -> {
+                    recEnv[0] = rhsVal;
+                    evaluate(let.body(), recEnv, l);
+                }));
             }
 
             case CoreRecord rec -> evaluateRecord(rec, env, listener);
