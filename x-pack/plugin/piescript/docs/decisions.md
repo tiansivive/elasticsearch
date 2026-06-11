@@ -2665,3 +2665,123 @@ transport actions. The send action is node-to-node internal transport, same patt
 **Supersedes**: D-003 security model (which used `CompositeIndicesRequest` + `indices:` namespace).
 
 **Tracked in**: [[security-namespace.infrastructure]], [[es-plugin.infrastructure]]
+
+---
+
+## D-056: Errors as Messages — Minimal Runtime Contract
+
+**Phase**: error-handling thread (pre-MV design) | **Status**: accepted
+**Date**: 2026-06-11
+
+**Context**: Piescript has no error recovery story. Today: a `spawn` body failure completes its
+channel exceptionally and propagates through `when` to kill the whole program; a shipped
+closure's evaluation error is WARN-logged on the target node (D-047) and invisible to the
+initiator — if the closure was meant to `send` a result, the waiting `when` hangs forever; an
+unobserved spawn failure is silently cached in the `ChannelRegistry`. The design was explored
+against BEAM/OTP and the distributed Join Calculus failure model (Fournet & Gonthier).
+
+**Decision**:
+
+1. **Minimal runtime contract**: the runtime catches every uncaught failure at its evaluation
+   boundary and delivers a structured error message to the **local node's err inbox**. That is
+   the runtime's entire error-handling job — no routing, no cleanup decisions, no supervision.
+2. **The per-node err inbox is the main (and only) runtime mechanism** — an *ordinary*
+   consume-semantics channel, no special channel mode. Multi-tenant consumption works via
+   **selective matching**: rules consume only messages matching their pattern/guard; unmatched
+   messages stay in the store. Unconsumed messages eventually drain to the node log (TTL-style
+   policy; preserves today's WARN as the floor; exact policy refined in the MV design).
+3. **Supervision is user-space piescript.** Programs ship standing forwarder rules to worker
+   nodes that consume their own failures from the local err inbox and `send` them home — the
+   Join Calculus locality property does cross-node routing (the home channel travels in the
+   closure). Precedent: OTP is not in the BEAM VM; supervisors are library code.
+4. **`spawn expr` keeps failing its own result channel** — the sugar's producer→channel
+   contract, not supervision. Bare `spawn!` channels get no such promise; orphaned-channel
+   cleanup is supervisor-driven via a channel termination primitive (deferred to the MV design).
+5. **Two error classes** (D-047) stay distinct: *domain* errors travel as ordinary values on
+   the data path (typed per channel; `Result` once ADTs land); *infrastructure/uncaught*
+   failures are uniform, runtime-stamped messages (schema v1: message + available metadata —
+   process identity per D-057, node, source once error provenance lands).
+6. **The design is committed to multi-value queue semantics.** Single-value-era constructs
+   explored and parked (not decisions): `recover` clause on `when`, dual value/error channel
+   pairs from `spawn`, JoCaml-style `or`-alternative arms — all workarounds for one-shot
+   expression `when`; standing rules over queues make them unnecessary.
+
+**Rationale**:
+- **Errors-as-messages is the BEAM lesson**: `trap_exit`/monitors convert death into ordinary
+  messages handled by normal `receive`; recovery *is* message handling.
+- **The distributed JC failure model has the same shape**: fail-stop locations, `halt` (local
+  failure), `fail a; P` (asynchronous failure detection) — "allowing programmable error
+  recovery"; "its task may be taken over by another location without interfering with the
+  failed location." Failure as a reactable event, no exceptions, recovery programmed by the
+  user. The failure unit is the location (≈ node/computation), matching the per-node inbox.
+- **Consume semantics is the JC primitive** ("each message fulfills at most one call — the def
+  rule consumes its join pattern") and the asymmetry decides uniformity: broadcast is buildable
+  in user space from consume (event-manager/distributor pattern); compete is not buildable from
+  broadcast. Join patterns and work queues require consumption.
+- **Control philosophy**: explicit user control with automatic defaults — the runtime provides
+  detection-as-messages; users own recovery, overriding nothing hidden.
+
+**Extends D-047** (does not supersede it): fire-and-forget send semantics are unchanged; the
+"logged at WARN, never propagated" handling of closure evaluation errors is replaced by err
+inbox delivery, with the log as the drain-policy floor.
+
+**Prerequisites surfaced**: pattern guards (or bound-variable patterns) are a hard requirement —
+literal-only patterns cannot filter on runtime-assigned identity; guards participate in the
+consumption transaction (a guard failure must leave the message in the store).
+
+**Tracked in**: [[errors-as-messages.coordination]], [[error-channels.coordination]], [[multi-value-channels.coordination]], [[error-handling-patterns.example]]
+
+---
+
+## D-057: Process Identity — Root TaskId Propagated on the Causal Chain
+
+**Phase**: error-handling thread | **Status**: accepted
+**Date**: 2026-06-11
+
+**Context**: Selective consumption (D-056) needs unforgeable identity for error messages, and
+supervision needs to know *whose* computation died. Today: every evaluation has an ES `Task`
+(already threaded into `EvalDependencies` for Exchange child requests), but
+`PiescriptSendRequest` carries only `(channelId, payload)` and `sendRemote` never calls
+`setParentTask` — identity is severed at every node hop. The current WARN log cannot say whose
+closure failed. The authenticated *user* already crosses the wire in transport thread-context
+headers (security layer), but that identifies the principal, not the program.
+
+**Decision**:
+
+1. **Program identity = the root evaluation's `TaskId`** (string form `nodeId:taskNumber`),
+   runtime-assigned and unreachable from user code (it lives in `EvalDependencies`).
+2. **Propagated by value along the causal chain**: a `programId` field on `EvalDependencies`
+   (populated in `TransportPiescriptAction.buildEvalDeps`); a wire field on
+   `PiescriptSendRequest`; `TransportPiescriptSendAction` threads the received id into the
+   remote evaluation's deps. A shipped closure evaluates under its *sender's* identity
+   regardless of node; local spawns inherit deps ambiently.
+3. **Also call `setParentTask` in `sendRemote`** — free ES-level correlation (`_tasks` API
+   shows piescript sends as task children) and rails for future cancellation.
+4. **Runtime stamps identity into error messages at the catch sites** (which all hold deps):
+   inbox closure failure, spawn body failure, main evaluation failure. v1 needs no anti-forgery
+   story (no user-facing err inbox yet); when MV channels land, the general mechanism is
+   envelope stamping at the `send` boundary — every send ambiently carries its evaluation's
+   identity, so even user-constructed messages are attributed to their actual sender (MV design
+   session item).
+5. **User access**: a deps-backed prelude *constant* (`Process.self`-style; name non-final —
+   arity-0 builtin resolved from deps, same mechanism as `IndexLit` UUID resolution). Because
+   identity is causal and values are pure/serializable, a closure simply **captures** its
+   program's id — no DI widening or remote `self` needed. v1 representation: `Keyword` string;
+   opaque `Process` type later.
+
+**Alternatives considered**:
+- *Per-computation task registration* (`TaskManager` child tasks per spawn/remote evaluation):
+  deferred, not rejected — per-spawn overhead is wrong for fine-grained spawns, but it is the
+  convergence target for coarse remote evaluations (visibility + cancellation) and aligns with
+  the persistent-task/actor-model future.
+- *Piescript-minted UUID*: rejected — a parallel identity scheme with no ES correlation; the
+  carrier field is a string either way, so the value can be swapped for a persistent actor id
+  when the actor model lands.
+- *User identity via ThreadContext*: complement, not alternative — authorization-grade tenancy
+  (whose errors may you consume) vs correlation; the err message schema gains both fields.
+
+**Open (flagged, not decided)**: sender-side minting of per-task refs (`send node.inbox closure`
+returning a ref minted locally — fire-and-forget preserved, Erlang spawn-returns-pid analogue)
+for monitor-granularity supervision.
+
+**Tracked in**: [[process-identity.coordination]]

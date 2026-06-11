@@ -9,13 +9,13 @@ and follow any links they contain recursively until you have a complete picture 
 2. **[docs/current-state.md](docs/current-state.md)** — what's implemented now, known limitations
 3. **[docs/architecture.md](docs/architecture.md)** — system design, Core IR, async evaluator, channels
 4. **[docs/decisions.md](docs/decisions.md)** — architectural decisions and rationale (55 ADRs — check before suggesting alternatives)
-5. **Meta zettels** — read ALL zettels tagged `meta` (workflow, conventions, tag vocabulary). These define how the design space works. Run `python3 docs/design-space/scripts/catalog.py meta` to find them.
-6. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 docs/design-space/scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
-7. **[docs/design-space/index.md](docs/design-space/index.md)** — tagged knowledge base of the full design landscape (~491 zettels)
-8. **Design space catalog** — run `python3 docs/design-space/scripts/catalog.py --compact` to scan all tracked design topics
-9. **Thread** — read `docs/design-space/thread.md` for the paper trail of prior work
-10. **Queue** — run `python3 docs/design-space/scripts/queue.py` for all pending items, or check `docs/design-space/zettels/global-pending.queue.md` directly
-11. **Implementation plan workflow** — read [[implementation-plan-workflow.meta]] before creating or executing work from `.cursor/plans/`. Copy `_TEMPLATE.plan.md` for new plans ([[cursor-plan-template.meta]]). Cursor: use the skill `.cursor/skills/create-plan/SKILL.md` (symlink to `.claude/skills/create-plan/SKILL.md`) for the imperative checklist (zettels, queue, thread, session zettel, debug scripts, docs, review stops). At plan end: **reconcile** zettelkasten to shipped code/docs and **confirm** any new zettels with the user before creating them.
+5. **Knowledge base entry points** — [docs/z-piescript/README.md](docs/z-piescript/README.md) (model, zettel format, ref prefixes), [docs/z-piescript/VOCABULARY.md](docs/z-piescript/VOCABULARY.md) (tag and edge vocabulary), [docs/z-piescript/WORKFLOW.md](docs/z-piescript/WORKFLOW.md) (threads, queues, paper trail)
+6. **Meta zettels** — read ALL zettels tagged `meta` (knowledge-base conventions, design-to-implementation pipeline). Run `python3 docs/z-piescript/scripts/catalog.py meta` to find them.
+7. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 docs/z-piescript/scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
+8. **Design space catalog** — run `python3 docs/z-piescript/scripts/catalog.py --compact` to scan all tracked design topics
+9. **Thread** — read `docs/z-piescript/thread.md` for the paper trail of prior work
+10. **Queue** — run `python3 docs/z-piescript/scripts/queue.py` for all pending items, or check `docs/z-piescript/zettels/global-pending.queue.md` directly
+11. **Procedure skills (canonical)** — the skills under `.claude/skills/` are the single source of truth for process; meta zettels keep the rationale and link to them via `skill:` refs. Use the **`zettelkasten`** skill (`.claude/skills/zettelkasten/SKILL.md`) when creating, updating, or connecting zettels, or recording thread/queue actions. Use the **`create-plan`** skill (`.claude/skills/create-plan/SKILL.md`) before creating or executing work from `.cursor/plans/` (zettels, queue, thread, session zettel, debug scripts, docs, review stops; at plan end reconcile the zettelkasten to shipped code/docs and confirm any new zettels with the user). Cursor agents reach the same files via `.cursor/skills/*/SKILL.md` symlinks.
 
 If any of these files link to other documents (vision, data-access, references, plans, etc.),
 read those too. The goal is to have the full project context before making any changes or
@@ -42,15 +42,16 @@ edits; **ask** when intent is unclear; **stop** on conflicting instructions inst
 - [docs/archive/data-access.pre-threads.md](docs/archive/data-access.pre-threads.md) — `Query a` typeclass, ESQL/ShardPlan/LuceneM levels (archived — see [[data-access-architecture.roadmap]])
 - [docs/project-structure.md](docs/project-structure.md) — file layout and module responsibilities
 - [docs/references.md](docs/references.md) — papers, textbooks, and theory
-- [docs/design-space/metrics.md](docs/design-space/metrics.md) — derived metrics for the design space
+- [docs/z-piescript/metrics.md](docs/z-piescript/metrics.md) — derived metrics for the design space
 - [docs/archive/mvp.md](docs/archive/mvp.md) — MVP definition (archived — MVP complete 2026-04-06)
 
 ## Implementation Plans
 
-Detailed step-by-step plans live in [.cursor/plans/](.cursor/plans/). **Workflow**: see
-[docs/design-space/zettels/implementation-plan-workflow.meta.md](docs/design-space/zettels/implementation-plan-workflow.meta.md).
-**Template**: [.cursor/plans/_TEMPLATE.plan.md](.cursor/plans/_TEMPLATE.plan.md). **Agent skill**:
-[.cursor/skills/create-plan/SKILL.md](.cursor/skills/create-plan/SKILL.md) (canonical copy under [.claude/skills/create-plan/SKILL.md](.claude/skills/create-plan/SKILL.md)).
+Detailed step-by-step plans live in [.cursor/plans/](.cursor/plans/). **Canonical workflow**: the
+**create-plan skill** at [.claude/skills/create-plan/SKILL.md](.claude/skills/create-plan/SKILL.md)
+(Cursor symlink: [.cursor/skills/create-plan/SKILL.md](.cursor/skills/create-plan/SKILL.md)).
+**Template**: [.cursor/plans/_TEMPLATE.plan.md](.cursor/plans/_TEMPLATE.plan.md). Rationale and
+design history live in [[implementation-plan-workflow.meta]] and [[cursor-plan-template.meta]].
 
 | Plan | Scope |
 |------|-------|

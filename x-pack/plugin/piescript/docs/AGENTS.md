@@ -18,7 +18,7 @@ as closures — safe because the language is pure and referentially transparent.
 | Doc | What it covers |
 |-----|---------------|
 | [vision.md](vision.md) | Long-term goals, Join Calculus coordination model, design philosophy, non-goals |
-| [design-space/thread.md](design-space/thread.md) | Forward-looking roadmap via thread hub zettels (tagged `thread`); run `python3 design-space/scripts/roadmap_status.py` to see all threads |
+| [z-piescript/thread.md](z-piescript/thread.md) | Append-only paper trail; forward-looking roadmap via thread hub zettels (tagged `thread`); run `python3 z-piescript/scripts/roadmap_status.py` to see all threads |
 | [current-state.md](current-state.md) | What works **right now**, known limitations, immediate next steps |
 | [architecture.md](architecture.md) | System design, Core IR, async evaluator, channel-based coordination |
 | [archive/data-access.pre-threads.md](archive/data-access.pre-threads.md) | `Query a` typeclass, levels of control (ESQL/ShardPlan/LuceneM), use cases, comparable systems (archived — see [[data-access-architecture.roadmap]]) |
@@ -37,7 +37,7 @@ as closures — safe because the language is pure and referentially transparent.
    reference the existing decision and explain why.
 
 3. **Check thread hub zettels for phase boundaries.** Work should align with active threads
-   (run `python3 docs/design-space/scripts/roadmap_status.py`). If a feature belongs to a future
+   (run `python3 docs/z-piescript/scripts/roadmap_status.py`). If a feature belongs to a future
    thread, flag it as out-of-scope rather than implementing it.
 
 4. **Keep these docs updated.** When you implement something, update `current-state.md` and
@@ -162,25 +162,12 @@ Detailed step-by-step implementation plans live in [../.cursor/plans/](../.curso
 were produced during each block/phase and contain granular task breakdowns, design rationale, and
 completion status. Load the relevant plan when working on or extending a specific block.
 
-**Workflow (authoring & execution)** — Follow [[implementation-plan-workflow.meta]] for the full
-checklist. In short:
-
-1. **Start** — Create an **implementation zettel** and a **queue zettel** (checklist mirroring plan todos); link the hub, `plan:` ref, and related design zettels. New plans should copy
-   [`_TEMPLATE.plan.md`](../.cursor/plans/_TEMPLATE.plan.md); structure is documented in
-   [[cursor-plan-template.meta]].
-2. **Execute** — Keep queue checkboxes in sync; follow `docs/AGENTS.md` coding guidelines; prefer
-   **stop-after-each-step** when the user requests incremental review (state this in the plan).
-3. **Record** — Append a session block to `design-space/thread.md`; add a **session zettel** with
-   `refs: session:<id>` for substantial work; use `SPAWN` to link session ↔ thread.
-4. **Verify** — Unit tests, `PiescriptIT` when the REST path matters, serialization round-trips when
-   wire format changes; extend `debug/test-dev.sh`, `debug/test-eval.sh`, `debug/test-multinode.sh`
-   when the feature is easy to exercise manually.
-5. **Close** — Update `current-state.md`, thread hub zettels, and `decisions.md` (new ADRs). Then
-   **reconcile** the zettelkasten to shipped reality: call out mismatches between code, docs, and
-   design zettels. **Confirm with the user** any **new** zettels to add (no bulk creation without agreement).
-
-Cursor agents: load the project skill `.cursor/skills/create-plan/SKILL.md` (symlink to `.claude/skills/create-plan/SKILL.md`) when
-driving plan creation or execution.
+**Workflow (authoring & execution)** — the **create-plan skill**
+([`.claude/skills/create-plan/SKILL.md`](../.claude/skills/create-plan/SKILL.md); Cursor symlink
+`.cursor/skills/create-plan/SKILL.md`) is the canonical checklist: zettels, queue, thread, session
+zettel, debug scripts, docs, review stops, end-of-plan reconciliation. New plans copy
+[`_TEMPLATE.plan.md`](../.cursor/plans/_TEMPLATE.plan.md). Rationale and design history live in
+[[implementation-plan-workflow.meta]] and [[cursor-plan-template.meta]].
 
 | Plan file | Scope |
 |-----------|-------|
@@ -264,34 +251,38 @@ Prior design discussions are preserved in agent transcripts:
 
 ## Design Space Knowledge Base
 
-The `docs/design-space/` directory is a tagged knowledge base of piescript's full design
-landscape. See [design-space/index.md](design-space/index.md) for the format specification.
+The `docs/z-piescript/` directory is a tagged knowledge base of piescript's full design
+landscape (a nested git repository, part of the z-loom federation). Entry points:
+[z-piescript/README.md](z-piescript/README.md) (model, zettel format, ref prefixes),
+[z-piescript/VOCABULARY.md](z-piescript/VOCABULARY.md) (tag and edge vocabulary),
+[z-piescript/WORKFLOW.md](z-piescript/WORKFLOW.md) (threads, queues, paper trail).
 
 **Catalog script** — run to get a scannable overview of all tracked design topics:
 
 ```bash
-python3 docs/design-space/scripts/catalog.py --compact    # one line per zettel: title, file, tags
-python3 docs/design-space/scripts/catalog.py              # full: frontmatter + description + connections
-python3 docs/design-space/scripts/catalog.py types        # filter by tag or keyword
+python3 docs/z-piescript/scripts/catalog.py --compact    # one line per zettel: title, file, tags
+python3 docs/z-piescript/scripts/catalog.py              # full: frontmatter + description + connections
+python3 docs/z-piescript/scripts/catalog.py types        # filter by tag or keyword
 ```
 
 Pre-built outputs of the catalog/queue/roadmap/ADR-index scripts are checked into
-`docs/design-space/dist/` (regenerated on every push).
+`docs/z-piescript/dist/` (regenerated on every push).
 
-When creating or editing zettels, follow the format specification and naming conventions
-established in [design-space/index.md](design-space/index.md).
+When creating or editing zettels, threads, or queues, follow the **zettelkasten skill**
+([`.claude/skills/zettelkasten/SKILL.md`](../.claude/skills/zettelkasten/SKILL.md); Cursor symlink
+`.cursor/skills/zettelkasten/SKILL.md`) — the canonical procedure for all knowledge-base writes.
 
 **Agent responsibilities — on session start:**
 
-1. **Read all meta zettels** (`python3 docs/design-space/scripts/catalog.py meta`). These define
-   how the design space works: workflow conventions, tag vocabulary, the design-to-implementation
+1. **Read all meta zettels** (`python3 docs/z-piescript/scripts/catalog.py meta`). These define
+   how the design space works: conventions, rationale, the design-to-implementation
    pipeline. See [[design-to-implementation.meta]] for the full workflow.
 
 **Agent responsibilities — lookup workflow:**
 
 Before doing any design work, implementation, or proposing changes:
 
-1. **Scan the catalog** (`python3 docs/design-space/scripts/catalog.py --compact`) to see what's
+1. **Scan the catalog** (`python3 docs/z-piescript/scripts/catalog.py --compact`) to see what's
    tracked.
 2. **Read relevant zettels** — open the specific `.md` files for topics related to your work.
 3. **Follow connections** — each zettel has `Depends on`, `Enables`, and `Connections` edges
@@ -305,37 +296,22 @@ Before doing any design work, implementation, or proposing changes:
 
 **Agent responsibilities — maintenance:**
 
-- Create new zettel files in `design-space/zettels/` when discussions surface new concepts
-- Update the `maturity` tag when items are implemented or superseded
-- Add your session ID to `refs` (e.g., `session:your-session-id`) when discussing an item
-- Link to plans and transcripts via `plan:` and `session:` ref prefixes
-- When creating ADRs, add `adr:D-NNN` refs to related design space items
-- When an item is superseded, change its maturity tag and note what replaced it
+All knowledge-base writes (new zettels, tag/maturity updates, refs, edges, thread blocks,
+queue items) follow the **zettelkasten skill**
+([`.claude/skills/zettelkasten/SKILL.md`](../.claude/skills/zettelkasten/SKILL.md)) — it is the
+single source of truth for the procedure. **Proactively** create queue items when discussion
+surfaces future work, and notify the user.
 
 ## Thread & Queue
 
-Two files track the *work layer* on top of the zettelkasten. Zettels are the atomic
-knowledge units; thread and queue are workflows over them.
-See [[thread-queue-system.meta]] for the full design.
+The *work layer* on top of the zettelkasten: zettels are the atomic knowledge units; threads
+and queues are workflows over them. The system is described in
+[z-piescript/WORKFLOW.md](z-piescript/WORKFLOW.md); design rationale in
+[[thread-queue-system.meta]]; the operating procedure (session blocks, ENQUEUE/RESOLVED/SPAWN,
+queue checkboxes) is in the **zettelkasten skill**.
 
-### Thread — `docs/design-space/thread.md`
-
-Append-only paper trail of work across sessions. Each block records a session's path
-through the zettel graph using labeled edges (`[[A]] -- verb -> [[B]]`) and action
-annotations (`ENQUEUE`, `RESOLVED`, `SPAWN`). Thread hub zettels (tagged `thread`) are
-the forward-looking roadmap, organized as parallel work concerns.
-
-### Queue — `docs/design-space/zettels/global-pending.queue.md`
-
-The queue is now a zettel (`[[global-pending.queue]]`) in `zettels/`.
-Flat FIFO list of pending work. Each item references a zettel. Resolve top-down.
-`[ ]` open, `[x]` resolved, `[~]` dropped.
-
-**Agent responsibilities:**
-
+- **Thread** — `docs/z-piescript/thread.md`: append-only paper trail of work across sessions.
+  Thread hub zettels (tagged `thread`) are the forward-looking roadmap.
+- **Queue** — `[[global-pending.queue]]` (`docs/z-piescript/zettels/global-pending.queue.md`):
+  flat FIFO list of pending work. `[ ]` open, `[x]` resolved, `[~]` dropped.
 - **On session start:** read `thread.md` for context, scan `[[global-pending.queue]]` for open items.
-- **During work:** append edges and actions to `thread.md` in a session block.
-- **When deferring:** ensure zettel exists → add `ENQUEUE` to thread → add item to queue.
-- **When resolving:** mark queue item `[x]` → append `RESOLVED` to thread.
-- **When branching:** add `SPAWN` to thread, noting the sub-topic.
-- **Proactively** create queue items when discussion surfaces future work — notify user.

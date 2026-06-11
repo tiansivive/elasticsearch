@@ -388,10 +388,10 @@ Ranked by demo "wow per investment":
 - [vision.md](vision.md) — the long-form positioning
 - [current-state.md](current-state.md) — what's implemented now
 - [archive/mvp.md](archive/mvp.md) — the original MVP examples document
-- [design-space/zettels/value-proposition.principle.md](design-space/zettels/value-proposition.principle.md)
-- [design-space/zettels/extraction-cliff.external.md](design-space/zettels/extraction-cliff.external.md)
-- [design-space/zettels/feature-constellation.external.md](design-space/zettels/feature-constellation.external.md)
-- [design-space/zettels/watchlist-cross-ref.example.md](design-space/zettels/watchlist-cross-ref.example.md)
-- [design-space/zettels/risk-score-pattern.data.md](design-space/zettels/risk-score-pattern.data.md)
-- [design-space/zettels/risk-scoring-incremental.example.md](design-space/zettels/risk-scoring-incremental.example.md)
-- [design-space/zettels/target-users.principle.md](design-space/zettels/target-users.principle.md)
+- [z-piescript/zettels/value-proposition.principle.md](z-piescript/zettels/value-proposition.principle.md)
+- [z-piescript/zettels/extraction-cliff.external.md](z-piescript/zettels/extraction-cliff.external.md)
+- [z-piescript/zettels/feature-constellation.external.md](z-piescript/zettels/feature-constellation.external.md)
+- [z-piescript/zettels/watchlist-cross-ref.example.md](z-piescript/zettels/watchlist-cross-ref.example.md)
+- [z-piescript/zettels/risk-score-pattern.data.md](z-piescript/zettels/risk-score-pattern.data.md)
+- [z-piescript/zettels/risk-scoring-incremental.example.md](z-piescript/zettels/risk-scoring-incremental.example.md)
+- [z-piescript/zettels/target-users.principle.md](z-piescript/zettels/target-users.principle.md)
