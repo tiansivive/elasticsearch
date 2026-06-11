@@ -27,7 +27,7 @@ Assumes you already build and run Elasticsearch (see the repo root `BUILDING.md`
 piescript-specific pieces:
 
 **1. Clone the design-space knowledge base** into its nested location (the path is gitignored
-here — it is a standalone repo in the [z-loom](https://github.com/tiansivive/z-loom) federation):
+here — it is a standalone repo):
 
 ```bash
 # from x-pack/plugin/piescript/
