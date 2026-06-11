@@ -1,0 +1,1 @@
+../../../.claude/skills/zettelkasten/SKILL.md

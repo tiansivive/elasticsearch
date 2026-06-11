@@ -1,0 +1,13 @@
+---
+description: Answer vs edit; confirm before repo changes; no silent fixes
+alwaysApply: true
+---
+
+# Agent–user interaction (piescript)
+
+- **Questions, criticism, or process feedback** (e.g. “why did you…”, “you should not…”, “how do we…?”): treat as **read-only**. Reply in **prose only** — no file edits, no shell commands—unless the user **explicitly** asks you to apply a change.
+- **Before substantive edits** to the repo: say what you intend to change (one or two sentences). Proceed only after **clear approval** (“yes”, “go ahead”, “implement it”) or an instruction that already names the change—do not “fix” by default.
+- **Unclear intent** (including incomplete bullets the user added on purpose): **ask**; do not guess, expand, delete, or “complete” their text without confirmation.
+- **Conflicting instructions**: stop, state the conflict briefly, ask which path to follow—do not silently choose.
+
+Canonical copy also lives in `docs/AGENTS.md` (Interaction with the user) and `CLAUDE.md`.

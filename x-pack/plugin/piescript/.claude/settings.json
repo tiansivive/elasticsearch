@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'PIESCRIPT: Run /load to load project docs before doing any work.'"
+          }
+        ]
+      }
+    ]
+  }
+}
