@@ -162,7 +162,7 @@ let wl_ch = spawn query ESQL.from watchlist
 let okta_ch = spawn query ESQL.from okta
   |> ESQL.where (fn r -> r.user.roles == "Super Administrator"
                       || r.user.roles == "Organization Administrator"
-                      || r.user.roles == "Group Administrator"
+                      || r.user.roles == "Group Administrator" 
                       || r.user.roles == "Application Administrator")
   |> ESQL.statsBy
        (fn r -> { latest: ESQL.max r.@timestamp })
