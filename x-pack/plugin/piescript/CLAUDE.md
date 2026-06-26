@@ -2,20 +2,19 @@
 
 ## MANDATORY: Read Before Any Work
 
-You MUST read the following files before doing any work on this plugin. Read them in order,
-and follow any links they contain recursively until you have a complete picture of the project.
+You MUST read the following files before doing any work on this plugin. Run `/load` (the load
+skill at `.claude/skills/load/SKILL.md`) to execute this boot sequence automatically. Read in
+order and follow any links they contain recursively until you have a complete picture.
 
-1. **[docs/AGENTS.md](docs/AGENTS.md)** — project context, design constraints, coding guidelines, chat history, design space instructions
-2. **[docs/current-state.md](docs/current-state.md)** — what's implemented now, known limitations
-3. **[docs/architecture.md](docs/architecture.md)** — system design, Core IR, async evaluator, channels
-4. **[docs/decisions.md](docs/decisions.md)** — architectural decisions and rationale (55 ADRs — check before suggesting alternatives)
-5. **Knowledge base entry points** — [docs/z-piescript/README.md](docs/z-piescript/README.md) (model, zettel format, ref prefixes), [docs/z-piescript/VOCABULARY.md](docs/z-piescript/VOCABULARY.md) (tag and edge vocabulary), [docs/z-piescript/WORKFLOW.md](docs/z-piescript/WORKFLOW.md) (threads, queues, paper trail)
-6. **Meta zettels** — read ALL zettels tagged `meta` (knowledge-base conventions, design-to-implementation pipeline). Run `python3 docs/z-piescript/scripts/catalog.py meta` to find them.
-7. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 docs/z-piescript/scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
-8. **Design space catalog** — run `python3 docs/z-piescript/scripts/catalog.py --compact` to scan all tracked design topics
-9. **Thread** — read `docs/z-piescript/thread.md` for the paper trail of prior work
-10. **Queue** — run `python3 docs/z-piescript/scripts/queue.py` for all pending items, or check `docs/z-piescript/zettels/global-pending.queue.md` directly
-11. **Procedure skills (canonical)** — the skills under `.claude/skills/` are the single source of truth for process; meta zettels keep the rationale and link to them via `skill:` refs. Use the **`zettelkasten`** skill (`.claude/skills/zettelkasten/SKILL.md`) when creating, updating, or connecting zettels, or recording thread/queue actions. Use the **`create-plan`** skill (`.claude/skills/create-plan/SKILL.md`) before creating or executing work from `.cursor/plans/` (zettels, queue, thread, session zettel, debug scripts, docs, review stops; at plan end reconcile the zettelkasten to shipped code/docs and confirm any new zettels with the user). Cursor agents reach the same files via `.cursor/skills/*/SKILL.md` symlinks.
+1. **[docs/AGENTS.md](docs/AGENTS.md)** — project context, design constraints, coding guidelines, design space instructions
+2. **[docs/decisions.md](docs/decisions.md)** — architectural decisions and rationale (57 ADRs — check before suggesting alternatives)
+3. **Knowledge base entry points** — [docs/z-piescript/README.md](docs/z-piescript/README.md) (model, zettel format, ref prefixes), [docs/z-piescript/VOCABULARY.md](docs/z-piescript/VOCABULARY.md) (tag and edge vocabulary), [docs/z-piescript/WORKFLOW.md](docs/z-piescript/WORKFLOW.md) (threads, queues, paper trail)
+4. **Meta zettels** — read ALL zettels tagged `meta` (knowledge-base conventions, design-to-implementation pipeline). Run `python3 docs/z-piescript/scripts/catalog.py meta` to find them.
+5. **Thread hub zettels** — forward-looking roadmap via `thread`-tagged zettels; run `python3 docs/z-piescript/scripts/roadmap_status.py` to see all threads (old roadmap archived at [docs/archive/roadmap.pre-threads.md](docs/archive/roadmap.pre-threads.md))
+6. **Design space catalog** — run `python3 docs/z-piescript/scripts/catalog.py --compact` to scan all tracked design topics
+7. **Thread** — read `docs/z-piescript/thread.md` for the paper trail of prior work
+8. **Queue** — run `python3 docs/z-piescript/scripts/queue.py` for all pending items, or check `docs/z-piescript/zettels/global-pending.queue.md` directly
+9. **Procedure skills (canonical)** — the skills under `.claude/skills/` are the single source of truth for process; meta zettels keep the rationale and link to them via `skill:` refs. Use the **`zettelkasten`** skill (`.claude/skills/zettelkasten/SKILL.md`) when creating, updating, or connecting zettels, or recording thread/queue actions. Use the **`create-plan`** skill (`.claude/skills/create-plan/SKILL.md`) before creating or executing work from `.cursor/plans/` (zettels, queue, thread, session zettel, debug scripts, docs, review stops; at plan end reconcile the zettelkasten to shipped code/docs and confirm any new zettels with the user). Cursor agents reach the same files via `.cursor/skills/*/SKILL.md` symlinks.
 
 If any of these files link to other documents (vision, data-access, references, plans, etc.),
 read those too. The goal is to have the full project context before making any changes or
@@ -39,11 +38,10 @@ edits; **ask** when intent is unclear; **stop** on conflicting instructions inst
 ## Additional Documentation
 
 - [docs/vision.md](docs/vision.md) — long-term goals, Join Calculus coordination model, external interaction model, design philosophy
-- [docs/archive/data-access.pre-threads.md](docs/archive/data-access.pre-threads.md) — `Query a` typeclass, ESQL/ShardPlan/LuceneM levels (archived — see [[data-access-architecture.roadmap]])
-- [docs/project-structure.md](docs/project-structure.md) — file layout and module responsibilities
-- [docs/references.md](docs/references.md) — papers, textbooks, and theory
+- [docs/demos/presentation.md](docs/demos/presentation.md) — demo narrative, example portfolio, suggested talk arc
+- [docs/demos/use-case-examples.md](docs/demos/use-case-examples.md) — annotated use-case examples with runnable programs
 - [docs/z-piescript/metrics.md](docs/z-piescript/metrics.md) — derived metrics for the design space
-- [docs/archive/mvp.md](docs/archive/mvp.md) — MVP definition (archived — MVP complete 2026-04-06)
+- [docs/archive/](docs/archive/) — archived flat docs (architecture, current-state, project-structure, references) superseded by the z-piescript knowledge base; [data-access.pre-threads.md](docs/archive/data-access.pre-threads.md) and [mvp.md](docs/archive/mvp.md) kept for historical context
 
 ## Implementation Plans
 

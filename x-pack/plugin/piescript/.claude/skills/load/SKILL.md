@@ -8,15 +8,13 @@ user-invocable: true
 Read the following project documentation files in order, following any links they contain recursively until you have a complete picture of the project (all paths relative to `x-pack/plugin/piescript/`):
 
 1. docs/AGENTS.md
-2. docs/current-state.md
-3. docs/architecture.md
-4. docs/decisions.md
-5. docs/z-piescript/README.md — design space knowledge base: model, zettel format, ref prefixes
-6. docs/z-piescript/VOCABULARY.md — tag and edge vocabulary
-7. docs/z-piescript/WORKFLOW.md — threads, queues, paper trail
-8. docs/vision.md
-9. docs/z-piescript/thread.md — append-only paper trail of prior work
-10. All meta zettels — read every zettel tagged `meta` (knowledge-base conventions, design-to-implementation pipeline). Find them with:
+2. docs/decisions.md
+3. docs/z-piescript/README.md — design space knowledge base: model, zettel format, ref prefixes
+4. docs/z-piescript/VOCABULARY.md — tag and edge vocabulary
+5. docs/z-piescript/WORKFLOW.md — threads, queues, paper trail
+6. docs/vision.md
+7. docs/z-piescript/thread.md — append-only paper trail of prior work
+8. All meta zettels — read every zettel tagged `meta` (knowledge-base conventions, design-to-implementation pipeline). Find them with:
 
 ```bash
 python3 docs/z-piescript/scripts/catalog.py meta

@@ -18,19 +18,21 @@ as closures — safe because the language is pure and referentially transparent.
 | Doc | What it covers |
 |-----|---------------|
 | [vision.md](vision.md) | Long-term goals, Join Calculus coordination model, design philosophy, non-goals |
-| [z-piescript/thread.md](z-piescript/thread.md) | Append-only paper trail; forward-looking roadmap via thread hub zettels (tagged `thread`); run `python3 z-piescript/scripts/roadmap_status.py` to see all threads |
-| [current-state.md](current-state.md) | What works **right now**, known limitations, immediate next steps |
-| [architecture.md](architecture.md) | System design, Core IR, async evaluator, channel-based coordination |
-| [archive/data-access.pre-threads.md](archive/data-access.pre-threads.md) | `Query a` typeclass, levels of control (ESQL/ShardPlan/LuceneM), use cases, comparable systems (archived — see [[data-access-architecture.roadmap]]) |
-| [project-structure.md](project-structure.md) | File layout and what each module/file does |
-| [decisions.md](decisions.md) | Key architectural decisions and their rationale |
-| [references.md](references.md) | π-calculus papers, textbooks, implemented languages, and theory |
+| [decisions.md](decisions.md) | Key architectural decisions and their rationale (D-001–D-057) |
+| [z-piescript/thread.md](z-piescript/thread.md) | Append-only paper trail; forward-looking roadmap via `thread`-tagged zettels |
+| z-piescript scripts | `python3 z-piescript/scripts/catalog.py --compact` (all design topics + maturity), `queue.py` (pending work), `roadmap_status.py` (threads) |
+| [demos/presentation.md](demos/presentation.md) | Demo narrative, example portfolio, suggested talk arc |
+| [demos/use-case-examples.md](demos/use-case-examples.md) | Annotated use-case examples with runnable programs |
 | [../README.md](../README.md) | Build, test, and manual-testing commands |
+| [archive/](archive/) | Archived flat docs (architecture, current-state, project-structure, references) superseded by z-piescript; data-access and mvp kept for historical context |
 
 ## Rules of Engagement for Agents
 
-1. **Read `current-state.md` before proposing work.** It lists what's implemented, what's not, and
-   known shortcuts. Avoid duplicating effort or re-solving decided questions.
+1. **Check implementation status before proposing work.** Run
+   `python3 docs/z-piescript/scripts/catalog.py --compact` for an overview of all tracked design
+   topics and their maturity (`implemented` / `designed` / `open`). The z-piescript knowledge base
+   is the live source of truth for what exists and what's settled. Avoid duplicating effort or
+   re-solving decided questions.
 
 2. **Check `decisions.md` before suggesting alternatives.** Many design choices (type system flavor,
    IR representation, null semantics, security model) were deliberated. If you want to revisit one,
@@ -40,9 +42,11 @@ as closures — safe because the language is pure and referentially transparent.
    (run `python3 docs/z-piescript/scripts/roadmap_status.py`). If a feature belongs to a future
    thread, flag it as out-of-scope rather than implementing it.
 
-4. **Keep these docs updated.** When you implement something, update `current-state.md` and
-   the relevant thread hub zettels. When you make a non-trivial design decision, add it to
-   `decisions.md`. These are living documents.
+4. **Keep the knowledge base updated.** When you implement something, update the maturity tag
+   on the relevant zettels (`open` → `designed` → `implemented`) and append a session block to
+   `docs/z-piescript/thread.md`. When you make a non-trivial design decision, add it to
+   `decisions.md` and create or update the corresponding zettel. Follow the **zettelkasten skill**
+   (`.claude/skills/zettelkasten/SKILL.md`) for all knowledge-base writes.
 
 5. **Flag improvements proactively.** If you notice something that could be improved, contradicts
    the docs, or duplicates existing work, say so — referencing the relevant doc section.
@@ -83,8 +87,11 @@ These norms apply in **every** session. Cursor loads them from `.cursor/rules/ag
 - **Combinators are prelude built-ins**: `map`, `filter`, `reduce` are normal polymorphic functions,
   not Core IR nodes. They operate over materialized `ListVal` (renamed from `StreamVal` in
   Block B — D-043). This prepares for typeclasses (`map` → `Functor.fmap`). See D-016.
-- **Channels backed by ES infrastructure**: `SubscribableListener<Value>` for single-value channels,
-  positional collector (`AtomicArray` + `CountDown`) for `when` synchronization. See D-040, D-041.
+- **Channels (current implementation)**: `SubscribableListener<Value>` for single-value channels,
+  positional collector (`AtomicArray` + `CountDown`) for `when` synchronization. This is the
+  interim implementation — `when` is a one-shot blocking expression, not a standing reaction rule
+  ([[when-expression-blocking.bug]]). The settled model is multi-value channels replacing
+  `SubscribableListener` (D-056, [[multi-value-channels.coordination]]). See D-040, D-041.
 
 ## Coding Guidelines
 
