@@ -10,39 +10,43 @@ recursion) evaluate locally; data access delegates to ESQL and shard-level primi
 | Doc | Purpose |
 |-----|---------|
 | [`docs/AGENTS.md`](docs/AGENTS.md) | Agent entry point — start here for full project context |
-| [`docs/current-state.md`](docs/current-state.md) | What's implemented now, limitations, next steps |
-| [`docs/architecture.md`](docs/architecture.md) | System design, components, data flow |
 | [`docs/vision.md`](docs/vision.md) | Long-term goals and design philosophy |
 | [`docs/decisions.md`](docs/decisions.md) | Architectural decision records (D-001+) |
-| [`docs/project-structure.md`](docs/project-structure.md) | File layout and module responsibilities |
-| [`docs/references.md`](docs/references.md) | Papers, textbooks, and theory |
-| [`docs/z-piescript/`](docs/z-piescript/) | Design-space zettelkasten (separate repo — see setup below) |
+| [`docs/demos/`](docs/demos/) | Presentation narrative and annotated use-case examples |
 
-The forward-looking roadmap lives in thread hub zettels inside the zettelkasten:
-`python3 docs/z-piescript/scripts/roadmap_status.py`.
+Most design knowledge — architecture, current state, file layout, references, roadmap — now
+lives in the **z-piescript** knowledge base described below, not in flat docs.
 
-## Workflow Setup
+## Design-space knowledge base (`docs/z-piescript/`)
 
-Assumes you already build and run Elasticsearch (see the repo root `BUILDING.md`). The
-piescript-specific pieces:
-
-**1. Clone the design-space knowledge base** into its nested location (the path is gitignored
-here — it is a standalone repo):
+The project's design knowledge — architectural exploration, the forward-looking roadmap,
+references, and worked examples — lives in **z-piescript**, a standalone zettelkasten kept in
+its own external repository. Its primary mode of interaction is through an AI coding agent: the
+`load` and `zettelkasten` skills (see *Workflow Setup*) walk and write the knowledge base, and
+the scripts below give structured read-only views. It is intentionally a separate, gitignored
+repo — clone it into `docs/z-piescript/`:
 
 ```bash
 # from x-pack/plugin/piescript/
 git clone https://github.com/tiansivive/z-piescript.git docs/z-piescript
 ```
 
-**2. Install the script dependencies** (catalog, queue, roadmap, ADR-index views):
+The scripts require `pyyaml` and `rich` (`pip3 install --user pyyaml rich`):
 
 ```bash
-pip3 install --user pyyaml rich
-# sanity check:
-python3 docs/z-piescript/scripts/catalog.py --compact | head
+python3 docs/z-piescript/scripts/catalog.py --compact     # all tracked design topics
+python3 docs/z-piescript/scripts/queue.py                 # pending work items
+python3 docs/z-piescript/scripts/roadmap_status.py        # forward-looking roadmap (thread hubs)
+python3 docs/z-piescript/scripts/adr_index.py             # architectural-decision index
+python3 docs/z-piescript/scripts/references.py            # regenerate references from paper zettels
 ```
 
-**3. Agent tooling.** Open your agent with **this directory** (`x-pack/plugin/piescript/`) as
+## Workflow Setup
+
+Assumes you already build and run Elasticsearch (see the repo root `BUILDING.md`) and have
+cloned the knowledge base (see *Design-space knowledge base* above).
+
+**Agent tooling.** Open your agent with **this directory** (`x-pack/plugin/piescript/`) as
 the working directory — not the repo root — so the project context loads:
 
 - **Claude Code**: `CLAUDE.md`, the skills in [`.claude/skills/`](.claude/skills/) (`load`,
