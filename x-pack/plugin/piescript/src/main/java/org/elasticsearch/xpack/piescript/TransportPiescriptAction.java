@@ -60,7 +60,7 @@ public class TransportPiescriptAction extends HandledTransportAction<PiescriptRe
         ExchangeService exchangeService
     ) {
         super(PiescriptAction.NAME, transportService, actionFilters, PiescriptRequest::new, threadPool.executor(ThreadPool.Names.GENERIC));
-        this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService);
+        this.indexResolutionPrePass = IndexResolutionPrePass.create(client, transportService, clusterService);
         this.client = client;
         this.executor = threadPool.executor(ThreadPool.Names.GENERIC);
         this.clusterService = clusterService;

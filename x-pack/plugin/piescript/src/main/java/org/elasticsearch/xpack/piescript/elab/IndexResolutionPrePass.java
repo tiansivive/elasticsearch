@@ -10,8 +10,10 @@ package org.elasticsearch.xpack.piescript.elab;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.support.RefCountingListener;
 import org.elasticsearch.client.internal.Client;
+import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.indices.IndicesExpressionGrouper;
 import org.elasticsearch.transport.TransportService;
+import org.elasticsearch.xpack.esql.plugin.EsqlPlugin;
 import org.elasticsearch.xpack.esql.session.IndexResolver;
 import org.elasticsearch.xpack.piescript.parser.PiescriptAntlrParser;
 
@@ -19,6 +21,7 @@ import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.elasticsearch.TransportVersion.current;
 
@@ -49,9 +52,19 @@ public final class IndexResolutionPrePass {
     /**
      * Create a pre-pass using the remote cluster service from a transport service
      * for full CCS support.
+     *
+     * <p>{@link IndexResolver}'s treatment of flattened fields follows ESQL's dynamic
+     * {@code esql.query.flattened_enabled} setting. The flag is wired exactly as
+     * {@code EsqlPlugin} wires it (initial value + settings-update consumer) so the
+     * pre-pass sees the same view of index schemas as ESQL query execution.
      */
-    public static IndexResolutionPrePass create(Client client, TransportService transportService) {
-        return new IndexResolutionPrePass(new IndexResolver(client), transportService.getRemoteClusterService());
+    public static IndexResolutionPrePass create(Client client, TransportService transportService, ClusterService clusterService) {
+        AtomicBoolean flattenedDataTypeEnabled = new AtomicBoolean(EsqlPlugin.FLATTENED_ENABLED.get(clusterService.getSettings()));
+        clusterService.getClusterSettings().addSettingsUpdateConsumer(EsqlPlugin.FLATTENED_ENABLED, flattenedDataTypeEnabled::set);
+        return new IndexResolutionPrePass(
+            new IndexResolver(client, flattenedDataTypeEnabled::get),
+            transportService.getRemoteClusterService()
+        );
     }
 
     /**
